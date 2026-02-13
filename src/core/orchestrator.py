@@ -19,6 +19,25 @@ from .data_models import (
     ValidationStatus,
 )
 
+# Import agents
+from src.agents.stage1_requirements.interaction_agent import InteractionAgent
+from src.agents.stage2_planning.planning_agents import (
+    TaskDivisionAgent,
+    AlgorithmAnalysisAgent,
+    SchemePlanningAgent,
+)
+from src.agents.stage3_generation.code_generation_agents import (
+    CodeGenerationAgent,
+    CodeMemoryAgent,
+    CodeMiningAgent,
+)
+from src.agents.stage4_validation.validation_agents import (
+    FullCycleTestingAgent,
+    FineTuningAgent,
+    VisualVerificationAgent,
+    create_validated_project,
+)
+
 
 class Orchestrator:
     """
@@ -158,13 +177,15 @@ class Orchestrator:
 
         Returns:
             Structured requirements
-
-        Raises:
-            NotImplementedError: Stage 1 agents not yet implemented
         """
         self.logger.info("Stage 1: Interaction Agent")
-        # TODO: Implement Interaction Agent
-        raise NotImplementedError("Stage 1: Interaction Agent not yet implemented")
+
+        # Use Interaction Agent to parse requirements
+        agent = InteractionAgent(self.llm_service)
+        requirements = agent.execute(context)
+
+        self.logger.info(f"Stage 1 complete: {len(requirements.features)} features extracted")
+        return requirements
 
     def execute_stage_2(self, context: ExecutionContext) -> EngineeringPlan:
         """
@@ -175,13 +196,37 @@ class Orchestrator:
 
         Returns:
             Complete engineering plan
-
-        Raises:
-            NotImplementedError: Stage 2 agents not yet implemented
         """
         self.logger.info("Stage 2: Task Division → Algorithm Analysis → Scheme Planning")
-        # TODO: Implement Stage 2 agents
-        raise NotImplementedError("Stage 2: Planning agents not yet implemented")
+
+        requirements = context.requirements
+
+        # Task Division Agent
+        task_agent = TaskDivisionAgent(self.llm_service)
+        tasks = task_agent.execute(requirements)
+        self.logger.info(f"  - Created {len(tasks)} tasks")
+
+        # Algorithm Analysis Agent
+        algo_agent = AlgorithmAnalysisAgent(self.llm_service)
+        algorithms = algo_agent.execute(tasks)
+        self.logger.info(f"  - Analyzed {len(algorithms)} algorithms")
+
+        # Scheme Planning Agent
+        scheme_agent = SchemePlanningAgent(self.llm_service)
+        file_structure = scheme_agent.execute(requirements, tasks)
+        self.logger.info(f"  - Planned {len(file_structure)} files")
+
+        # Create engineering plan
+        plan = EngineeringPlan(
+            tasks=tasks,
+            algorithms=algorithms,
+            file_structure=file_structure,
+            dependencies=["flask"],
+            architecture_notes=f"Web application: {requirements.title}"
+        )
+
+        self.logger.info("Stage 2 complete: Engineering plan created")
+        return plan
 
     def execute_stage_3(self, context: ExecutionContext) -> CodeRepository:
         """
@@ -192,13 +237,24 @@ class Orchestrator:
 
         Returns:
             Complete code repository
-
-        Raises:
-            NotImplementedError: Stage 3 agents not yet implemented
         """
         self.logger.info("Stage 3: Code Generation (with Memory and Mining support)")
-        # TODO: Implement Stage 3 agents
-        raise NotImplementedError("Stage 3: Code generation agents not yet implemented")
+
+        # Code Generation Agent
+        code_agent = CodeGenerationAgent(self.llm_service)
+        repository = code_agent.execute(context)
+
+        self.logger.info(f"Stage 3 complete: Generated {len(repository.files)} files")
+
+        # Code Memory Agent (skipped for MVP)
+        memory_agent = CodeMemoryAgent(self.llm_service)
+        memory_agent.execute(context, repository)
+
+        # Code Mining Agent (skipped for MVP)
+        mining_agent = CodeMiningAgent(self.llm_service)
+        mining_agent.execute(context)
+
+        return repository
 
     def execute_stage_4(self, context: ExecutionContext) -> ValidatedProject:
         """
@@ -209,13 +265,39 @@ class Orchestrator:
 
         Returns:
             Validated and tested project
-
-        Raises:
-            NotImplementedError: Stage 4 agents not yet implemented
         """
         self.logger.info("Stage 4: Black-box Testing → Fine-tuning (if needed)")
-        # TODO: Implement Stage 4 agents
-        raise NotImplementedError("Stage 4: Validation agents not yet implemented")
+
+        # Full-cycle Testing Agent
+        testing_agent = FullCycleTestingAgent(self.llm_service)
+        test_result = testing_agent.execute(context)
+
+        self.logger.info(f"  - Logic tests passed: {test_result.logic_passed}")
+        if test_result.errors:
+            self.logger.info(f"  - Found {len(test_result.errors)} errors")
+
+        # Fine-tuning Agent
+        fine_tune_agent = FineTuningAgent(self.llm_service)
+        repository, was_fixed = fine_tune_agent.execute(context, test_result)
+
+        if was_fixed:
+            self.logger.info("  - Applied fixes")
+            # Re-run tests after fix
+            test_result = testing_agent.execute(context)
+
+        # Visual Verification Agent (skipped for MVP)
+        visual_agent = VisualVerificationAgent(self.llm_service)
+        visual_agent.execute(context)
+
+        # Create validated project
+        validated_project = create_validated_project(
+            repository=repository,
+            test_result=test_result,
+            requirements=context.requirements
+        )
+
+        self.logger.info(f"Stage 4 complete: Deployable={validated_project.is_deployable}")
+        return validated_project
 
     def _save_artifact(self, artifacts_dir: Path, filename: str, data: dict) -> None:
         """
