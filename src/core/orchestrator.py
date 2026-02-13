@@ -64,6 +64,7 @@ class Orchestrator:
             vlm_model=settings.openai_vlm_model,
             max_tokens=settings.max_tokens,
             temperature=settings.temperature,
+            base_url=settings.openai_base_url,
         )
         self.prompt_loader = PromptLoader(settings.prompts_dir)
 

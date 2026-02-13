@@ -19,6 +19,7 @@ class LLMService:
         max_tokens: int = 4096,
         temperature: float = 0.7,
         max_retries: int = 3,
+        base_url: str = "https://api.openai.com/v1",
     ):
         """
         Initialize the LLM service.
@@ -30,8 +31,9 @@ class LLMService:
             max_tokens: Maximum tokens to generate
             temperature: Sampling temperature (0-1)
             max_retries: Maximum number of retry attempts
+            base_url: API base URL
         """
-        self.client = OpenAI(api_key=api_key)
+        self.client = OpenAI(api_key=api_key, base_url=base_url)
         self.model = model
         self.vlm_model = vlm_model
         self.max_tokens = max_tokens
@@ -100,7 +102,7 @@ class LLMService:
                     },
                 )
 
-                return result
+                return self._strip_code_fences(result)
 
             except RateLimitError as e:
                 logger.warning(f"Rate limit hit, retrying in {2 ** attempt} seconds")
@@ -304,3 +306,23 @@ class LLMService:
         except APIError as e:
             logger.error(f"VLM API error: {e}")
             raise
+
+    def _strip_code_fences(self, text: str) -> str:
+        """Strip markdown code fences from response."""
+        import re
+        lines = text.split('\n')
+
+        # Check if first line is a code fence (```python or ```)
+        while lines and re.match(r'^```\w*$', lines[0].strip()):
+            lines = lines[1:]
+
+        # Check if last line is a code fence (```)
+        while lines and lines[-1].strip() == '```':
+            lines = lines[:-1]
+
+        # Also handle case where there's content after the closing fence
+        result = '\n'.join(lines)
+        # Remove any remaining ``` at the end of the string
+        result = re.sub(r'```+$', '', result).strip()
+
+        return result

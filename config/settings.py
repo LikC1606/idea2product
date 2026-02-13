@@ -12,6 +12,7 @@ class Settings(BaseSettings):
 
     # OpenAI API Configuration
     openai_api_key: str
+    openai_base_url: str = "https://api.openai.com/v1"
     openai_model: str = "gpt-4o"
     openai_vlm_model: str = "gpt-4o"
     max_tokens: int = 4096
