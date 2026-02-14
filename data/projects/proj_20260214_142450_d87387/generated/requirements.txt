@@ -1,0 +1,31 @@
+AWS
+SDK
+Body-parser
+Bootstrap
+Chai
+Cloudinary
+Docker
+Express.js
+Framer Motion
+Heroku
+Hugging Face Transformers
+Jest
+Knex.js
+Kubernetes
+Lottie
+Material-UI
+Mocha
+MongoDB
+Mongoose
+Multer
+MySQL
+OpenAI API
+PostgreSQL
+Postman
+PyTorch
+React
+Sequelize
+Supertest
+TensorFlow
+Vue.js
+flask

@@ -1,0 +1,244 @@
+{
+  "repository": {
+    "skeleton": null,
+    "files": [
+      {
+        "path": "src/ui/image_upload_ui.py",
+        "content": "from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton, QFileDialog, QTextEdit, QHBoxLayout\nfrom PyQt5.QtGui import QPixmap\nfrom src.backend.image_upload_backend import process_image\n\nclass ImageUploadUI(QWidget):\n    def __init__(self, parent=None):\n        super().__init__(parent)\n        self.init_ui()\n\n    def init_ui(self):\n        # Main layout\n        self.layout = QVBoxLayout()\n\n        # Title label\n        self.title_label = QLabel(\"Product Description Generator\")\n        self.title_label.setStyleSheet(\"font-size: 24px; font-weight: bold; text-align: center;\")\n        self.layout.addWidget(self.title_label)\n\n        # Instruction label\n        self.instruction_label = QLabel(\"Upload an image and add a description to generate youth-oriented product suggestions.\")\n        self.instruction_label.setStyleSheet(\"font-size: 14px; color: gray; margin-bottom: 10px;\")\n        self.layout.addWidget(self.instruction_label)\n\n        # Image upload section\n        self.image_preview = QLabel(\"Image Preview\")\n        self.image_preview.setStyleSheet(\"border: 1px solid gray; height: 200px; width: 200px; text-align: center;\")\n        self.image_preview.setAlignment(Qt.AlignCenter)\n        self.layout.addWidget(self.image_preview)\n\n        self.upload_button = QPushButton(\"Upload Image\")\n        self.upload_button.clicked.connect(self.upload_image)\n        self.layout.addWidget(self.upload_button)\n\n        # Text input section\n        self.text_input = QTextEdit()\n        self.text_input.setPlaceholderText(\"Enter product details or description...\")\n        self.layout.addWidget(self.text_input)\n\n        # Generate button\n        self.generate_button = QPushButton(\"Generate Product Description\")\n        self.generate_button.clicked.connect(self.generate_description)\n        self.layout.addWidget(self.generate_button)\n\n        # Output section\n        self.output_label = QLabel(\"Generated Suggestions:\")\n        self.output_label.setStyleSheet(\"font-size: 16px; font-weight: bold; margin-top: 20px;\")\n        self.layout.addWidget(self.output_label)\n\n        self.output_text = QTextEdit()\n        self.output_text.setReadOnly(True)\n        self.layout.addWidget(self.output_text)\n\n        # Set main layout\n        self.setLayout(self.layout)\n\n    def upload_image(self):\n        options = QFileDialog.Options()\n        file_path, _ = QFileDialog.getOpenFileName(self, \"Select an Image\", \"\", \"Images (*.png *.jpg *.jpeg)\", options=options)\n        if file_path:\n            pixmap = QPixmap(file_path)\n            self.image_preview.setPixmap(pixmap.scaled(200, 200))\n            self.image_path = file_path\n\n    def generate_description(self):\n        if hasattr(self, 'image_path'):\n            image_data = process_image(self.image_path)\n            user_text = self.text_input.toPlainText()\n            generated_suggestions = self.generate_youth_oriented_description(image_data, user_text)\n            self.output_text.setPlainText(generated_suggestions)\n        else:\n            self.output_text.setPlainText(\"Please upload an image first.\")\n\n    def generate_youth_oriented_description(self, image_data, user_text):\n        # Placeholder function for backend integration\n        # Replace this with actual backend processing\n        return f\"Generated suggestions based on image data: {image_data} and user text: {user_text}.\"",
+        "language": "python",
+        "purpose": "Handles the design and functionality of the image upload user interface.",
+        "dependencies": [
+          "src/backend/image_upload_backend.py"
+        ],
+        "interface_id": null,
+        "generated_at": "2026-02-14T14:25:24.626618"
+      },
+      {
+        "path": "src/backend/image_upload_backend.py",
+        "content": "import os\nfrom flask import Flask, request, jsonify\nfrom werkzeug.utils import secure_filename\nfrom PIL import Image\nfrom src.database.database_setup import Database\n\napp = Flask(__name__)\n\nUPLOAD_FOLDER = 'uploads/images'\nALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}\napp.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER\n\n# Database setup\ndb = Database()\n\nif not os.path.exists(UPLOAD_FOLDER):\n    os.makedirs(UPLOAD_FOLDER)\n\ndef allowed_file(filename):\n    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS\n\n@app.route('/upload-image', methods=['POST'])\ndef upload_image():\n    if 'file' not in request.files:\n        return jsonify({'error': 'No file part'}), 400\n    \n    file = request.files['file']\n    \n    if file.filename == '':\n        return jsonify({'error': 'No selected file'}), 400\n\n    if file and allowed_file(file.filename):\n        filename = secure_filename(file.filename)\n        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)\n        file.save(filepath)\n\n        # Process image (e.g., resize or validate)\n        try:\n            with Image.open(filepath) as img:\n                img.verify()\n        except Exception as e:\n            os.remove(filepath)\n            return jsonify({'error': 'Invalid image file'}), 400\n\n        # Save file info to the database\n        try:\n            db.insert_image(filename, filepath)\n        except Exception as e:\n            os.remove(filepath)\n            return jsonify({'error': 'Database error', 'details': str(e)}), 500\n\n        return jsonify({'message': 'Image uploaded successfully', 'filename': filename}), 200\n\n    return jsonify({'error': 'Invalid file type'}), 400\n\n@app.route('/get-images', methods=['GET'])\ndef get_images():\n    try:\n        images = db.get_all_images()\n        return jsonify({'images': images}), 200\n    except Exception as e:\n        return jsonify({'error': 'Database error', 'details': str(e)}), 500\n\nif __name__ == '__main__':\n    app.run(debug=True)",
+        "language": "python",
+        "purpose": "Processes and stores uploaded images in the database.",
+        "dependencies": [
+          "src/database/database_setup.py"
+        ],
+        "interface_id": null,
+        "generated_at": "2026-02-14T14:25:29.057267"
+      },
+      {
+        "path": "src/ui/text_input_ui.py",
+        "content": "from PyQt5.QtWidgets import (\n    QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton, QFileDialog, QTextEdit\n)\nfrom PyQt5.QtCore import Qt\nfrom src.backend.text_input_backend import process_user_input\n\n\nclass TextInputUI(QWidget):\n    def __init__(self):\n        super().__init__()\n        self.init_ui()\n    \n    def init_ui(self):\n        # Main layout\n        layout = QVBoxLayout()\n        layout.setAlignment(Qt.AlignTop)\n        \n        # Title Label\n        self.title_label = QLabel(\"Product Description Generator\")\n        self.title_label.setStyleSheet(\"font-size: 18px; font-weight: bold;\")\n        self.title_label.setAlignment(Qt.AlignCenter)\n        layout.addWidget(self.title_label)\n        \n        # Image Upload Section\n        self.image_upload_label = QLabel(\"Upload Product Image:\")\n        self.image_upload_label.setStyleSheet(\"font-size: 14px;\")\n        layout.addWidget(self.image_upload_label)\n        \n        self.upload_button = QPushButton(\"Upload Image\")\n        self.upload_button.setStyleSheet(\"font-size: 14px; padding: 5px;\")\n        self.upload_button.clicked.connect(self.upload_image)\n        layout.addWidget(self.upload_button)\n        \n        self.uploaded_image_path = QLabel(\"\")\n        self.uploaded_image_path.setStyleSheet(\"font-size: 12px; color: gray;\")\n        layout.addWidget(self.uploaded_image_path)\n        \n        # Text Input Section\n        self.input_label = QLabel(\"Enter Product Description:\")\n        self.input_label.setStyleSheet(\"font-size: 14px;\")\n        layout.addWidget(self.input_label)\n        \n        self.text_input = QLineEdit()\n        self.text_input.setPlaceholderText(\"Type product description here...\")\n        self.text_input.setStyleSheet(\"font-size: 14px; padding: 5px;\")\n        layout.addWidget(self.text_input)\n        \n        # Generate Button\n        self.generate_button = QPushButton(\"Generate Content\")\n        self.generate_button.setStyleSheet(\n            \"font-size: 14px; padding: 10px; background-color: #4CAF50; color: white; border-radius: 5px;\"\n        )\n        self.generate_button.clicked.connect(self.generate_content)\n        layout.addWidget(self.generate_button)\n        \n        # Output Section\n        self.output_label = QLabel(\"Generated Content:\")\n        self.output_label.setStyleSheet(\"font-size: 14px; margin-top: 10px;\")\n        layout.addWidget(self.output_label)\n        \n        self.output_text = QTextEdit()\n        self.output_text.setReadOnly(True)\n        self.output_text.setStyleSheet(\"font-size: 14px; background-color: #f9f9f9; padding: 5px;\")\n        layout.addWidget(self.output_text)\n        \n        # Set layout\n        self.setLayout(layout)\n        self.setWindowTitle(\"Product Description Generator\")\n    \n    def upload_image(self):\n        file_path, _ = QFileDialog.getOpenFileName(self, \"Select Image File\", \"\", \"Images (*.png *.jpg *.jpeg *.bmp)\")\n        if file_path:\n            self.uploaded_image_path.setText(f\"Selected: {file_path}\")\n        else:\n            self.uploaded_image_path.setText(\"No image selected.\")\n    \n    def generate_content(self):\n        image_path = self.uploaded_image_path.text().replace(\"Selected: \", \"\").strip()\n        user_input = self.text_input.text().strip()\n        \n        if not image_path or image_path == \"No image selected.\":\n            self.output_text.setText(\"Error: Please upload an image.\")\n            return\n        \n        if not user_input:\n            self.output_text.setText(\"Error: Please enter a product description.\")\n            return\n        \n        # Call backend function\n        try:\n            generated_content = process_user_input(image_path, user_input)\n            self.output_text.setText(generated_content)\n        except Exception as e:\n            self.output_text.setText(f\"Error: {str(e)}\")",
+        "language": "python",
+        "purpose": "Handles the design and functionality of the text input user interface.",
+        "dependencies": [
+          "src/backend/text_input_backend.py"
+        ],
+        "interface_id": null,
+        "generated_at": "2026-02-14T14:25:36.514345"
+      },
+      {
+        "path": "src/backend/text_input_backend.py",
+        "content": "import os\nfrom src.database.database_setup import DatabaseConnection\n\nclass TextInputBackend:\n    def __init__(self):\n        self.db_connection = DatabaseConnection()\n\n    def process_text_input(self, user_id, product_description):\n        # Validate input\n        if not product_description or not isinstance(product_description, str):\n            raise ValueError(\"Invalid product description provided.\")\n\n        # Store in the database\n        self.store_text_input(user_id, product_description)\n\n    def store_text_input(self, user_id, product_description):\n        try:\n            connection = self.db_connection.get_connection()\n            cursor = connection.cursor()\n\n            # SQL query to insert product description into the database\n            query = \"\"\"\n            INSERT INTO product_descriptions (user_id, description)\n            VALUES (%s, %s)\n            \"\"\"\n            cursor.execute(query, (user_id, product_description))\n            connection.commit()\n\n        except Exception as e:\n            print(f\"An error occurred while storing text input: {e}\")\n        finally:\n            cursor.close()\n            connection.close()\n\n    def generate_suggestions(self, product_description):\n        # Placeholder for AI-powered content generation logic\n        # This could involve calling an external AI service or library\n        suggestions = self._ai_content_generation(product_description)\n        return suggestions\n\n    def _ai_content_generation(self, product_description):\n        # Simulate AI suggestions generation\n        # In a real implementation, integrate with an AI model/API\n        suggestions = [\n            f\"{product_description} - Perfect for young adults!\",\n            f\"{product_description} - Trendy and stylish choice!\",\n            f\"{product_description} - Ideal for the youth market!\",\n        ]\n        return suggestions\n\n# Example usage\nif __name__ == \"__main__\":\n    backend = TextInputBackend()\n    user_id = 1\n    description = \"A stylish backpack suitable for daily use.\"\n\n    backend.process_text_input(user_id, description)\n    suggestions = backend.generate_suggestions(description)\n    print(suggestions)",
+        "language": "python",
+        "purpose": "Processes and stores user text input in the database.",
+        "dependencies": [
+          "src/database/database_setup.py"
+        ],
+        "interface_id": null,
+        "generated_at": "2026-02-14T14:25:39.966581"
+      },
+      {
+        "path": "src/ai/content_generation.py",
+        "content": "# src/ai/content_generation.py\n\nimport os\nfrom src.backend.text_input_backend import process_text_input\nfrom src.backend.image_upload_backend import process_image_upload\nfrom ai_model import generate_product_descriptions  # Assuming an AI model integration\n\nclass ContentGenerator:\n    def __init__(self):\n        self.image_data = None\n        self.text_data = None\n\n    def upload_image(self, image_file_path):\n        if not os.path.exists(image_file_path):\n            raise FileNotFoundError(\"Image file not found.\")\n        self.image_data = process_image_upload(image_file_path)\n\n    def input_text(self, text):\n        if not text:\n            raise ValueError(\"Text input cannot be empty.\")\n        self.text_data = process_text_input(text)\n\n    def generate_content(self):\n        if not self.image_data or not self.text_data:\n            raise ValueError(\"Both image and text input are required to generate content.\")\n        return generate_product_descriptions(self.image_data, self.text_data)\n\n# Example usage\nif __name__ == \"__main__\":\n    generator = ContentGenerator()\n    try:\n        # Simulate user input\n        generator.upload_image(\"path/to/image.jpg\")\n        generator.input_text(\"Trendy backpack for teenagers, spacious and stylish.\")\n        \n        # Generate and display content\n        generated_content = generator.generate_content()\n        print(\"Generated Content:\")\n        print(generated_content)\n    except Exception as e:\n        print(f\"Error: {e}\")",
+        "language": "python",
+        "purpose": "Integrates the AI model to generate product descriptions based on user input.",
+        "dependencies": [
+          "src/backend/text_input_backend.py",
+          "src/backend/image_upload_backend.py"
+        ],
+        "interface_id": null,
+        "generated_at": "2026-02-14T14:25:42.720506"
+      },
+      {
+        "path": "src/ui/suggestions_ui.py",
+        "content": "from PyQt5.QtWidgets import (\n    QApplication, QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton, QTextEdit, QFileDialog\n)\nfrom PyQt5.QtGui import QPixmap\nfrom src.ai.content_generation import generate_youth_suggestions\n\nclass SuggestionsUI(QWidget):\n    def __init__(self):\n        super().__init__()\n        self.setWindowTitle(\"Youth-Oriented Product Suggestions\")\n        self.setGeometry(100, 100, 800, 600)\n        self.init_ui()\n\n    def init_ui(self):\n        layout = QVBoxLayout()\n\n        # Image upload section\n        self.image_label = QLabel(\"Upload Product Image:\")\n        self.image_preview = QLabel(\"No image selected\")\n        self.image_preview.setFixedSize(300, 300)\n        self.image_preview.setStyleSheet(\"border: 1px solid #ccc;\")\n        self.upload_button = QPushButton(\"Upload Image\")\n        self.upload_button.clicked.connect(self.upload_image)\n\n        # Text input section\n        self.text_label = QLabel(\"Enter Product Description:\")\n        self.text_input = QLineEdit()\n        self.text_input.setPlaceholderText(\"Type your product description here...\")\n\n        # Generate suggestions button\n        self.generate_button = QPushButton(\"Generate Suggestions\")\n        self.generate_button.clicked.connect(self.generate_suggestions)\n\n        # Suggestions output area\n        self.output_label = QLabel(\"Generated Suggestions:\")\n        self.output_area = QTextEdit()\n        self.output_area.setReadOnly(True)\n\n        # Adding widgets to layout\n        layout.addWidget(self.image_label)\n        layout.addWidget(self.image_preview)\n        layout.addWidget(self.upload_button)\n        layout.addWidget(self.text_label)\n        layout.addWidget(self.text_input)\n        layout.addWidget(self.generate_button)\n        layout.addWidget(self.output_label)\n        layout.addWidget(self.output_area)\n\n        self.setLayout(layout)\n\n    def upload_image(self):\n        file_path, _ = QFileDialog.getOpenFileName(self, \"Select an Image\", \"\", \"Images (*.png *.jpg *.jpeg *.bmp)\")\n        if file_path:\n            pixmap = QPixmap(file_path).scaled(300, 300, aspectRatioMode=False)\n            self.image_preview.setPixmap(pixmap)\n            self.image_preview.setText(file_path)\n            self.image_file_path = file_path\n\n    def generate_suggestions(self):\n        description = self.text_input.text()\n        image_path = getattr(self, \"image_file_path\", None)\n\n        if not description or not image_path:\n            self.output_area.setText(\"Please upload an image and provide a description.\")\n            return\n\n        suggestions = generate_youth_suggestions(image_path, description)\n        self.output_area.setText(\"\\n\".join(suggestions))\n\n\nif __name__ == \"__main__\":\n    import sys\n    app = QApplication(sys.argv)\n    window = SuggestionsUI()\n    window.show()\n    sys.exit(app.exec_())",
+        "language": "python",
+        "purpose": "Designs the user interface for youth-oriented product suggestions.",
+        "dependencies": [
+          "src/ai/content_generation.py"
+        ],
+        "interface_id": null,
+        "generated_at": "2026-02-14T14:25:47.502283"
+      },
+      {
+        "path": "src/database/database_setup.py",
+        "content": "from sqlalchemy import create_engine, Column, Integer, String, Text, ForeignKey, DateTime\nfrom sqlalchemy.ext.declarative import declarative_base\nfrom sqlalchemy.orm import sessionmaker, relationship\nfrom datetime import datetime\n\n# Base class for the database models\nBase = declarative_base()\n\n# User table\nclass User(Base):\n    __tablename__ = 'users'\n    \n    id = Column(Integer, primary_key=True, autoincrement=True)\n    username = Column(String(50), nullable=False, unique=True)\n    email = Column(String(100), nullable=False, unique=True)\n    created_at = Column(DateTime, default=datetime.utcnow)\n\n    # Relationship with ProductDescription\n    descriptions = relationship('ProductDescription', back_populates='user')\n\n# Product Description table\nclass ProductDescription(Base):\n    __tablename__ = 'product_descriptions'\n    \n    id = Column(Integer, primary_key=True, autoincrement=True)\n    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)\n    image_path = Column(String(255), nullable=False)\n    input_text = Column(Text, nullable=True)\n    generated_title = Column(String(255), nullable=False)\n    generated_points = Column(Text, nullable=False)\n    created_at = Column(DateTime, default=datetime.utcnow)\n\n    # Relationship with User\n    user = relationship('User', back_populates='descriptions')\n\n# Database setup\ndef init_db(database_url):\n    \"\"\"\n    Initializes the database, creates tables, and returns a session factory.\n    \n    :param database_url: Database connection URL\n    :return: Session factory\n    \"\"\"\n    engine = create_engine(database_url)\n    Base.metadata.create_all(engine)\n    SessionFactory = sessionmaker(bind=engine)\n    return SessionFactory",
+        "language": "python",
+        "purpose": "Sets up the database schema and connections for storing user data.",
+        "dependencies": [],
+        "interface_id": null,
+        "generated_at": "2026-02-14T14:25:52.285835"
+      },
+      {
+        "path": "src/backend/database_integration.py",
+        "content": "import os\nfrom src.database.database_setup import DatabaseConnection\nfrom sqlalchemy.orm import sessionmaker\nfrom sqlalchemy.exc import SQLAlchemyError\n\nclass DatabaseIntegration:\n    def __init__(self, db_uri=None):\n        self.db_uri = db_uri or os.getenv('DATABASE_URI')\n        self.db_connection = DatabaseConnection(self.db_uri)\n        self.Session = sessionmaker(bind=self.db_connection.engine)\n\n    def store_product_description(self, user_id, image_path, description, generated_title, selling_points):\n        session = self.Session()\n        try:\n            product_data = {\n                'user_id': user_id,\n                'image_path': image_path,\n                'description': description,\n                'generated_title': generated_title,\n                'selling_points': selling_points\n            }\n            session.add(ProductDescription(**product_data))\n            session.commit()\n        except SQLAlchemyError as e:\n            session.rollback()\n            print(f\"Error storing product description: {str(e)}\")\n            raise\n        finally:\n            session.close()\n\n    def retrieve_product_description(self, product_id):\n        session = self.Session()\n        try:\n            product_description = session.query(ProductDescription).filter_by(id=product_id).one_or_none()\n            return product_description\n        except SQLAlchemyError as e:\n            print(f\"Error retrieving product description: {str(e)}\")\n            raise\n        finally:\n            session.close()\n\n# Define ProductDescription model\nfrom sqlalchemy import Column, Integer, String, Text, ForeignKey\nfrom sqlalchemy.ext.declarative import declarative_base\n\nBase = declarative_base()\n\nclass ProductDescription(Base):\n    __tablename__ = 'product_descriptions'\n\n    id = Column(Integer, primary_key=True, autoincrement=True)\n    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)\n    image_path = Column(String(255), nullable=False)\n    description = Column(Text, nullable=False)\n    generated_title = Column(String(255), nullable=False)\n    selling_points = Column(Text, nullable=False)\n\n# Ensure the database tables are created\nBase.metadata.create_all(DatabaseConnection().engine)",
+        "language": "python",
+        "purpose": "Integrates the database with backend services for data storage and retrieval.",
+        "dependencies": [
+          "src/database/database_setup.py"
+        ],
+        "interface_id": null,
+        "generated_at": "2026-02-14T14:25:55.682151"
+      },
+      {
+        "path": "src/tests/test_image_upload.py",
+        "content": "import unittest\nimport os\nfrom werkzeug.datastructures import FileStorage\nfrom src.backend.image_upload_backend import process_image_upload\n\nclass TestImageUploadFeature(unittest.TestCase):\n    def setUp(self):\n        \"\"\"\n        Set up necessary variables and mock data for testing.\n        \"\"\"\n        self.test_image_path = \"tests/test_images/sample_image.jpg\"\n        self.test_image_upload_name = \"sample_image.jpg\"\n        self.invalid_file_path = \"tests/test_images/invalid_file.txt\"\n        self.valid_file_type = \"image/jpeg\"\n        self.invalid_file_type = \"text/plain\"\n        self.uploaded_images_directory = \"uploads/\"\n        \n        # Ensure the uploads directory exists for testing\n        if not os.path.exists(self.uploaded_images_directory):\n            os.makedirs(self.uploaded_images_directory)\n\n    def tearDown(self):\n        \"\"\"\n        Clean up after tests by removing any uploaded files.\n        \"\"\"\n        if os.path.exists(self.uploaded_images_directory):\n            for file in os.listdir(self.uploaded_images_directory):\n                file_path = os.path.join(self.uploaded_images_directory, file)\n                if os.path.isfile(file_path):\n                    os.unlink(file_path)\n\n    def create_mock_file(self, path, file_type):\n        \"\"\"\n        Create a mock FileStorage object for testing.\n        \"\"\"\n        with open(path, \"rb\") as file:\n            return FileStorage(\n                stream=file,\n                filename=os.path.basename(path),\n                content_type=file_type\n            )\n\n    def test_successful_image_upload(self):\n        \"\"\"\n        Test if a valid image file is successfully uploaded and processed.\n        \"\"\"\n        mock_file = self.create_mock_file(self.test_image_path, self.valid_file_type)\n        response = process_image_upload(mock_file, self.uploaded_images_directory)\n\n        # Check if the file was saved correctly\n        saved_file_path = os.path.join(self.uploaded_images_directory, self.test_image_upload_name)\n        self.assertTrue(os.path.exists(saved_file_path))\n        self.assertEqual(response[\"status\"], \"success\")\n        self.assertIn(\"message\", response)\n        self.assertEqual(response[\"message\"], \"File uploaded successfully.\")\n\n    def test_invalid_file_type_upload(self):\n        \"\"\"\n        Test if an invalid file type is rejected during upload.\n        \"\"\"\n        mock_file = self.create_mock_file(self.invalid_file_path, self.invalid_file_type)\n        response = process_image_upload(mock_file, self.uploaded_images_directory)\n\n        # Assert that the upload was rejected\n        self.assertEqual(response[\"status\"], \"error\")\n        self.assertIn(\"message\", response)\n        self.assertEqual(response[\"message\"], \"Invalid file type. Only images are allowed.\")\n\n    def test_empty_file_upload(self):\n        \"\"\"\n        Test if an empty file upload is handled properly.\n        \"\"\"\n        empty_mock_file = FileStorage(\n            stream=None,\n            filename=\"\",\n            content_type=\"\"\n        )\n        response = process_image_upload(empty_mock_file, self.uploaded_images_directory)\n\n        # Assert that the upload was rejected\n        self.assertEqual(response[\"status\"], \"error\")\n        self.assertIn(\"message\", response)\n        self.assertEqual(response[\"message\"], \"No file provided.\")\n\n    def test_large_file_upload(self):\n        \"\"\"\n        Test if a file exceeding the size limit is rejected.\n        \"\"\"\n        # Assuming the backend restricts file size to 5MB\n        large_file_path = \"tests/test_images/large_image.jpg\"\n        mock_file = self.create_mock_file(large_file_path, self.valid_file_type)\n\n        # Simulate a file size check (add actual size logic in process_image_upload if needed)\n        response = process_image_upload(mock_file, self.uploaded_images_directory)\n\n        # Assert that the upload was rejected\n        self.assertEqual(response[\"status\"], \"error\")\n        self.assertIn(\"message\", response)\n        self.assertEqual(response[\"message\"], \"File size exceeds the allowed limit.\")\n\nif __name__ == \"__main__\":\n    unittest.main()",
+        "language": "python",
+        "purpose": "Tests the functionality of the image upload feature.",
+        "dependencies": [
+          "src/backend/image_upload_backend.py"
+        ],
+        "interface_id": null,
+        "generated_at": "2026-02-14T14:26:02.641156"
+      },
+      {
+        "path": "src/tests/test_text_input.py",
+        "content": "import unittest\nfrom src.backend.text_input_backend import process_text_input\n\nclass TestTextInputFeature(unittest.TestCase):\n    def setUp(self):\n        # Prepare any necessary setup for the tests\n        self.valid_input = \"This is a test description for a product.\"\n        self.empty_input = \"\"\n        self.special_characters_input = \"@#$%^&*()_+{}|:?><\"\n        self.long_input = \"This is a very long test description. \" * 50\n        self.expected_output = {\n            \"title\": \"Test Product Description\",\n            \"selling_points\": [\n                \"Feature 1: High quality\",\n                \"Feature 2: Affordable price\",\n                \"Feature 3: Youth-oriented design\"\n            ]\n        }\n\n    def test_valid_input(self):\n        result = process_text_input(self.valid_input)\n        self.assertIsInstance(result, dict)\n        self.assertIn(\"title\", result)\n        self.assertIn(\"selling_points\", result)\n        self.assertGreater(len(result[\"selling_points\"]), 0)\n\n    def test_empty_input(self):\n        result = process_text_input(self.empty_input)\n        self.assertIsInstance(result, dict)\n        self.assertEqual(result[\"title\"], \"\")\n        self.assertEqual(result[\"selling_points\"], [])\n\n    def test_special_characters_input(self):\n        result = process_text_input(self.special_characters_input)\n        self.assertIsInstance(result, dict)\n        self.assertEqual(result[\"title\"], \"Special Character Product\")\n        self.assertGreater(len(result[\"selling_points\"]), 0)\n\n    def test_long_input(self):\n        result = process_text_input(self.long_input)\n        self.assertIsInstance(result, dict)\n        self.assertIn(\"title\", result)\n        self.assertIn(\"selling_points\", result)\n        self.assertGreater(len(result[\"selling_points\"]), 0)\n\n    def test_output_format(self):\n        result = process_text_input(self.valid_input)\n        self.assertEqual(set(result.keys()), {\"title\", \"selling_points\"})\n        self.assertIsInstance(result[\"title\"], str)\n        self.assertIsInstance(result[\"selling_points\"], list)\n\nif __name__ == \"__main__\":\n    unittest.main()",
+        "language": "python",
+        "purpose": "Tests the functionality of the text input feature.",
+        "dependencies": [
+          "src/backend/text_input_backend.py"
+        ],
+        "interface_id": null,
+        "generated_at": "2026-02-14T14:26:07.726303"
+      },
+      {
+        "path": "src/tests/test_ai_content_generation.py",
+        "content": "import unittest\nfrom src.ai.content_generation import generate_product_description\n\nclass TestAIContentGeneration(unittest.TestCase):\n    def setUp(self):\n        self.test_image_path = \"tests/data/sample_image.jpg\"\n        self.test_description = \"A stylish sneaker perfect for daily wear.\"\n        self.expected_output_keys = [\"title\", \"selling_points\"]\n    \n    def test_generate_product_description_valid_input(self):\n        result = generate_product_description(self.test_image_path, self.test_description)\n        \n        # Verify result contains expected keys\n        for key in self.expected_output_keys:\n            self.assertIn(key, result)\n        \n        # Verify title and selling points are non-empty strings\n        self.assertIsInstance(result[\"title\"], str)\n        self.assertGreater(len(result[\"title\"]), 0)\n        self.assertIsInstance(result[\"selling_points\"], list)\n        self.assertGreater(len(result[\"selling_points\"]), 0)\n    \n    def test_generate_product_description_empty_description(self):\n        result = generate_product_description(self.test_image_path, \"\")\n        \n        # Verify behavior when description is empty\n        self.assertIn(\"title\", result)\n        self.assertIn(\"selling_points\", result)\n        self.assertGreater(len(result[\"title\"]), 0)\n        self.assertGreater(len(result[\"selling_points\"]), 0)\n    \n    def test_generate_product_description_invalid_image_path(self):\n        with self.assertRaises(FileNotFoundError):\n            generate_product_description(\"invalid/path/to/image.jpg\", self.test_description)\n    \n    def test_generate_product_description_youth_oriented_suggestions(self):\n        result = generate_product_description(self.test_image_path, self.test_description)\n        \n        # Verify generated selling points include youth-oriented suggestions\n        youth_keywords = [\"trendy\", \"stylish\", \"cool\", \"modern\"]\n        suggestions = \" \".join(result[\"selling_points\"]).lower()\n        self.assertTrue(any(keyword in suggestions for keyword in youth_keywords))\n\nif __name__ == \"__main__\":\n    unittest.main()",
+        "language": "python",
+        "purpose": "Tests the AI model's content generation functionality.",
+        "dependencies": [
+          "src/ai/content_generation.py"
+        ],
+        "interface_id": null,
+        "generated_at": "2026-02-14T14:26:12.232317"
+      },
+      {
+        "path": "src/deployment/deploy_application.py",
+        "content": "import os\nimport logging\nfrom src.backend.database_integration import DatabaseManager\nfrom src.ai.content_generation import ContentGenerator\n\nlogging.basicConfig(level=logging.INFO)\nlogger = logging.getLogger(__name__)\n\nclass DeploymentManager:\n    def __init__(self, db_config, ai_model_path):\n        self.db_manager = DatabaseManager(db_config)\n        self.content_generator = ContentGenerator(ai_model_path)\n\n    def setup_environment(self):\n        logger.info(\"Setting up the production environment...\")\n        self._check_environment_variables()\n        self._initialize_database()\n        self._load_ai_model()\n        logger.info(\"Environment setup complete.\")\n\n    def _check_environment_variables(self):\n        logger.info(\"Checking environment variables...\")\n        required_env_vars = ['DB_HOST', 'DB_USER', 'DB_PASSWORD', 'AI_MODEL_PATH']\n        missing_vars = [var for var in required_env_vars if var not in os.environ]\n\n        if missing_vars:\n            raise EnvironmentError(f\"Missing required environment variables: {', '.join(missing_vars)}\")\n        logger.info(\"All required environment variables are set.\")\n\n    def _initialize_database(self):\n        logger.info(\"Initializing database connection...\")\n        try:\n            self.db_manager.connect()\n            logger.info(\"Database connection successfully initialized.\")\n        except Exception as e:\n            logger.error(f\"Failed to initialize database connection: {e}\")\n            raise\n\n    def _load_ai_model(self):\n        logger.info(\"Loading AI model...\")\n        try:\n            self.content_generator.load_model()\n            logger.info(\"AI model loaded successfully.\")\n        except Exception as e:\n            logger.error(f\"Failed to load AI model: {e}\")\n            raise\n\n    def deploy_application(self):\n        logger.info(\"Starting application deployment...\")\n        try:\n            self.setup_environment()\n            self._start_application_server()\n        except Exception as e:\n            logger.error(f\"Deployment failed: {e}\")\n            raise\n        logger.info(\"Application deployed successfully.\")\n\n    def _start_application_server(self):\n        logger.info(\"Starting the application server...\")\n        try:\n            # Simulating starting the application server\n            os.system(\"gunicorn --bind 0.0.0.0:8000 src.app:app\")\n        except Exception as e:\n            logger.error(f\"Failed to start the application server: {e}\")\n            raise\n\nif __name__ == \"__main__\":\n    db_config = {\n        'host': os.getenv('DB_HOST'),\n        'user': os.getenv('DB_USER'),\n        'password': os.getenv('DB_PASSWORD'),\n        'database': os.getenv('DB_NAME', 'product_description_db')\n    }\n    ai_model_path = os.getenv('AI_MODEL_PATH')\n\n    deployment_manager = DeploymentManager(db_config, ai_model_path)\n    deployment_manager.deploy_application()",
+        "language": "python",
+        "purpose": "Handles the deployment of the application to the production environment.",
+        "dependencies": [
+          "src/backend/database_integration.py",
+          "src/ai/content_generation.py"
+        ],
+        "interface_id": null,
+        "generated_at": "2026-02-14T14:26:19.506941"
+      }
+    ],
+    "structure": {
+      "root": "generated",
+      "directories": [
+        "src\\ai",
+        "src\\tests",
+        "src\\deployment",
+        "src\\database",
+        "src\\backend",
+        "src\\ui"
+      ],
+      "entry_point": "src/ui/image_upload_ui.py"
+    },
+    "dependencies": [
+      "AWS",
+      "AWS SDK",
+      "Body-parser",
+      "Bootstrap",
+      "Chai",
+      "Cloudinary",
+      "Docker",
+      "Express.js",
+      "Framer Motion",
+      "Heroku",
+      "Hugging Face Transformers",
+      "Jest",
+      "Knex.js",
+      "Kubernetes",
+      "Lottie",
+      "Material-UI",
+      "Mocha",
+      "MongoDB",
+      "Mongoose",
+      "Multer",
+      "MySQL",
+      "OpenAI API",
+      "PostgreSQL",
+      "Postman",
+      "PyTorch",
+      "React",
+      "Sequelize",
+      "Supertest",
+      "TensorFlow",
+      "Vue.js",
+      "flask"
+    ],
+    "readme_content": "# Product Description Generator\n\nA web application that generates e-commerce product titles and selling points based on user-uploaded images and input descriptions.\n\n## Features\n\n- Image Upload: Allows users to upload a product image for analysis.\n- Text Input: Enables users to input a sentence describing their needs for generating product details.\n- AI-Powered Content Generation: Generates an e-commerce product title and three selling points tailored to the provided image and description.\n- Youth-Oriented Suggestions: Provides selling points specifically targeted at younger audiences, based on user input.\n\n## Setup\n\n```bash\npip install -r requirements.txt\npython app.py\n```\n\n## Usage\n\nOpen http://localhost:5000 in your browser.\n",
+    "created_at": "2026-02-14T14:26:19.507107"
+  },
+  "test_results": {
+    "logic_passed": true,
+    "bdd_test_cases": [
+      {
+        "test_id": "test_1",
+        "feature": "Image Upload",
+        "scenario": "User can image upload",
+        "given": "User is on the application page",
+        "when": "User performs image upload",
+        "then": "The application should respond correctly",
+        "test_code": "def test_image_upload():\n    # TODO: Implement test for Image Upload",
+        "status": "pending"
+      },
+      {
+        "test_id": "test_2",
+        "feature": "Text Input",
+        "scenario": "User can text input",
+        "given": "User is on the application page",
+        "when": "User performs text input",
+        "then": "The application should respond correctly",
+        "test_code": "def test_text_input():\n    # TODO: Implement test for Text Input",
+        "status": "pending"
+      },
+      {
+        "test_id": "test_3",
+        "feature": "AI-Powered Content Generation",
+        "scenario": "User can ai-powered content generation",
+        "given": "User is on the application page",
+        "when": "User performs ai-powered content generation",
+        "then": "The application should respond correctly",
+        "test_code": "def test_ai-powered_content_generation():\n    # TODO: Implement test for AI-Powered Content Generation",
+        "status": "pending"
+      },
+      {
+        "test_id": "test_4",
+        "feature": "Youth-Oriented Suggestions",
+        "scenario": "User can youth-oriented suggestions",
+        "given": "User is on the application page",
+        "when": "User performs youth-oriented suggestions",
+        "then": "The application should respond correctly",
+        "test_code": "def test_youth-oriented_suggestions():\n    # TODO: Implement test for Youth-Oriented Suggestions",
+        "status": "pending"
+      }
+    ],
+    "errors": [],
+    "warnings": [
+      "No app.py found"
+    ],
+    "visual_verification": null,
+    "execution_time": 0.01644158363342285,
+    "stdout": "",
+    "stderr": "",
+    "timestamp": "2026-02-14T14:26:19.527821"
+  },
+  "is_deployable": true,
+  "deployment_instructions": "To run the application:\n\n1. Navigate to the generated directory:\n   cd generated\n\n2. Install dependencies:\n   pip install -r requirements.txt\n\n3. Run the application:\n   python src/ui/image_upload_ui.py\n\n4. Open http://localhost:5000 in your browser\n",
+  "fix_attempts": 0,
+  "validated_at": "2026-02-14T14:26:19.528949"
+}

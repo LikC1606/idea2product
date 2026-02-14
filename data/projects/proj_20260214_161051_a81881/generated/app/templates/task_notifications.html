@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task Notifications</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Task Notifications</h1>
+        </header>
+        
+        <main>
+            <section id="notifications">
+                <h2>Your Notifications</h2>
+                <ul class="notification-list">
+                    <!-- Example Notification Item -->
+                    <li class="notification-item">
+                        <span class="notification-title">Task Overdue:</span>
+                        <span class="notification-detail">Finish the project report by yesterday</span>
+                        <span class="notification-date">Due Date: 2023-10-01</span>
+                    </li>
+                    <!-- Additional notifications will be dynamically injected here -->
+                </ul>
+            </section>
+        </main>
+
+        <footer>
+            <p>&copy; 2023 Todo List Application</p>
+        </footer>
+    </div>
+    
+    <script src="/static/js/main.js"></script>
+    <script>
+        // Example: Function to fetch and display notifications dynamically
+        function fetchNotifications() {
+            const notificationList = document.querySelector('.notification-list');
+            const notifications = [
+                {title: 'Task Overdue:', detail: 'Complete the budget analysis', date: 'Due Date: 2023-10-05'},
+                // Additional notifications can be added here
+            ];
+            
+            notifications.forEach(notification => {
+                const listItem = document.createElement('li');
+                listItem.classList.add('notification-item');
+                
+                const titleSpan = document.createElement('span');
+                titleSpan.classList.add('notification-title');
+                titleSpan.textContent = notification.title;
+                
+                const detailSpan = document.createElement('span');
+                detailSpan.classList.add('notification-detail');
+                detailSpan.textContent = notification.detail;
+                
+                const dateSpan = document.createElement('span');
+                dateSpan.classList.add('notification-date');
+                dateSpan.textContent = notification.date;
+                
+                listItem.appendChild(titleSpan);
+                listItem.appendChild(detailSpan);
+                listItem.appendChild(dateSpan);
+                
+                notificationList.appendChild(listItem);
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', fetchNotifications);
+    </script>
+</body>
+</html>

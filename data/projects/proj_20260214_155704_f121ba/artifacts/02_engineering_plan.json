@@ -1,0 +1,86 @@
+{
+  "tasks": [
+    {
+      "id": "T1",
+      "name": "Frontend Development",
+      "description": "Create the user interface",
+      "type": "frontend",
+      "dependencies": [],
+      "priority": 1,
+      "estimated_complexity": "medium"
+    },
+    {
+      "id": "T3",
+      "name": "Testing",
+      "description": "Write tests for the application",
+      "type": "testing",
+      "dependencies": [
+        "T1"
+      ],
+      "priority": 3,
+      "estimated_complexity": "low"
+    }
+  ],
+  "algorithms": {
+    "T1": {
+      "task_id": "T1",
+      "algorithm_type": "standard",
+      "implementation_approach": "Standard implementation for this task type",
+      "libraries": [
+        "flask",
+        "requests"
+      ],
+      "data_structures": [
+        "dict",
+        "list"
+      ],
+      "notes": "Basic implementation"
+    },
+    "T3": {
+      "task_id": "T3",
+      "algorithm_type": "standard",
+      "implementation_approach": "Standard implementation for this task type",
+      "libraries": [
+        "flask",
+        "requests"
+      ],
+      "data_structures": [
+        "dict",
+        "list"
+      ],
+      "notes": "Basic implementation"
+    }
+  },
+  "file_structure": [
+    {
+      "path": "app.py",
+      "purpose": "Main application entry point",
+      "dependencies": [],
+      "related_tasks": [
+        "T1",
+        "T2"
+      ]
+    },
+    {
+      "path": "templates/index.html",
+      "purpose": "Main HTML template",
+      "dependencies": [],
+      "related_tasks": [
+        "T1"
+      ]
+    },
+    {
+      "path": "static/style.css",
+      "purpose": "Stylesheet",
+      "dependencies": [],
+      "related_tasks": [
+        "T1"
+      ]
+    }
+  ],
+  "dependencies": [
+    "flask"
+  ],
+  "architecture_notes": "Web application: Generated Application",
+  "created_at": "2026-02-14T15:57:33.802668"
+}

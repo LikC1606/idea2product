@@ -1,27 +1,38 @@
 # Idea2Product
 
-A multi-agent system that transforms user requirements into production-ready web applications.
+A multi-agent AI system that transforms natural language requirements into production-ready web applications through a 4-stage pipeline with 10 specialized agents.
 
 ## Overview
 
-Idea2Product is an end-to-end automated software generation framework that bridges the gap between AI model capabilities and deployable applications. The system uses 10 specialized agents across 4 stages to automatically handle requirement clarification, technical planning, code generation, and validation.
+Idea2Product bridges the gap between AI capabilities and deployable applications. It automatically handles:
+- **Requirements Gathering**: Multi-turn dialogue to clarify user needs
+- **Technical Planning**: Task division, algorithm analysis, and engineering specifications
+- **Code Generation**: Generates working code with dependency resolution
+- **Validation**: BDD testing, visual verification, and automatic bug fixing
 
 ## Architecture
 
-The system consists of 4 stages:
+| Stage | Purpose | Agents |
+|-------|---------|--------|
+| **Stage 1** | Requirements Gathering | Interaction Agent |
+| **Stage 2** | Technical Planning | Task Division, Algorithm Analysis, Scheme Planning |
+| **Stage 3** | Code Generation | Code Generation, Code Memory, Code Mining |
+| **Stage 4** | Validation | BDD Testing, Visual Verification, Fine-tuning |
 
-1. **Stage 1 - Requirements**: Interaction Agent clarifies user requirements through multi-turn dialogue
-2. **Stage 2 - Planning**: Task Division, Algorithm Analysis, and Scheme Planning agents create a comprehensive engineering plan
-3. **Stage 3 - Code Generation**: Code Generation, Code Memory, and Code Mining agents produce working code
-4. **Stage 4 - Validation**: Black-box Testing and Fine-tuning agents validate and fix the generated code
+### Key Technical Innovations
+- **Interface-First Strategy**: Generates `.pyi` interfaces first, then dependency graph, then implementations
+- **Code Memory Agent**: Builds dynamic knowledge graph with AST analysis
+- **Code Mining Agent**: Retrieves and adapts external code via GitHub
+- **Visual Verification**: Uses GPT-4o Vision for UI rendering verification
+- **Automatic Test Execution**: Runs generated pytest tests and fixes failures
 
 ## Installation
 
 ### Prerequisites
 
 - Python 3.9 or higher
-- Anthropic API key (Claude)
-- Git (optional, for code mining features)
+- OpenAI API key (GPT-4o)
+- Git (optional, for code mining)
 
 ### Setup
 
@@ -34,11 +45,7 @@ cd idea2product
 2. Install dependencies:
 ```bash
 pip install -r requirements.txt
-```
-
-Or install in development mode:
-```bash
-pip install -e .
+pip install -e .  # Development mode
 ```
 
 3. Configure environment variables:
@@ -46,62 +53,71 @@ pip install -e .
 cp .env.example .env
 ```
 
-Edit `.env` and add your `ANTHROPIC_API_KEY`.
+Edit `.env` and configure:
+```env
+OPENAI_API_KEY=your-api-key-here
+OPENAI_BASE_URL=https://api.openai.com/v1  # Or custom endpoint
+OPENAI_MODEL=gpt-4o
+```
 
-## Usage
+## Quick Start
 
-### Command Line Interface
-
-Create a new web application from a requirement:
+### Create a New Project
 
 ```bash
 python -m src.cli create "Build a todo list app with add, delete, and complete functionality"
 ```
 
-Check project status:
+The system will:
+1. Clarify requirements through interactive dialogue
+2. Generate technical specifications
+3. Produce working code with dependencies
+4. Run tests and fix any issues
+
+### CLI Commands
 
 ```bash
-python -m src.cli status proj_20260213_001
-```
+# Create new project (interactive)
+python -m src.cli create "Your app description"
 
-List all projects:
+# Create non-interactive (skip clarification)
+python -m src.cli create "Your app description" --no-interactive
 
-```bash
+# Check project status
+python -m src.cli status proj_20260214_xxx
+
+# List all projects
 python -m src.cli list
+
+# View project details
+python -m src.cli details proj_20260214_xxx
 ```
 
-### Example Output
+## Project Output
+
+Generated projects are stored in `data/projects/{project_id}/`:
 
 ```
-[Stage 1] Interaction: Clarifying requirements...
-[Stage 1] Interaction: Requirements finalized
-[Stage 2] Planning: Dividing into tasks...
-[Stage 2] Planning: Analyzing algorithms...
-[Stage 2] Planning: Engineering plan created
-[Stage 3] Generation: Generating code...
-[Stage 3] Generation: 8 files generated
-[Stage 4] Validation: Running tests...
-[Stage 4] Validation: Tests passed!
-
-✓ Project generated successfully!
-Location: data/projects/proj_20260213_001/generated/
-Run: cd data/projects/proj_20260213_001/generated && python backend/app.py
+data/projects/proj_20260214_xxx/
+├── context.json          # Requirements context
+├── plan.json             # Technical specifications
+├── generated/            # Generated source code
+│   ├── app/
+│   ├── models/
+│   ├── services/
+│   └── tests/
+└── logs/                 # Execution logs
 ```
 
-## Project Structure
+## Running Generated Apps
 
-```
-idea2product/
-├── src/                    # Source code
-│   ├── core/              # Core infrastructure
-│   ├── agents/            # 10 specialized agents
-│   ├── services/          # Supporting services
-│   └── utils/             # Utilities
-├── config/                # Configuration and prompts
-├── templates/             # Code generation templates
-├── data/                  # Generated projects and database
-├── tests/                 # Test suite
-└── docs/                  # Documentation
+After successful generation, run your app:
+
+```bash
+cd data/projects/{project_id}/generated
+python -m flask run  # For web apps
+# or
+python app.py        # For standalone apps
 ```
 
 ## Development
@@ -109,53 +125,45 @@ idea2product/
 ### Running Tests
 
 ```bash
-pytest tests/
+pytest tests/                          # All tests
+pytest tests/test_file.py              # Specific file
+pytest tests/test_file.py::test_name   # Specific test
 ```
 
 ### Code Quality
 
-Format code:
 ```bash
-black src/ tests/
+black src/ tests/      # Format code
+ruff check src/ tests/ # Lint code
+mypy src/              # Type checking
 ```
 
-Lint code:
-```bash
-ruff check src/ tests/
-```
+## Configuration
 
-Type checking:
-```bash
-mypy src/
-```
+All settings are in `.env`:
 
-## Documentation
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OPENAI_API_KEY` | - | Required API key |
+| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | API endpoint |
+| `OPENAI_MODEL` | `gpt-4o` | LLM model |
+| `OPENAI_VLM_MODEL` | `gpt-4o` | Vision model for UI verification |
+| `MAX_TOKENS` | `4096` | Max response tokens |
+| `TEMPERATURE` | `0.7` | LLM creativity |
+| `GITHUB_TOKEN` | - | Optional, for code mining |
+| `LOG_LEVEL` | `INFO` | Logging level |
 
-- [Architecture Documentation](docs/architecture.md)
-- [Agent Specifications](docs/agent_specifications.md)
-- [Implementation Plan](.claude/plans/wise-strolling-hamster.md)
+## Implementation Status
 
-## Research Context
+| Component | Status |
+|-----------|--------|
+| Stage 1 (Requirements) | ✅ Implemented |
+| Stage 2 (Planning) | ✅ Implemented |
+| Stage 3 (Code Generation) | ✅ Implemented |
+| Stage 4 (Validation) | ✅ Implemented |
 
-This project is part of research into bridging the gap between AI model capabilities and production-ready applications. See [plan.txt](plan.txt) for the complete research proposal.
+Core infrastructure complete. Agent logic handles dependency resolution, test execution, and automatic bug fixing.
 
 ## License
 
-MIT License (or your chosen license)
-
-## Contributing
-
-Contributions are welcome! Please read the contributing guidelines first.
-
-## Citation
-
-If you use this work in your research, please cite:
-
-```bibtex
-@software{idea2product2026,
-  title={Idea2Product: Multi-Agent System for Automated Application Generation},
-  author={Research Team},
-  year={2026},
-  url={https://github.com/yourusername/idea2product}
-}
-```
+MIT License

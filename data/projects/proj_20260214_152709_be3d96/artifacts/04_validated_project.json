@@ -1,0 +1,270 @@
+{
+  "repository": {
+    "skeleton": null,
+    "files": [
+      {
+        "path": "app/main.py",
+        "content": "from flask import Flask\nfrom app.routes import init_routes\nfrom app.config import Config\n\ndef create_app():\n    app = Flask(__name__)\n    app.config.from_object(Config)\n    \n    # Initialize routes\n    init_routes(app)\n    \n    return app\n\nif __name__ == \"__main__\":\n    app = create_app()\n    app.run(host=\"0.0.0.0\", port=5000, debug=True)",
+        "language": "python",
+        "purpose": "Entry point of the application",
+        "dependencies": [
+          "app/routes.py",
+          "app/config.py"
+        ],
+        "interface_id": null,
+        "generated_at": "2026-02-14T15:28:40.877228"
+      },
+      {
+        "path": "app/routes.py",
+        "content": "from flask import Blueprint, request, jsonify\nfrom werkzeug.utils import secure_filename\nimport os\nfrom app.controllers import generate_product_content\nfrom app.models import validate_image\n\nroutes = Blueprint('routes', __name__)\n\n# Configure upload folder\nUPLOAD_FOLDER = 'uploads/'\nALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}\n\n# Ensure upload folder exists\nos.makedirs(UPLOAD_FOLDER, exist_ok=True)\n\ndef allowed_file(filename):\n    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS\n\n@routes.route('/upload', methods=['POST'])\ndef upload_file():\n    if 'image' not in request.files:\n        return jsonify({'error': 'No image part in the request'}), 400\n\n    file = request.files['image']\n    if file.filename == '':\n        return jsonify({'error': 'No selected file'}), 400\n\n    if file and allowed_file(file.filename):\n        filename = secure_filename(file.filename)\n        file_path = os.path.join(UPLOAD_FOLDER, filename)\n        file.save(file_path)\n\n        # Validate the uploaded image\n        if not validate_image(file_path):\n            os.remove(file_path)\n            return jsonify({'error': 'Invalid image file'}), 400\n\n        if 'description' not in request.form or not request.form['description']:\n            return jsonify({'error': 'No description provided'}), 400\n\n        description = request.form['description']\n\n        # Generate product content using the controller\n        product_content = generate_product_content(image_path=file_path, description=description)\n\n        # Clean up the uploaded image after processing\n        os.remove(file_path)\n\n        return jsonify(product_content), 200\n    else:\n        return jsonify({'error': 'File not allowed'}), 400\n\n@routes.route('/', methods=['GET'])\ndef index():\n    return jsonify({'message': 'Welcome to the Product Content Generator API!'}), 200",
+        "language": "python",
+        "purpose": "Defines API routes and handles HTTP requests",
+        "dependencies": [
+          "app/controllers.py",
+          "app/models.py"
+        ],
+        "interface_id": null,
+        "generated_at": "2026-02-14T15:28:45.540093"
+      },
+      {
+        "path": "app/controllers.py",
+        "content": "from flask import Blueprint, request, jsonify\nfrom app.services.content_generator import ContentGenerator\nfrom app.models import ProductContent\n\ncontrollers = Blueprint('controllers', __name__)\n\n# Route to handle product content generation\n@controllers.route('/generate-content', methods=['POST'])\ndef generate_content():\n    try:\n        # Check for required fields in the request\n        if 'image' not in request.files or 'description' not in request.form:\n            return jsonify({'error': 'Missing required fields: image and/or description'}), 400\n\n        # Retrieve uploaded image and description\n        image = request.files['image']\n        description = request.form['description']\n\n        # Validate inputs\n        if not image.filename or not description.strip():\n            return jsonify({'error': 'Invalid input: image file or description is empty'}), 400\n\n        # Initialize content generator service\n        generator = ContentGenerator()\n\n        # Generate product content\n        product_title, selling_points = generator.generate(image, description)\n\n        # Save product content to database\n        product_content = ProductContent(title=product_title, selling_points=selling_points)\n        product_content.save()\n\n        # Return generated content\n        return jsonify({\n            'title': product_title,\n            'selling_points': selling_points\n        }), 200\n\n    except Exception as e:\n        return jsonify({'error': str(e)}), 500",
+        "language": "python",
+        "purpose": "Contains business logic for handling requests",
+        "dependencies": [
+          "app/models.py",
+          "app/services/content_generator.py"
+        ],
+        "interface_id": null,
+        "generated_at": "2026-02-14T15:28:49.233408"
+      },
+      {
+        "path": "app/models.py",
+        "content": "from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime\nfrom sqlalchemy.orm import relationship\nfrom datetime import datetime\nfrom app.database import Base\n\nclass ProductRequest(Base):\n    __tablename__ = 'product_requests'\n\n    id = Column(Integer, primary_key=True, autoincrement=True)\n    image_filename = Column(String(255), nullable=False)  # Stores the uploaded image filename\n    needs_description = Column(Text, nullable=False)  # Stores the user-provided description\n    generated_title = Column(String(255), nullable=True)  # Stores the generated product title\n    selling_point_1 = Column(String(255), nullable=True)  # Stores the first selling point\n    selling_point_2 = Column(String(255), nullable=True)  # Stores the second selling point\n    selling_point_3 = Column(String(255), nullable=True)  # Stores the third selling point\n    created_at = Column(DateTime, default=datetime.utcnow)  # Timestamp for request creation\n\n    def __repr__(self):\n        return f\"<ProductRequest(id={self.id}, image_filename='{self.image_filename}', created_at='{self.created_at}')>\"",
+        "language": "python",
+        "purpose": "Defines database models and schema",
+        "dependencies": [
+          "app/database.py"
+        ],
+        "interface_id": null,
+        "generated_at": "2026-02-14T15:28:52.589720"
+      },
+      {
+        "path": "app/database.py",
+        "content": "import sqlite3\nfrom config.database_config import DATABASE_PATH\n\nclass Database:\n    def __init__(self):\n        self.connection = None\n\n    def connect(self):\n        try:\n            self.connection = sqlite3.connect(DATABASE_PATH)\n            self.connection.row_factory = sqlite3.Row\n        except sqlite3.Error as e:\n            print(f\"Error connecting to the database: {e}\")\n            raise\n\n    def close(self):\n        if self.connection:\n            self.connection.close()\n\n    def execute_query(self, query, params=None):\n        if not self.connection:\n            raise Exception(\"Database connection is not established.\")\n        try:\n            cursor = self.connection.cursor()\n            if params:\n                cursor.execute(query, params)\n            else:\n                cursor.execute(query)\n            self.connection.commit()\n            return cursor\n        except sqlite3.Error as e:\n            print(f\"Error executing query: {e}\")\n            raise\n\n    def fetch_all(self, query, params=None):\n        cursor = self.execute_query(query, params)\n        return cursor.fetchall()\n\n    def fetch_one(self, query, params=None):\n        cursor = self.execute_query(query, params)\n        return cursor.fetchone()\n\n    def insert(self, query, params):\n        cursor = self.execute_query(query, params)\n        return cursor.lastrowid\n\n    def update(self, query, params):\n        self.execute_query(query, params)\n\n    def delete(self, query, params):\n        self.execute_query(query, params)",
+        "language": "python",
+        "purpose": "Handles database connection and queries",
+        "dependencies": [
+          "config/database_config.py"
+        ],
+        "interface_id": null,
+        "generated_at": "2026-02-14T15:28:55.756904"
+      },
+      {
+        "path": "app/services/content_generator.py",
+        "content": "import os\nfrom PIL import Image\nimport openai\n\nclass ContentGenerator:\n    def __init__(self, openai_api_key):\n        self.openai_api_key = openai_api_key\n        openai.api_key = self.openai_api_key\n\n    def validate_image(self, image_path):\n        try:\n            with Image.open(image_path) as img:\n                img.verify()\n            return True\n        except (IOError, OSError):\n            return False\n\n    def generate_content(self, description):\n        \"\"\"\n        Generates product content including a title and three selling points\n        based on the provided description.\n        \"\"\"\n        prompt = (\n            f\"Generate a creative and compelling e-commerce product title and three selling points \"\n            f\"based on the following product description:\\n\\n{description}\\n\\n\"\n            f\"Output format:\\nTitle: <product_title>\\n1. <selling_point_1>\\n2. <selling_point_2>\\n3. <selling_point_3>\"\n        )\n\n        try:\n            response = openai.Completion.create(\n                engine=\"text-davinci-003\",\n                prompt=prompt,\n                max_tokens=150,\n                temperature=0.7,\n            )\n            result = response[\"choices\"][0][\"text\"].strip()\n            return result\n        except Exception as e:\n            return f\"Error generating content: {str(e)}\"\n\n    def process_request(self, image_path, description):\n        if not os.path.exists(image_path):\n            return \"Error: Image file does not exist.\"\n\n        if not self.validate_image(image_path):\n            return \"Error: Invalid image file.\"\n\n        if not description or len(description.strip()) == 0:\n            return \"Error: Product description is required.\"\n\n        return self.generate_content(description)",
+        "language": "python",
+        "purpose": "Implements logic for generating product content",
+        "dependencies": [],
+        "interface_id": null,
+        "generated_at": "2026-02-14T15:29:00.201371"
+      },
+      {
+        "path": "app/static/css/styles.css",
+        "content": "/* General Styles */\nbody {\n    font-family: Arial, sans-serif;\n    margin: 0;\n    padding: 0;\n    background-color: #f9f9f9;\n    color: #333;\n}\n\nh1, h2, h3 {\n    margin: 0;\n    font-weight: bold;\n    color: #444;\n}\n\np {\n    line-height: 1.6;\n    margin: 0;\n}\n\n/* Container */\n.container {\n    max-width: 800px;\n    margin: 20px auto;\n    padding: 20px;\n    background-color: #fff;\n    border-radius: 8px;\n    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);\n}\n\n/* Header */\n.header {\n    text-align: center;\n    padding-bottom: 20px;\n}\n\n.header h1 {\n    font-size: 24px;\n    color: #007BFF;\n}\n\n/* Form Styles */\nform {\n    display: flex;\n    flex-direction: column;\n    gap: 15px;\n}\n\nlabel {\n    font-size: 14px;\n    font-weight: bold;\n    margin-bottom: 5px;\n}\n\ninput[type=\"file\"],\ntextarea {\n    width: 100%;\n    padding: 10px;\n    border: 1px solid #ccc;\n    border-radius: 4px;\n    font-size: 14px;\n}\n\ntextarea {\n    resize: none;\n    height: 100px;\n}\n\nbutton {\n    padding: 10px 15px;\n    font-size: 16px;\n    font-weight: bold;\n    color: #fff;\n    background-color: #007BFF;\n    border: none;\n    border-radius: 4px;\n    cursor: pointer;\n    transition: background-color 0.3s ease;\n}\n\nbutton:hover {\n    background-color: #0056b3;\n}\n\n/* Output Section */\n.output {\n    margin-top: 20px;\n    padding: 15px;\n    border: 1px solid #ddd;\n    border-radius: 4px;\n    background-color: #f8f9fa;\n}\n\n.output h2 {\n    font-size: 18px;\n    margin-bottom: 10px;\n    color: #333;\n}\n\n.output p {\n    font-size: 14px;\n    color: #555;\n}\n\n/* File Upload */\n.file-upload {\n    display: flex;\n    align-items: center;\n    gap: 10px;\n}\n\n.file-upload input[type=\"file\"] {\n    font-size: 14px;\n}\n\n/* Responsive Styles */\n@media (max-width: 768px) {\n    .container {\n        padding: 15px;\n    }\n\n    button {\n        font-size: 14px;\n        padding: 8px 12px;\n    }\n}",
+        "language": "css",
+        "purpose": "Contains styles for the user interface",
+        "dependencies": [],
+        "interface_id": null,
+        "generated_at": "2026-02-14T15:29:06.770249"
+      },
+      {
+        "path": "app/static/js/scripts.js",
+        "content": "// app/static/js/scripts.js\n\n// Wait for the DOM to be fully loaded\ndocument.addEventListener('DOMContentLoaded', function () {\n    // DOM Elements\n    const uploadButton = document.getElementById('uploadButton');\n    const inputDescription = document.getElementById('inputDescription');\n    const generateButton = document.getElementById('generateButton');\n    const resultTitle = document.getElementById('resultTitle');\n    const resultSellingPoints = document.getElementById('resultSellingPoints');\n    const imagePreview = document.getElementById('imagePreview');\n    const errorMessage = document.getElementById('errorMessage');\n\n    // Helper function to display error messages\n    function displayError(message) {\n        errorMessage.textContent = message;\n        errorMessage.style.display = 'block';\n        setTimeout(() => {\n            errorMessage.style.display = 'none';\n        }, 3000);\n    }\n\n    // Handle image upload and preview\n    uploadButton.addEventListener('change', function (event) {\n        const file = event.target.files[0];\n        if (file && file.type.startsWith('image/')) {\n            const reader = new FileReader();\n            reader.onload = function (e) {\n                imagePreview.src = e.target.result;\n                imagePreview.style.display = 'block';\n            };\n            reader.readAsDataURL(file);\n        } else {\n            displayError('Please upload a valid image file.');\n        }\n    });\n\n    // Handle generate content button click\n    generateButton.addEventListener('click', async function () {\n        const description = inputDescription.value.trim();\n\n        if (!uploadButton.files[0]) {\n            displayError('Please upload a product image.');\n            return;\n        }\n\n        if (!description) {\n            displayError('Please enter a description.');\n            return;\n        }\n\n        // Clear previous results\n        resultTitle.textContent = '';\n        resultSellingPoints.innerHTML = '';\n\n        try {\n            // Show loading state\n            generateButton.textContent = 'Generating...';\n            generateButton.disabled = true;\n\n            // Simulate API request\n            const formData = new FormData();\n            formData.append('image', uploadButton.files[0]);\n            formData.append('description', description);\n\n            const response = await fetch('/api/generate', {\n                method: 'POST',\n                body: formData,\n            });\n\n            if (!response.ok) {\n                throw new Error('Failed to generate product content. Please try again.');\n            }\n\n            const data = await response.json();\n\n            // Display results\n            resultTitle.textContent = data.title;\n            data.sellingPoints.forEach((point) => {\n                const li = document.createElement('li');\n                li.textContent = point;\n                resultSellingPoints.appendChild(li);\n            });\n        } catch (error) {\n            displayError(error.message);\n        } finally {\n            // Reset button state\n            generateButton.textContent = 'Generate';\n            generateButton.disabled = false;\n        }\n    });\n});",
+        "language": "javascript",
+        "purpose": "Contains JavaScript for frontend interactivity",
+        "dependencies": [],
+        "interface_id": null,
+        "generated_at": "2026-02-14T15:29:13.192067"
+      },
+      {
+        "path": "app/templates/index.html",
+        "content": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>Product Content Generator</title>\n    <link rel=\"stylesheet\" href=\"{{ url_for('static', filename='css/styles.css') }}\">\n</head>\n<body>\n    <header>\n        <h1>Product Content Generator</h1>\n    </header>\n    <main>\n        <form id=\"content-form\" method=\"POST\" enctype=\"multipart/form-data\">\n            <div class=\"form-group\">\n                <label for=\"product-image\">Upload Product Image:</label>\n                <input type=\"file\" id=\"product-image\" name=\"product_image\" required>\n            </div>\n            <div class=\"form-group\">\n                <label for=\"description\">Describe Your Needs:</label>\n                <textarea id=\"description\" name=\"description\" rows=\"4\" placeholder=\"Enter a brief description...\" required></textarea>\n            </div>\n            <button type=\"submit\" id=\"generate-btn\">Generate Product Content</button>\n        </form>\n        <section id=\"results-section\" style=\"display: none;\">\n            <h2>Generated Content</h2>\n            <p><strong>Title:</strong> <span id=\"product-title\"></span></p>\n            <h3>Selling Points:</h3>\n            <ul id=\"selling-points\">\n                <li id=\"point-1\"></li>\n                <li id=\"point-2\"></li>\n                <li id=\"point-3\"></li>\n            </ul>\n        </section>\n    </main>\n    <script src=\"{{ url_for('static', filename='js/scripts.js') }}\"></script>\n</body>\n</html>",
+        "language": "html",
+        "purpose": "Main HTML template for the application",
+        "dependencies": [
+          "app/static/css/styles.css",
+          "app/static/js/scripts.js"
+        ],
+        "interface_id": null,
+        "generated_at": "2026-02-14T15:29:16.519700"
+      },
+      {
+        "path": "config/database_config.py",
+        "content": "# config/database_config.py\n\nimport os\n\nclass DatabaseConfig:\n    \"\"\"\n    Stores database configuration settings for the Product Content Generator application.\n    \"\"\"\n\n    # Database connection settings\n    DB_HOST = os.getenv('DB_HOST', 'localhost')\n    DB_PORT = os.getenv('DB_PORT', 5432)\n    DB_NAME = os.getenv('DB_NAME', 'product_content_db')\n    DB_USER = os.getenv('DB_USER', 'admin')\n    DB_PASSWORD = os.getenv('DB_PASSWORD', 'password')\n\n    # SQLAlchemy settings\n    SQLALCHEMY_DATABASE_URI = (\n        f\"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}\"\n    )\n    SQLALCHEMY_TRACK_MODIFICATIONS = False",
+        "language": "python",
+        "purpose": "Stores database configuration settings",
+        "dependencies": [],
+        "interface_id": null,
+        "generated_at": "2026-02-14T15:29:19.932071"
+      },
+      {
+        "path": "tests/test_routes.py",
+        "content": "import unittest\nfrom io import BytesIO\nfrom app import app\n\nclass TestRoutes(unittest.TestCase):\n\n    def setUp(self):\n        self.app = app.test_client()\n        self.app.testing = True\n\n    def test_index_route(self):\n        response = self.app.get('/')\n        self.assertEqual(response.status_code, 200)\n        self.assertIn(b'Product Content Generator', response.data)\n\n    def test_generate_content_with_valid_input(self):\n        data = {\n            'description': 'A stylish black leather jacket perfect for winter.',\n            'image': (BytesIO(b'test_image_data'), 'test_image.jpg')\n        }\n        response = self.app.post('/generate-content', data=data, content_type='multipart/form-data')\n        self.assertEqual(response.status_code, 200)\n        self.assertIn(b'Generated Product Title:', response.data)\n        self.assertIn(b'Selling Point 1:', response.data)\n        self.assertIn(b'Selling Point 2:', response.data)\n        self.assertIn(b'Selling Point 3:', response.data)\n\n    def test_generate_content_with_missing_description(self):\n        data = {\n            'image': (BytesIO(b'test_image_data'), 'test_image.jpg')\n        }\n        response = self.app.post('/generate-content', data=data, content_type='multipart/form-data')\n        self.assertEqual(response.status_code, 400)\n        self.assertIn(b'Description is required', response.data)\n\n    def test_generate_content_with_missing_image(self):\n        data = {\n            'description': 'A stylish black leather jacket perfect for winter.'\n        }\n        response = self.app.post('/generate-content', data=data, content_type='multipart/form-data')\n        self.assertEqual(response.status_code, 400)\n        self.assertIn(b'Image is required', response.data)\n\n    def test_generate_content_with_invalid_image_format(self):\n        data = {\n            'description': 'A stylish black leather jacket perfect for winter.',\n            'image': (BytesIO(b'test_invalid_image_data'), 'test_image.txt')\n        }\n        response = self.app.post('/generate-content', data=data, content_type='multipart/form-data')\n        self.assertEqual(response.status_code, 400)\n        self.assertIn(b'Invalid image format', response.data)\n\nif __name__ == '__main__':\n    unittest.main()",
+        "language": "python",
+        "purpose": "Tests API routes and their functionality",
+        "dependencies": [
+          "app/routes.py"
+        ],
+        "interface_id": null,
+        "generated_at": "2026-02-14T15:29:24.214538"
+      },
+      {
+        "path": "tests/test_content_generator.py",
+        "content": "import unittest\nfrom unittest.mock import patch\nfrom app.services.content_generator import ContentGenerator\n\nclass TestContentGenerator(unittest.TestCase):\n\n    def setUp(self):\n        self.generator = ContentGenerator()\n\n    @patch('app.services.content_generator.some_image_processing_function')\n    @patch('app.services.content_generator.some_text_generation_function')\n    def test_generate_content(self, mock_text_gen, mock_image_proc):\n        # Mock the outputs of the image processing and text generation functions\n        mock_image_proc.return_value = \"processed_image_data\"\n        mock_text_gen.return_value = {\n            \"title\": \"Amazing Product Title\",\n            \"selling_points\": [\n                \"High-quality and durable material\",\n                \"Innovative design tailored to your needs\",\n                \"Affordable price for exceptional value\"\n            ]\n        }\n\n        # Input data\n        mock_image = b\"mock_image_data\"\n        mock_description = \"A compact and stylish backpack for travel and daily use.\"\n\n        # Expected outputs\n        expected_output = {\n            \"title\": \"Amazing Product Title\",\n            \"selling_points\": [\n                \"High-quality and durable material\",\n                \"Innovative design tailored to your needs\",\n                \"Affordable price for exceptional value\"\n            ]\n        }\n\n        # Call the generate_content method\n        result = self.generator.generate_content(mock_image, mock_description)\n\n        # Assertions\n        mock_image_proc.assert_called_once_with(mock_image)\n        mock_text_gen.assert_called_once_with(\"processed_image_data\", mock_description)\n        self.assertEqual(result, expected_output)\n\n    def test_generate_content_invalid_input(self):\n        # Test with invalid input data\n        invalid_image = None\n        invalid_description = \"\"\n\n        with self.assertRaises(ValueError):\n            self.generator.generate_content(invalid_image, invalid_description)\n\nif __name__ == '__main__':\n    unittest.main()",
+        "language": "python",
+        "purpose": "Tests the content generation logic",
+        "dependencies": [
+          "app/services/content_generator.py"
+        ],
+        "interface_id": null,
+        "generated_at": "2026-02-14T15:29:29.676789"
+      },
+      {
+        "path": "tests/test_database.py",
+        "content": "import unittest\nfrom app.database import get_db, Base\nfrom app.models import ProductContent\nfrom sqlalchemy import create_engine\nfrom sqlalchemy.orm import sessionmaker\n\nclass TestDatabaseModelsAndQueries(unittest.TestCase):\n    @classmethod\n    def setUpClass(cls):\n        # Setup in-memory SQLite database for testing\n        cls.engine = create_engine('sqlite:///:memory:')\n        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=cls.engine)\n        cls.session = SessionLocal()\n        Base.metadata.create_all(bind=cls.engine)\n\n    @classmethod\n    def tearDownClass(cls):\n        # Drop all tables and close the database connection\n        Base.metadata.drop_all(bind=cls.engine)\n        cls.session.close()\n\n    def setUp(self):\n        # Clear the database before each test\n        self.session.query(ProductContent).delete()\n        self.session.commit()\n\n    def test_product_content_model(self):\n        # Test creation of a ProductContent model instance\n        product = ProductContent(\n            image_url=\"http://example.com/image.jpg\",\n            needs_description=\"A sleek, modern chair for office use.\",\n            product_title=\"Ergonomic Office Chair\",\n            selling_points=[\"Comfortable for long hours\", \"Modern design\", \"Adjustable height\"]\n        )\n        self.session.add(product)\n        self.session.commit()\n\n        # Retrieve and assert the product data\n        retrieved_product = self.session.query(ProductContent).first()\n        self.assertIsNotNone(retrieved_product)\n        self.assertEqual(retrieved_product.image_url, \"http://example.com/image.jpg\")\n        self.assertEqual(retrieved_product.needs_description, \"A sleek, modern chair for office use.\")\n        self.assertEqual(retrieved_product.product_title, \"Ergonomic Office Chair\")\n        self.assertEqual(retrieved_product.selling_points, [\"Comfortable for long hours\", \"Modern design\", \"Adjustable height\"])\n\n    def test_query_product_content(self):\n        # Test querying product content from the database\n        product1 = ProductContent(\n            image_url=\"http://example.com/image1.jpg\",\n            needs_description=\"A durable outdoor table.\",\n            product_title=\"Outdoor Patio Table\",\n            selling_points=[\"Weather-resistant\", \"Stylish design\", \"Easy to assemble\"]\n        )\n        product2 = ProductContent(\n            image_url=\"http://example.com/image2.jpg\",\n            needs_description=\"A compact and efficient blender.\",\n            product_title=\"Portable Blender\",\n            selling_points=[\"Compact size\", \"Powerful motor\", \"Easy to clean\"]\n        )\n        self.session.add_all([product1, product2])\n        self.session.commit()\n\n        results = self.session.query(ProductContent).all()\n        self.assertEqual(len(results), 2)\n        self.assertEqual(results[0].product_title, \"Outdoor Patio Table\")\n        self.assertEqual(results[1].product_title, \"Portable Blender\")\n\n    def test_update_product_content(self):\n        # Test updating an existing product content\n        product = ProductContent(\n            image_url=\"http://example.com/image.jpg\",\n            needs_description=\"A sturdy bookshelf.\",\n            product_title=\"Wooden Bookshelf\",\n            selling_points=[\"Elegant design\", \"Spacious shelves\", \"Durable material\"]\n        )\n        self.session.add(product)\n        self.session.commit()\n\n        # Update the product title and selling points\n        product_to_update = self.session.query(ProductContent).first()\n        product_to_update.product_title = \"Modern Wooden Bookshelf\"\n        product_to_update.selling_points = [\"Contemporary design\", \"Compact size\", \"Eco-friendly material\"]\n        self.session.commit()\n\n        # Retrieve and assert the updated product data\n        updated_product = self.session.query(ProductContent).first()\n        self.assertEqual(updated_product.product_title, \"Modern Wooden Bookshelf\")\n        self.assertEqual(updated_product.selling_points, [\"Contemporary design\", \"Compact size\", \"Eco-friendly material\"])\n\n    def test_delete_product_content(self):\n        # Test deleting a product content entry\n        product = ProductContent(\n            image_url=\"http://example.com/image.jpg\",\n            needs_description=\"A versatile kitchen knife.\",\n            product_title=\"Chef's Knife\",\n            selling_points=[\"Sharp blade\", \"Ergonomic handle\", \"Rust-resistant\"]\n        )\n        self.session.add(product)\n        self.session.commit()\n\n        # Delete the product\n        product_to_delete = self.session.query(ProductContent).first()\n        self.session.delete(product_to_delete)\n        self.session.commit()\n\n        # Assert the product no longer exists\n        deleted_product = self.session.query(ProductContent).first()\n        self.assertIsNone(deleted_product)\n\nif __name__ == '__main__':\n    unittest.main()",
+        "language": "python",
+        "purpose": "Tests database models and queries",
+        "dependencies": [
+          "app/models.py",
+          "app/database.py"
+        ],
+        "interface_id": null,
+        "generated_at": "2026-02-14T15:29:38.557777"
+      },
+      {
+        "path": "deployment/Dockerfile",
+        "content": "# Generated file: deployment/Dockerfile",
+        "language": "text",
+        "purpose": "Defines the Docker container for the application",
+        "dependencies": [],
+        "interface_id": null,
+        "generated_at": "2026-02-14T15:29:38.557843"
+      },
+      {
+        "path": "deployment/docker-compose.yml",
+        "content": "# Generated file: deployment/docker-compose.yml",
+        "language": "text",
+        "purpose": "Configures multi-container Docker applications",
+        "dependencies": [
+          "deployment/Dockerfile"
+        ],
+        "interface_id": null,
+        "generated_at": "2026-02-14T15:29:38.557872"
+      },
+      {
+        "path": "README.md",
+        "content": "# Generated file: README.md",
+        "language": "markdown",
+        "purpose": "Provides an overview and instructions for the application",
+        "dependencies": [],
+        "interface_id": null,
+        "generated_at": "2026-02-14T15:29:38.557894"
+      }
+    ],
+    "structure": {
+      "root": "generated",
+      "directories": [
+        "app\\static\\css",
+        "tests",
+        "app\\services",
+        "app\\static\\js",
+        "app",
+        "config",
+        "deployment",
+        "app\\templates"
+      ],
+      "entry_point": "app/main.py"
+    },
+    "dependencies": [
+      "AWS Elastic Beanstalk",
+      "AWS S3 SDK",
+      "Apollo Client",
+      "Axios",
+      "Bootstrap",
+      "Cloudinary",
+      "Cypress",
+      "Docker",
+      "Fetch API",
+      "Formik",
+      "GitHub Actions",
+      "Hugging Face Transformers",
+      "Jest",
+      "Kubernetes",
+      "Mocha",
+      "MongoDB",
+      "Mongoose",
+      "Multer (Node.js)",
+      "OpenAI API",
+      "PostgreSQL",
+      "React",
+      "React Hook Form",
+      "Selenium",
+      "Sequelize",
+      "Tailwind CSS",
+      "Vue.js",
+      "Yup",
+      "flask"
+    ],
+    "readme_content": "# Product Content Generator\n\nA simple web application that allows users to upload a product image and describe their needs in a sentence. The app generates an e-commerce product title and three selling points tailored to the provided input.\n\n## Features\n\n- Upload Product Image: Users can upload an image of their product to provide visual context for content generation.\n- Input Needs Description: Users can enter a sentence describing their specific needs for the product content, such as target audience or tone.\n- Generate Product Content: The application processes the uploaded image and user input to generate an e-commerce product title and three selling points.\n\n## Setup\n\n```bash\npip install -r requirements.txt\npython app.py\n```\n\n## Usage\n\nOpen http://localhost:5000 in your browser.\n",
+    "created_at": "2026-02-14T15:29:38.558062"
+  },
+  "test_results": {
+    "logic_passed": true,
+    "bdd_test_cases": [
+      {
+        "test_id": "test_1",
+        "feature": "Upload Product Image",
+        "scenario": "User can upload product image",
+        "given": "User is on the application page",
+        "when": "User performs upload product image",
+        "then": "The application should respond correctly",
+        "test_code": "def test_upload_product_image():\n    # TODO: Implement test for Upload Product Image",
+        "status": "pending"
+      },
+      {
+        "test_id": "test_2",
+        "feature": "Input Needs Description",
+        "scenario": "User can input needs description",
+        "given": "User is on the application page",
+        "when": "User performs input needs description",
+        "then": "The application should respond correctly",
+        "test_code": "def test_input_needs_description():\n    # TODO: Implement test for Input Needs Description",
+        "status": "pending"
+      },
+      {
+        "test_id": "test_3",
+        "feature": "Generate Product Content",
+        "scenario": "User can generate product content",
+        "given": "User is on the application page",
+        "when": "User performs generate product content",
+        "then": "The application should respond correctly",
+        "test_code": "def test_generate_product_content():\n    # TODO: Implement test for Generate Product Content",
+        "status": "pending"
+      }
+    ],
+    "errors": [],
+    "warnings": [
+      "No app.py found"
+    ],
+    "visual_verification": null,
+    "execution_time": 0.016436338424682617,
+    "stdout": "",
+    "stderr": "",
+    "timestamp": "2026-02-14T15:29:38.578286"
+  },
+  "is_deployable": true,
+  "deployment_instructions": "To run the application:\n\n1. Navigate to the generated directory:\n   cd generated\n\n2. Install dependencies:\n   pip install -r requirements.txt\n\n3. Run the application:\n   python app/main.py\n\n4. Open http://localhost:5000 in your browser\n",
+  "fix_attempts": 0,
+  "validated_at": "2026-02-14T15:29:38.579163"
+}

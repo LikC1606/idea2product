@@ -1,0 +1,134 @@
+/* Reset some default browser styles */
+body, h1, h2, h3, h4, h5, h6, p, ul, ol, li, button {
+    margin: 0;
+    padding: 0;
+    list-style-type: none;
+}
+
+/* Base styles */
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f4f4f9;
+    color: #333;
+    line-height: 1.6;
+}
+
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+/* Header styles */
+header {
+    background-color: #6200ea;
+    color: #fff;
+    padding: 10px 20px;
+    text-align: center;
+    border-radius: 5px;
+}
+
+header h1 {
+    font-size: 2em;
+    margin-bottom: 10px;
+}
+
+/* Task list styles */
+.task-list {
+    margin-top: 20px;
+    background-color: #fff;
+    border-radius: 5px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.task-list ul {
+    padding: 10px;
+}
+
+.task-list li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px;
+    border-bottom: 1px solid #ddd;
+}
+
+.task-list li:last-child {
+    border-bottom: none;
+}
+
+.task-list .task-name {
+    flex: 1;
+}
+
+.task-list .task-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.task-list button {
+    background-color: #6200ea;
+    color: #fff;
+    border: none;
+    padding: 5px 10px;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.task-list button:hover {
+    background-color: #3700b3;
+}
+
+/* Task creation form */
+.task-form {
+    display: flex;
+    flex-direction: column;
+    margin-top: 20px;
+}
+
+.task-form input[type="text"],
+.task-form input[type="date"] {
+    padding: 10px;
+    margin-bottom: 10px;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+}
+
+.task-form button {
+    align-self: flex-start;
+    background-color: #03dac6;
+    color: #fff;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.task-form button:hover {
+    background-color: #018786;
+}
+
+/* Prioritization styles */
+.priority-high {
+    background-color: #ff5252;
+}
+
+.priority-medium {
+    background-color: #ffc107;
+}
+
+.priority-low {
+    background-color: #8bc34a;
+}
+
+/* Notifications styles */
+.notification {
+    margin-top: 10px;
+    padding: 10px;
+    background-color: #ffeb3b;
+    border-radius: 5px;
+    text-align: center;
+    font-weight: bold;
+}

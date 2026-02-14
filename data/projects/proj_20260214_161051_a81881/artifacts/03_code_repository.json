@@ -1,0 +1,251 @@
+{
+  "skeleton": null,
+  "files": [
+    {
+      "path": "app/__init__.py",
+      "content": "# app/__init__.py\n\nfrom flask import Flask\nfrom flask_sqlalchemy import SQLAlchemy\nfrom flask_migrate import Migrate\nfrom flask_login import LoginManager\n\n# Initialize the database\ndb = SQLAlchemy()\n\n# Initialize migration\nmigrate = Migrate()\n\n# Initialize login manager\nlogin_manager = LoginManager()\n\ndef create_app():\n    app = Flask(__name__)\n\n    # Load configuration\n    app.config.from_object('config.Config')\n\n    # Initialize extensions\n    db.init_app(app)\n    migrate.init_app(app, db)\n    login_manager.init_app(app)\n\n    # Register blueprints\n    from .tasks import tasks_bp\n    app.register_blueprint(tasks_bp, url_prefix='/tasks')\n\n    from .auth import auth_bp\n    app.register_blueprint(auth_bp, url_prefix='/auth')\n\n    return app",
+      "language": "python",
+      "purpose": "Initialize the application package",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-14T16:11:19.424324"
+    },
+    {
+      "path": "app/main.py",
+      "content": "from flask import Flask\nfrom app.routes import initialize_routes\nfrom app.models import initialize_models\n\ndef create_app():\n    app = Flask(__name__)\n\n    # Initialize models and routes\n    initialize_models(app)\n    initialize_routes(app)\n\n    return app\n\nif __name__ == '__main__':\n    app = create_app()\n    app.run(debug=True)",
+      "language": "python",
+      "purpose": "Entry point for the application",
+      "dependencies": [
+        "app/routes.py",
+        "app/models.py"
+      ],
+      "interface_id": null,
+      "generated_at": "2026-02-14T16:11:20.940293"
+    },
+    {
+      "path": "app/routes.py",
+      "content": "from flask import Blueprint, request, jsonify\nfrom app.controllers.task_controller import (\n    get_all_tasks,\n    create_task,\n    update_task,\n    delete_task,\n    get_task_by_id\n)\n\n# Define the Blueprint for the routes\nroutes = Blueprint('routes', __name__)\n\n@routes.route('/tasks', methods=['GET'])\ndef fetch_tasks():\n    \"\"\"Fetch all tasks.\"\"\"\n    tasks = get_all_tasks()\n    return jsonify(tasks), 200\n\n@routes.route('/tasks/<int:task_id>', methods=['GET'])\ndef fetch_task(task_id):\n    \"\"\"Fetch a specific task by ID.\"\"\"\n    task = get_task_by_id(task_id)\n    if task:\n        return jsonify(task), 200\n    return jsonify({'error': 'Task not found'}), 404\n\n@routes.route('/tasks', methods=['POST'])\ndef create_new_task():\n    \"\"\"Create a new task.\"\"\"\n    data = request.json\n    if not data:\n        return jsonify({'error': 'Invalid or missing data'}), 400\n    task = create_task(data)\n    return jsonify(task), 201\n\n@routes.route('/tasks/<int:task_id>', methods=['PUT'])\ndef modify_task(task_id):\n    \"\"\"Update an existing task.\"\"\"\n    data = request.json\n    if not data:\n        return jsonify({'error': 'Invalid or missing data'}), 400\n    updated_task = update_task(task_id, data)\n    if updated_task:\n        return jsonify(updated_task), 200\n    return jsonify({'error': 'Task not found'}), 404\n\n@routes.route('/tasks/<int:task_id>', methods=['DELETE'])\ndef remove_task(task_id):\n    \"\"\"Delete a task.\"\"\"\n    result = delete_task(task_id)\n    if result:\n        return jsonify({'message': 'Task deleted successfully'}), 200\n    return jsonify({'error': 'Task not found'}), 404",
+      "language": "python",
+      "purpose": "Define the application routes",
+      "dependencies": [
+        "app/controllers/task_controller.py"
+      ],
+      "interface_id": null,
+      "generated_at": "2026-02-14T16:11:24.752285"
+    },
+    {
+      "path": "app/models.py",
+      "content": "from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey\nfrom sqlalchemy.orm import relationship\nfrom app.database import Base\n\nclass Task(Base):\n    __tablename__ = 'tasks'\n\n    id = Column(Integer, primary_key=True, index=True)\n    title = Column(String, index=True, nullable=False)\n    description = Column(String, nullable=True)\n    due_date = Column(DateTime, nullable=True)\n    priority = Column(Integer, default=0)\n    completed = Column(Boolean, default=False)\n    notification_sent = Column(Boolean, default=False)\n    user_id = Column(Integer, ForeignKey('users.id'))\n\n    user = relationship('User', back_populates='tasks')\n\nclass User(Base):\n    __tablename__ = 'users'\n\n    id = Column(Integer, primary_key=True, index=True)\n    username = Column(String, unique=True, index=True, nullable=False)\n    email = Column(String, unique=True, index=True, nullable=False)\n    password_hash = Column(String, nullable=False)\n\n    tasks = relationship('Task', back_populates='user')",
+      "language": "python",
+      "purpose": "Define the database models",
+      "dependencies": [
+        "app/database.py"
+      ],
+      "interface_id": null,
+      "generated_at": "2026-02-14T16:11:26.892591"
+    },
+    {
+      "path": "app/database.py",
+      "content": "import os\nfrom sqlalchemy import create_engine\nfrom sqlalchemy.ext.declarative import declarative_base\nfrom sqlalchemy.orm import sessionmaker\n\n# Database Configuration\nDATABASE_URL = os.getenv(\"DATABASE_URL\", \"sqlite:///./todo_app.db\")  # Default to SQLite if DATABASE_URL is not set\n\n# Create Engine\nengine = create_engine(DATABASE_URL, connect_args={\"check_same_thread\": False} if \"sqlite\" in DATABASE_URL else {})\n\n# Session Local\nSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)\n\n# Base Class for Models\nBase = declarative_base()\n\n# Dependency to get the database session\ndef get_db():\n    db = SessionLocal()\n    try:\n        yield db\n    finally:\n        db.close()",
+      "language": "python",
+      "purpose": "Setup and manage the database connection",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-14T16:11:29.886894"
+    },
+    {
+      "path": "app/controllers/task_controller.py",
+      "content": "from flask import Blueprint, request, jsonify\nfrom app.models import Task, db\nfrom datetime import datetime\n\ntask_controller = Blueprint('task_controller', __name__)\n\n@task_controller.route('/tasks', methods=['GET'])\ndef get_tasks():\n    tasks = Task.query.all()\n    return jsonify([task.to_dict() for task in tasks])\n\n@task_controller.route('/tasks/<int:task_id>', methods=['GET'])\ndef get_task(task_id):\n    task = Task.query.get(task_id)\n    if task:\n        return jsonify(task.to_dict())\n    return jsonify({'error': 'Task not found'}), 404\n\n@task_controller.route('/tasks', methods=['POST'])\ndef create_task():\n    data = request.json\n    title = data.get('title')\n    description = data.get('description')\n    priority = data.get('priority', 'Normal')\n    due_date = data.get('due_date')\n    if due_date:\n        due_date = datetime.strptime(due_date, '%Y-%m-%d')\n    \n    new_task = Task(title=title, description=description, priority=priority, due_date=due_date)\n    db.session.add(new_task)\n    db.session.commit()\n    \n    return jsonify(new_task.to_dict()), 201\n\n@task_controller.route('/tasks/<int:task_id>', methods=['PUT'])\ndef update_task(task_id):\n    task = Task.query.get(task_id)\n    if not task:\n        return jsonify({'error': 'Task not found'}), 404\n    \n    data = request.json\n    task.title = data.get('title', task.title)\n    task.description = data.get('description', task.description)\n    task.priority = data.get('priority', task.priority)\n    due_date = data.get('due_date', task.due_date)\n    if due_date:\n        task.due_date = datetime.strptime(due_date, '%Y-%m-%d')\n    \n    db.session.commit()\n    return jsonify(task.to_dict())\n\n@task_controller.route('/tasks/<int:task_id>', methods=['DELETE'])\ndef delete_task(task_id):\n    task = Task.query.get(task_id)\n    if not task:\n        return jsonify({'error': 'Task not found'}), 404\n\n    db.session.delete(task)\n    db.session.commit()\n    return jsonify({'message': 'Task deleted successfully'})\n\n@task_controller.route('/tasks/notifications', methods=['GET'])\ndef get_notifications():\n    tasks = Task.query.filter(Task.due_date <= datetime.now()).all()\n    notifications = [{'task_id': task.id, 'title': task.title, 'due_date': task.due_date} for task in tasks]\n    return jsonify(notifications)",
+      "language": "python",
+      "purpose": "Handle task-related logic",
+      "dependencies": [
+        "app/models.py"
+      ],
+      "interface_id": null,
+      "generated_at": "2026-02-14T16:11:33.528593"
+    },
+    {
+      "path": "app/templates/task_creation.html",
+      "content": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>Create Task - Todo List</title>\n    <link rel=\"stylesheet\" href=\"/static/styles.css\">\n</head>\n<body>\n    <header>\n        <h1>Todo List Application</h1>\n    </header>\n    <nav>\n        <ul>\n            <li><a href=\"/\">Home</a></li>\n            <li><a href=\"/tasks\">View Tasks</a></li>\n            <li><a href=\"/create_task\" class=\"active\">Create Task</a></li>\n        </ul>\n    </nav>\n    <main>\n        <h2>Create a New Task</h2>\n        <form action=\"/create_task\" method=\"POST\">\n            <div class=\"form-group\">\n                <label for=\"task-title\">Task Title:</label>\n                <input type=\"text\" id=\"task-title\" name=\"title\" placeholder=\"Enter task title\" required>\n            </div>\n            <div class=\"form-group\">\n                <label for=\"task-priority\">Priority:</label>\n                <select id=\"task-priority\" name=\"priority\" required>\n                    <option value=\"\">Select Priority</option>\n                    <option value=\"low\">Low</option>\n                    <option value=\"medium\">Medium</option>\n                    <option value=\"high\">High</option>\n                </select>\n            </div>\n            <div class=\"form-group\">\n                <label for=\"task-due-date\">Due Date:</label>\n                <input type=\"date\" id=\"task-due-date\" name=\"due_date\" required>\n            </div>\n            <div class=\"form-group\">\n                <label for=\"task-notes\">Notes:</label>\n                <textarea id=\"task-notes\" name=\"notes\" placeholder=\"Add any additional notes\"></textarea>\n            </div>\n            <button type=\"submit\" class=\"btn\">Create Task</button>\n        </form>\n    </main>\n    <footer>\n        <p>&copy; 2023 Todo List Application. All rights reserved.</p>\n    </footer>\n</body>\n</html>",
+      "language": "html",
+      "purpose": "UI for task creation",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-14T16:11:37.414511"
+    },
+    {
+      "path": "app/templates/task_management.html",
+      "content": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>Task Management</title>\n    <link rel=\"stylesheet\" href=\"/static/css/styles.css\">\n    <script src=\"/static/js/app.js\" defer></script>\n</head>\n<body>\n    <header>\n        <h1>Todo List Application</h1>\n    </header>\n    <main>\n        <section id=\"task-creation\">\n            <h2>Create New Task</h2>\n            <form id=\"task-form\">\n                <label for=\"task-title\">Task Title:</label>\n                <input type=\"text\" id=\"task-title\" name=\"task-title\" required>\n\n                <label for=\"task-priority\">Priority:</label>\n                <select id=\"task-priority\" name=\"task-priority\">\n                    <option value=\"high\">High</option>\n                    <option value=\"medium\">Medium</option>\n                    <option value=\"low\">Low</option>\n                </select>\n\n                <label for=\"due-date\">Due Date:</label>\n                <input type=\"date\" id=\"due-date\" name=\"due-date\">\n\n                <button type=\"submit\">Add Task</button>\n            </form>\n        </section>\n\n        <section id=\"task-list\">\n            <h2>Manage Tasks</h2>\n            <ul id=\"tasks\">\n                <!-- Task items will be dynamically inserted here -->\n            </ul>\n        </section>\n    </main>\n    <footer>\n        <p>&copy; 2023 Todo List Application</p>\n    </footer>\n</body>\n</html>",
+      "language": "html",
+      "purpose": "UI for task management",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-14T16:11:40.092527"
+    },
+    {
+      "path": "app/templates/task_prioritization.html",
+      "content": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>Task Prioritization</title>\n    <link rel=\"stylesheet\" href=\"{{ url_for('static', filename='styles.css') }}\">\n    <script src=\"{{ url_for('static', filename='scripts.js') }}\" defer></script>\n</head>\n<body>\n    <header>\n        <h1>Todo List Application</h1>\n        <nav>\n            <ul>\n                <li><a href=\"{{ url_for('task_creation') }}\">Create Task</a></li>\n                <li><a href=\"{{ url_for('task_management') }}\">Manage Tasks</a></li>\n                <li><a href=\"{{ url_for('task_prioritization') }}\" class=\"active\">Prioritize Tasks</a></li>\n                <li><a href=\"{{ url_for('due_date_assignment') }}\">Due Dates</a></li>\n                <li><a href=\"{{ url_for('task_notifications') }}\">Notifications</a></li>\n            </ul>\n        </nav>\n    </header>\n    <main>\n        <section>\n            <h2>Prioritize Your Tasks</h2>\n            <form id=\"prioritizationForm\" action=\"{{ url_for('update_priorities') }}\" method=\"post\">\n                <ul id=\"taskList\">\n                    {% for task in tasks %}\n                    <li class=\"task-item\">\n                        <div class=\"task-info\">\n                            <input type=\"hidden\" name=\"task_id\" value=\"{{ task.id }}\">\n                            <span class=\"task-name\">{{ task.name }}</span>\n                            <span class=\"task-due-date\">{{ task.due_date }}</span>\n                        </div>\n                        <div class=\"priority-control\">\n                            <label for=\"priority-{{ task.id }}\">Priority:</label>\n                            <select name=\"priority-{{ task.id }}\" id=\"priority-{{ task.id }}\">\n                                <option value=\"low\" {% if task.priority == 'low' %}selected{% endif %}>Low</option>\n                                <option value=\"medium\" {% if task.priority == 'medium' %}selected{% endif %}>Medium</option>\n                                <option value=\"high\" {% if task.priority == 'high' %}selected{% endif %}>High</option>\n                            </select>\n                        </div>\n                    </li>\n                    {% endfor %}\n                </ul>\n                <button type=\"submit\" class=\"btn\">Save Priorities</button>\n            </form>\n        </section>\n    </main>\n    <footer>\n        <p>&copy; 2023 Todo List Application. All rights reserved.</p>\n    </footer>\n</body>\n</html>",
+      "language": "html",
+      "purpose": "UI for task prioritization",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-14T16:11:44.338487"
+    },
+    {
+      "path": "app/templates/due_date_assignment.html",
+      "content": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>Assign Due Date</title>\n    <link rel=\"stylesheet\" href=\"{{ url_for('static', filename='styles.css') }}\">\n</head>\n<body>\n    <div class=\"container\">\n        <h1>Assign Due Date</h1>\n        <form action=\"{{ url_for('assign_due_date') }}\" method=\"post\">\n            <div class=\"form-group\">\n                <label for=\"task\">Select Task:</label>\n                <select name=\"task\" id=\"task\" required>\n                    {% for task in tasks %}\n                    <option value=\"{{ task.id }}\">{{ task.name }}</option>\n                    {% endfor %}\n                </select>\n            </div>\n            <div class=\"form-group\">\n                <label for=\"due-date\">Due Date:</label>\n                <input type=\"date\" id=\"due-date\" name=\"due_date\" required>\n            </div>\n            <div class=\"form-group\">\n                <button type=\"submit\" class=\"btn\">Assign Due Date</button>\n            </div>\n        </form>\n    </div>\n</body>\n</html>",
+      "language": "html",
+      "purpose": "UI for due date assignment",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-14T16:11:46.916469"
+    },
+    {
+      "path": "app/templates/task_notifications.html",
+      "content": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>Task Notifications</title>\n    <link rel=\"stylesheet\" href=\"/static/css/styles.css\">\n</head>\n<body>\n    <div class=\"container\">\n        <header>\n            <h1>Task Notifications</h1>\n        </header>\n        \n        <main>\n            <section id=\"notifications\">\n                <h2>Your Notifications</h2>\n                <ul class=\"notification-list\">\n                    <!-- Example Notification Item -->\n                    <li class=\"notification-item\">\n                        <span class=\"notification-title\">Task Overdue:</span>\n                        <span class=\"notification-detail\">Finish the project report by yesterday</span>\n                        <span class=\"notification-date\">Due Date: 2023-10-01</span>\n                    </li>\n                    <!-- Additional notifications will be dynamically injected here -->\n                </ul>\n            </section>\n        </main>\n\n        <footer>\n            <p>&copy; 2023 Todo List Application</p>\n        </footer>\n    </div>\n    \n    <script src=\"/static/js/main.js\"></script>\n    <script>\n        // Example: Function to fetch and display notifications dynamically\n        function fetchNotifications() {\n            const notificationList = document.querySelector('.notification-list');\n            const notifications = [\n                {title: 'Task Overdue:', detail: 'Complete the budget analysis', date: 'Due Date: 2023-10-05'},\n                // Additional notifications can be added here\n            ];\n            \n            notifications.forEach(notification => {\n                const listItem = document.createElement('li');\n                listItem.classList.add('notification-item');\n                \n                const titleSpan = document.createElement('span');\n                titleSpan.classList.add('notification-title');\n                titleSpan.textContent = notification.title;\n                \n                const detailSpan = document.createElement('span');\n                detailSpan.classList.add('notification-detail');\n                detailSpan.textContent = notification.detail;\n                \n                const dateSpan = document.createElement('span');\n                dateSpan.classList.add('notification-date');\n                dateSpan.textContent = notification.date;\n                \n                listItem.appendChild(titleSpan);\n                listItem.appendChild(detailSpan);\n                listItem.appendChild(dateSpan);\n                \n                notificationList.appendChild(listItem);\n            });\n        }\n\n        document.addEventListener('DOMContentLoaded', fetchNotifications);\n    </script>\n</body>\n</html>",
+      "language": "html",
+      "purpose": "UI for task notifications",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-14T16:11:50.585224"
+    },
+    {
+      "path": "app/static/css/styles.css",
+      "content": "/* Reset some default browser styles */\nbody, h1, h2, h3, h4, h5, h6, p, ul, ol, li, button {\n    margin: 0;\n    padding: 0;\n    list-style-type: none;\n}\n\n/* Base styles */\nbody {\n    font-family: Arial, sans-serif;\n    background-color: #f4f4f9;\n    color: #333;\n    line-height: 1.6;\n}\n\n.container {\n    max-width: 800px;\n    margin: 0 auto;\n    padding: 20px;\n}\n\n/* Header styles */\nheader {\n    background-color: #6200ea;\n    color: #fff;\n    padding: 10px 20px;\n    text-align: center;\n    border-radius: 5px;\n}\n\nheader h1 {\n    font-size: 2em;\n    margin-bottom: 10px;\n}\n\n/* Task list styles */\n.task-list {\n    margin-top: 20px;\n    background-color: #fff;\n    border-radius: 5px;\n    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);\n}\n\n.task-list ul {\n    padding: 10px;\n}\n\n.task-list li {\n    display: flex;\n    justify-content: space-between;\n    align-items: center;\n    padding: 10px;\n    border-bottom: 1px solid #ddd;\n}\n\n.task-list li:last-child {\n    border-bottom: none;\n}\n\n.task-list .task-name {\n    flex: 1;\n}\n\n.task-list .task-actions {\n    display: flex;\n    gap: 10px;\n}\n\n.task-list button {\n    background-color: #6200ea;\n    color: #fff;\n    border: none;\n    padding: 5px 10px;\n    border-radius: 3px;\n    cursor: pointer;\n    transition: background-color 0.3s;\n}\n\n.task-list button:hover {\n    background-color: #3700b3;\n}\n\n/* Task creation form */\n.task-form {\n    display: flex;\n    flex-direction: column;\n    margin-top: 20px;\n}\n\n.task-form input[type=\"text\"],\n.task-form input[type=\"date\"] {\n    padding: 10px;\n    margin-bottom: 10px;\n    border: 1px solid #ddd;\n    border-radius: 3px;\n}\n\n.task-form button {\n    align-self: flex-start;\n    background-color: #03dac6;\n    color: #fff;\n    border: none;\n    padding: 10px 20px;\n    border-radius: 3px;\n    cursor: pointer;\n    transition: background-color 0.3s;\n}\n\n.task-form button:hover {\n    background-color: #018786;\n}\n\n/* Prioritization styles */\n.priority-high {\n    background-color: #ff5252;\n}\n\n.priority-medium {\n    background-color: #ffc107;\n}\n\n.priority-low {\n    background-color: #8bc34a;\n}\n\n/* Notifications styles */\n.notification {\n    margin-top: 10px;\n    padding: 10px;\n    background-color: #ffeb3b;\n    border-radius: 5px;\n    text-align: center;\n    font-weight: bold;\n}",
+      "language": "css",
+      "purpose": "Styles for the application",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-14T16:11:55.447788"
+    },
+    {
+      "path": "tests/test_app.py",
+      "content": "import unittest\nfrom datetime import datetime, timedelta\nfrom app.controllers.task_controller import TaskController\n\nclass TestTodoListApplication(unittest.TestCase):\n\n    def setUp(self):\n        self.task_controller = TaskController()\n\n    def test_task_creation(self):\n        task_name = \"Write unit tests\"\n        task = self.task_controller.create_task(task_name)\n        self.assertEqual(task.name, task_name)\n        self.assertFalse(task.completed)\n\n    def test_task_management(self):\n        task_name = \"Review PRs\"\n        task = self.task_controller.create_task(task_name)\n        self.task_controller.mark_task_completed(task.id)\n        self.assertTrue(task.completed)\n\n    def test_task_prioritization(self):\n        task_name_low = \"Do laundry\"\n        task_name_high = \"Finish project report\"\n        low_priority_task = self.task_controller.create_task(task_name_low, priority=1)\n        high_priority_task = self.task_controller.create_task(task_name_high, priority=5)\n        tasks = self.task_controller.get_tasks_sorted_by_priority()\n        self.assertEqual(tasks[0].name, task_name_high)\n        self.assertEqual(tasks[1].name, task_name_low)\n\n    def test_due_date_assignment(self):\n        task_name = \"Submit assignment\"\n        due_date = datetime.now() + timedelta(days=3)\n        task = self.task_controller.create_task(task_name, due_date=due_date)\n        self.assertEqual(task.due_date, due_date)\n\n    def test_task_notifications(self):\n        task_name = \"Prepare presentation\"\n        due_date = datetime.now() + timedelta(days=1)\n        task = self.task_controller.create_task(task_name, due_date=due_date)\n        notifications = self.task_controller.get_due_tasks_for_notification()\n        self.assertIn(task, notifications)\n\nif __name__ == '__main__':\n    unittest.main()",
+      "language": "python",
+      "purpose": "Test the application logic",
+      "dependencies": [
+        "app/main.py",
+        "app/controllers/task_controller.py"
+      ],
+      "interface_id": null,
+      "generated_at": "2026-02-14T16:11:58.220560"
+    },
+    {
+      "path": "flask.py",
+      "content": "# Auto-generated stub for flask.py\n",
+      "language": "python",
+      "purpose": "Stub for flask.py",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-14T16:11:58.220802"
+    },
+    {
+      "path": "flask_sqlalchemy.py",
+      "content": "# Auto-generated stub for flask_sqlalchemy.py\n",
+      "language": "python",
+      "purpose": "Stub for flask_sqlalchemy.py",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-14T16:11:58.220807"
+    },
+    {
+      "path": "flask_migrate.py",
+      "content": "# Auto-generated stub for flask_migrate.py\n",
+      "language": "python",
+      "purpose": "Stub for flask_migrate.py",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-14T16:11:58.220811"
+    },
+    {
+      "path": "flask_login.py",
+      "content": "# Auto-generated stub for flask_login.py\n",
+      "language": "python",
+      "purpose": "Stub for flask_login.py",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-14T16:11:58.220813"
+    },
+    {
+      "path": ".tasks.py",
+      "content": "# Auto-generated stub for .tasks.py\n",
+      "language": "python",
+      "purpose": "Stub for .tasks.py",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-14T16:11:58.220815"
+    },
+    {
+      "path": ".auth.py",
+      "content": "# Auto-generated stub for .auth.py\n",
+      "language": "python",
+      "purpose": "Stub for .auth.py",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-14T16:11:58.220816"
+    },
+    {
+      "path": "sqlalchemy.py",
+      "content": "# Auto-generated stub for sqlalchemy.py\n",
+      "language": "python",
+      "purpose": "Stub for sqlalchemy.py",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-14T16:11:58.220818"
+    },
+    {
+      "path": "sqlalchemy.orm.py",
+      "content": "# Auto-generated stub for sqlalchemy.orm.py\n",
+      "language": "python",
+      "purpose": "Stub for sqlalchemy.orm.py",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-14T16:11:58.220824"
+    },
+    {
+      "path": "sqlalchemy.ext.declarative.py",
+      "content": "# Auto-generated stub for sqlalchemy.ext.declarative.py\n",
+      "language": "python",
+      "purpose": "Stub for sqlalchemy.ext.declarative.py",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-14T16:11:58.220826"
+    },
+    {
+      "path": "datetime.py",
+      "content": "# Auto-generated stub for datetime.py\n",
+      "language": "python",
+      "purpose": "Stub for datetime.py",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-14T16:11:58.220828"
+    }
+  ],
+  "structure": {
+    "root": "generated",
+    "directories": [
+      "tests",
+      "app",
+      "app\\templates",
+      "app\\static\\css",
+      "app\\controllers"
+    ],
+    "entry_point": "tests/test_app.py"
+  },
+  "dependencies": [
+    "Adobe XD",
+    "Axios",
+    "Cypress",
+    "Express",
+    "Figma",
+    "Jest",
+    "MongoDB",
+    "Node.js",
+    "None",
+    "PostgreSQL",
+    "React",
+    "flask"
+  ],
+  "readme_content": "# Todo List Application\n\nAn application to manage and organize tasks efficiently.\n\n## Features\n\n- Task Creation: Allows users to create new tasks with titles and descriptions.\n- Task Management: Enables users to edit, delete, and mark tasks as complete.\n- Task Prioritization: Users can set priority levels for tasks to organize them based on importance.\n- Due Date Assignment: Users can assign due dates to tasks to manage deadlines effectively.\n- Task Notifications: Provides reminders and notifications for upcoming tasks and deadlines.\n\n## Setup\n\n```bash\npip install -r requirements.txt\npython app.py\n```\n\n## Usage\n\nOpen http://localhost:5000 in your browser.\n",
+  "created_at": "2026-02-14T16:11:58.221176"
+}

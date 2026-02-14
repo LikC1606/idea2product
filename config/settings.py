@@ -34,6 +34,20 @@ class Settings(BaseSettings):
     enable_visual_verification: bool = True
     enable_bdd_testing: bool = True
 
+    def __init__(self, **kwargs):
+        # 临时清除可能存在的环境变量，确保从.env读取
+        env_backup = {}
+        for key in ['OPENAI_API_KEY', 'OPENAI_BASE_URL', 'OPENAI_MODEL', 'OPENAI_VLM_MODEL', 'MAX_TOKENS', 'TEMPERATURE']:
+            if key in os.environ:
+                env_backup[key] = os.environ[key]
+                del os.environ[key]
+
+        super().__init__(**kwargs)
+
+        # 恢复环境变量（如果需要）
+        # for key, value in env_backup.items():
+        #     os.environ[key] = value
+
     # Derived paths
     @property
     def prompts_dir(self) -> Path:
@@ -70,9 +84,14 @@ class Settings(BaseSettings):
         self.templates_dir.mkdir(parents=True, exist_ok=True)
 
 
-@lru_cache()
 def get_settings() -> Settings:
     """Get cached settings instance."""
+    return _get_settings_cached()
+
+
+@lru_cache()
+def _get_settings_cached() -> Settings:
+    """Internal cached settings instance."""
     settings = Settings()
     settings.ensure_directories()
     return settings

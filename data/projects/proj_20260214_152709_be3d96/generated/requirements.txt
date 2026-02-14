@@ -1,0 +1,28 @@
+AWS Elastic Beanstalk
+AWS S3 SDK
+Apollo Client
+Axios
+Bootstrap
+Cloudinary
+Cypress
+Docker
+Fetch API
+Formik
+GitHub Actions
+Hugging Face Transformers
+Jest
+Kubernetes
+Mocha
+MongoDB
+Mongoose
+Multer (Node.js)
+OpenAI API
+PostgreSQL
+React
+React Hook Form
+Selenium
+Sequelize
+Tailwind CSS
+Vue.js
+Yup
+flask

@@ -74,12 +74,13 @@ class Orchestrator:
             log_level=settings.log_level,
         )
 
-    def run(self, user_requirement: str) -> ValidatedProject:
+    def run(self, user_requirement: str, interactive: bool = False) -> ValidatedProject:
         """
         Run the complete workflow from requirement to validated project.
 
         Args:
             user_requirement: User's natural language requirement
+            interactive: If True, run Stage 1 in interactive mode (ask clarification questions)
 
         Returns:
             ValidatedProject with working code
@@ -88,7 +89,7 @@ class Orchestrator:
             Exception: If any stage fails critically
         """
         self.logger.info("=" * 60)
-        self.logger.info("Starting Idea2Product workflow")
+        self.logger.info(f"Starting Idea2Product workflow (interactive={interactive})")
         self.logger.info("=" * 60)
 
         # Create execution context
@@ -121,7 +122,7 @@ class Orchestrator:
             self.logger.info("STAGE 1: Requirements Gathering")
             self.logger.info("=" * 60)
             context.update_stage(1)
-            requirements = self.execute_stage_1(context)
+            requirements = self.execute_stage_1(context, interactive=interactive)
             context.requirements = requirements
             self._save_artifact(artifacts_dir, "01_requirements.json", requirements.model_dump(mode="json"))
 
@@ -169,12 +170,13 @@ class Orchestrator:
             self._save_artifact(artifacts_dir, "context.json", context.to_dict())
             raise
 
-    def execute_stage_1(self, context: ExecutionContext) -> Requirements:
+    def execute_stage_1(self, context: ExecutionContext, interactive: bool = False) -> Requirements:
         """
         Execute Stage 1: Requirements gathering.
 
         Args:
             context: Execution context
+            interactive: If True, ask clarification questions interactively
 
         Returns:
             Structured requirements
@@ -183,7 +185,13 @@ class Orchestrator:
 
         # Use Interaction Agent to parse requirements
         agent = InteractionAgent(self.llm_service)
-        requirements = agent.execute(context)
+
+        if interactive:
+            # Run interactive mode with clarification questions
+            requirements = agent.run_interactive(context.user_requirement)
+        else:
+            # Run non-interactive mode
+            requirements = agent.execute(context)
 
         self.logger.info(f"Stage 1 complete: {len(requirements.features)} features extracted")
         return requirements

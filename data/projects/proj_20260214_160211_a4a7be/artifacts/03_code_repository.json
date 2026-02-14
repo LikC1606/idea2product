@@ -1,0 +1,55 @@
+{
+  "skeleton": null,
+  "files": [
+    {
+      "path": "app.py",
+      "content": "\"\"\"Generated module: app\"\"\"\n\nfrom flask import Flask, jsonify, request\n\napp = Flask(__name__)\n\n# Generated Application\n# Build a todo list app\n\n@app.route('/')\ndef index():\n    return jsonify({\n        'app': 'Generated Application',\n        'features': [\"List all items\"]\n    })\n\nif __name__ == '__main__':\n    app.run(debug=True)\n",
+      "language": "python",
+      "purpose": "Main application entry point",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-14T16:02:53.655820"
+    },
+    {
+      "path": "templates/index.html",
+      "content": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>Generated Application</title>\n    <link rel=\"stylesheet\" href=\"/static/style.css\">\n</head>\n<body>\n    <div class=\"container\">\n        <h1>Generated Application</h1>\n        <p>Build a todo list app</p>\n        <ul class=\"features\">\n            <li>List all items</li>\n        </ul>\n    </div>\n    <script src=\"/static/script.js\"></script>\n</body>\n</html>\n",
+      "language": "html",
+      "purpose": "Main HTML template",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-14T16:03:04.323036"
+    },
+    {
+      "path": "static/style.css",
+      "content": "/* Generated Application Styles */\n\nbody {\n    font-family: Arial, sans-serif;\n    margin: 0;\n    padding: 20px;\n    background: #f5f5f5;\n}\n\n.container {\n    max-width: 800px;\n    margin: 0 auto;\n    background: white;\n    padding: 30px;\n    border-radius: 8px;\n    box-shadow: 0 2px 4px rgba(0,0,0,0.1);\n}\n\nh1 {\n    color: #333;\n}\n\n.features {\n    list-style: none;\n    padding: 0;\n}\n\n.features li {\n    padding: 10px;\n    margin: 5px 0;\n    background: #f9f9f9;\n    border-left: 3px solid #007bff;\n}\n",
+      "language": "css",
+      "purpose": "Stylesheet",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-14T16:03:15.610438"
+    },
+    {
+      "path": "flask.py",
+      "content": "# Auto-generated stub for flask.py\n",
+      "language": "python",
+      "purpose": "Stub for flask.py",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-14T16:03:15.610615"
+    }
+  ],
+  "structure": {
+    "root": "generated",
+    "directories": [
+      "templates",
+      "static"
+    ],
+    "entry_point": "app.py"
+  },
+  "dependencies": [
+    "flask",
+    "requests"
+  ],
+  "readme_content": "# Generated Application\n\nBuild a todo list app\n\n## Features\n\n- List all items: Allow users to list all items\n\n## Setup\n\n```bash\npip install -r requirements.txt\npython app.py\n```\n\n## Usage\n\nOpen http://localhost:5000 in your browser.\n",
+  "created_at": "2026-02-14T16:03:15.610764"
+}

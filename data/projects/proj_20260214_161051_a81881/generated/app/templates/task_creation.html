@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Task - Todo List</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <header>
+        <h1>Todo List Application</h1>
+    </header>
+    <nav>
+        <ul>
+            <li><a href="/">Home</a></li>
+            <li><a href="/tasks">View Tasks</a></li>
+            <li><a href="/create_task" class="active">Create Task</a></li>
+        </ul>
+    </nav>
+    <main>
+        <h2>Create a New Task</h2>
+        <form action="/create_task" method="POST">
+            <div class="form-group">
+                <label for="task-title">Task Title:</label>
+                <input type="text" id="task-title" name="title" placeholder="Enter task title" required>
+            </div>
+            <div class="form-group">
+                <label for="task-priority">Priority:</label>
+                <select id="task-priority" name="priority" required>
+                    <option value="">Select Priority</option>
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="task-due-date">Due Date:</label>
+                <input type="date" id="task-due-date" name="due_date" required>
+            </div>
+            <div class="form-group">
+                <label for="task-notes">Notes:</label>
+                <textarea id="task-notes" name="notes" placeholder="Add any additional notes"></textarea>
+            </div>
+            <button type="submit" class="btn">Create Task</button>
+        </form>
+    </main>
+    <footer>
+        <p>&copy; 2023 Todo List Application. All rights reserved.</p>
+    </footer>
+</body>
+</html>

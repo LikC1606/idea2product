@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Assign Due Date</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Assign Due Date</h1>
+        <form action="{{ url_for('assign_due_date') }}" method="post">
+            <div class="form-group">
+                <label for="task">Select Task:</label>
+                <select name="task" id="task" required>
+                    {% for task in tasks %}
+                    <option value="{{ task.id }}">{{ task.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="due-date">Due Date:</label>
+                <input type="date" id="due-date" name="due_date" required>
+            </div>
+            <div class="form-group">
+                <button type="submit" class="btn">Assign Due Date</button>
+            </div>
+        </form>
+    </div>
+</body>
+</html>

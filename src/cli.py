@@ -27,21 +27,31 @@ def cli():
 
 
 @cli.command()
-@click.argument("requirement", type=str)
+@click.argument("requirement", type=str, required=False)
 @click.option(
     "--output",
     "-o",
     type=click.Path(),
     help="Output directory for generated project",
 )
-def create(requirement: str, output: str = None):
+@click.option(
+    "--interactive",
+    "-i",
+    is_flag=True,
+    help="Interactive mode: ask clarification questions before generating",
+)
+def create(requirement: str, output: str = None, interactive: bool = False):
     """
     Create a new web application from a requirement.
 
     REQUIREMENT: Natural language description of what you want to build.
+    (If not provided, will ask interactively)
+
+    Use --interactive / -i to enable interactive question mode.
 
     Example:
-        idea2product create "Build a todo list app with add, delete, and complete functionality"
+        idea2product create "Build a todo list app"
+        idea2product create -i "Build a todo list app"
     """
     try:
         settings = get_settings()
@@ -56,7 +66,7 @@ def create(requirement: str, output: str = None):
         orchestrator = Orchestrator(settings)
 
         # Run workflow
-        validated_project = orchestrator.run(requirement)
+        validated_project = orchestrator.run(requirement, interactive=interactive)
 
         # Success message
         console.print("\n")

@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task Prioritization</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <script src="{{ url_for('static', filename='scripts.js') }}" defer></script>
+</head>
+<body>
+    <header>
+        <h1>Todo List Application</h1>
+        <nav>
+            <ul>
+                <li><a href="{{ url_for('task_creation') }}">Create Task</a></li>
+                <li><a href="{{ url_for('task_management') }}">Manage Tasks</a></li>
+                <li><a href="{{ url_for('task_prioritization') }}" class="active">Prioritize Tasks</a></li>
+                <li><a href="{{ url_for('due_date_assignment') }}">Due Dates</a></li>
+                <li><a href="{{ url_for('task_notifications') }}">Notifications</a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        <section>
+            <h2>Prioritize Your Tasks</h2>
+            <form id="prioritizationForm" action="{{ url_for('update_priorities') }}" method="post">
+                <ul id="taskList">
+                    {% for task in tasks %}
+                    <li class="task-item">
+                        <div class="task-info">
+                            <input type="hidden" name="task_id" value="{{ task.id }}">
+                            <span class="task-name">{{ task.name }}</span>
+                            <span class="task-due-date">{{ task.due_date }}</span>
+                        </div>
+                        <div class="priority-control">
+                            <label for="priority-{{ task.id }}">Priority:</label>
+                            <select name="priority-{{ task.id }}" id="priority-{{ task.id }}">
+                                <option value="low" {% if task.priority == 'low' %}selected{% endif %}>Low</option>
+                                <option value="medium" {% if task.priority == 'medium' %}selected{% endif %}>Medium</option>
+                                <option value="high" {% if task.priority == 'high' %}selected{% endif %}>High</option>
+                            </select>
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ul>
+                <button type="submit" class="btn">Save Priorities</button>
+            </form>
+        </section>
+    </main>
+    <footer>
+        <p>&copy; 2023 Todo List Application. All rights reserved.</p>
+    </footer>
+</body>
+</html>

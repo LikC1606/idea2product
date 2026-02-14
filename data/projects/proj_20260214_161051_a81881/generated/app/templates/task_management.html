@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task Management</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <script src="/static/js/app.js" defer></script>
+</head>
+<body>
+    <header>
+        <h1>Todo List Application</h1>
+    </header>
+    <main>
+        <section id="task-creation">
+            <h2>Create New Task</h2>
+            <form id="task-form">
+                <label for="task-title">Task Title:</label>
+                <input type="text" id="task-title" name="task-title" required>
+
+                <label for="task-priority">Priority:</label>
+                <select id="task-priority" name="task-priority">
+                    <option value="high">High</option>
+                    <option value="medium">Medium</option>
+                    <option value="low">Low</option>
+                </select>
+
+                <label for="due-date">Due Date:</label>
+                <input type="date" id="due-date" name="due-date">
+
+                <button type="submit">Add Task</button>
+            </form>
+        </section>
+
+        <section id="task-list">
+            <h2>Manage Tasks</h2>
+            <ul id="tasks">
+                <!-- Task items will be dynamically inserted here -->
+            </ul>
+        </section>
+    </main>
+    <footer>
+        <p>&copy; 2023 Todo List Application</p>
+    </footer>
+</body>
+</html>
