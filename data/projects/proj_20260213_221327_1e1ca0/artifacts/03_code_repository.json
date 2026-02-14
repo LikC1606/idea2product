@@ -1,0 +1,127 @@
+{
+  "skeleton": null,
+  "files": [
+    {
+      "path": "src/ui/design.py",
+      "content": "```python\nimport tkinter as tk\nfrom tkinter import messagebox\n\nclass TodoListUI:\n    def __init__(self, root):\n        self.root = root\n        self.root.title(\"Todo List Application\")\n        \n        self.tasks = []\n        \n        self.frame = tk.Frame(root)\n        self.frame.pack(pady=10)\n        \n        self.task_listbox = tk.Listbox(self.frame, width=50, height=10, selectmode=tk.SINGLE)\n        self.task_listbox.pack(side=tk.LEFT, fill=tk.BOTH)\n        \n        self.scrollbar = tk.Scrollbar(self.frame)\n        self.scrollbar.pack(side=tk.RIGHT, fill=tk.BOTH)\n        \n        self.task_listbox.config(yscrollcommand=self.scrollbar.set)\n        self.scrollbar.config(command=self.task_listbox.yview)\n        \n        self.entry = tk.Entry(root, width=54)\n        self.entry.pack(pady=10)\n        \n        self.add_task_button = tk.Button(root, text=\"Add Task\", command=self.add_task)\n        self.add_task_button.pack(pady=5)\n        \n        self.delete_task_button = tk.Button(root, text=\"Delete Task\", command=self.delete_task)\n        self.delete_task_button.pack(pady=5)\n        \n        self.complete_task_button = tk.Button(root, text=\"Complete Task\", command=self.complete_task)\n        self.complete_task_button.pack(pady=5)\n    \n    def add_task(self):\n        task = self.entry.get()\n        if task:\n            self.tasks.append(task)\n            self.update_task_listbox()\n            self.entry.delete(0, tk.END)\n        else:\n            messagebox.showwarning(\"Warning\", \"You must enter a task.\")\n    \n    def delete_task(self):\n        try:\n            selected_task_index = self.task_listbox.curselection()[0]\n            self.tasks.pop(selected_task_index)\n            self.update_task_listbox()\n        except IndexError:\n            messagebox.showwarning(\"Warning\", \"You must select a task to delete.\")\n    \n    def complete_task(self):\n        try:\n            selected_task_index = self.task_listbox.curselection()[0]\n            self.tasks[selected_task_index] += \" - Completed\"\n            self.update_task_listbox()\n        except IndexError:\n            messagebox.showwarning(\"Warning\", \"You must select a task to mark as complete.\")\n    \n    def update_task_listbox(self):\n        self.task_listbox.delete(0, tk.END)\n        for task in self.tasks:\n            self.task_listbox.insert(tk.END, task)\n\n\nif __name__ == \"__main__\":\n    root = tk.Tk()\n    app = TodoListUI(root)\n    root.mainloop()\n```",
+      "language": "python",
+      "purpose": "Design the UI for the Todo List application",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-13T22:13:51.964579"
+    },
+    {
+      "path": "src/features/add_task.py",
+      "content": "```python\n# src/features/add_task.py\n\nfrom src.database.schema import Task, session\n\ndef add_task(title, description=None, due_date=None):\n    \"\"\"\n    Adds a new task to the database.\n\n    Args:\n        title (str): The title of the task.\n        description (str, optional): A brief description of the task. Defaults to None.\n        due_date (datetime, optional): The due date for the task. Defaults to None.\n\n    Returns:\n        Task: The newly created task object.\n    \"\"\"\n    # Create a new Task instance\n    new_task = Task(title=title, description=description, due_date=due_date)\n\n    # Add the new task to the session\n    session.add(new_task)\n    session.commit()\n\n    return new_task\n\n# Example usage\nif __name__ == \"__main__\":\n    task = add_task(\"Buy groceries\", \"Need to buy milk and eggs\", \"2023-10-15\")\n    print(f\"Task added: {task.title}\")\n```\n",
+      "language": "python",
+      "purpose": "Implement the feature to add a new task",
+      "dependencies": [
+        "src/database/schema.py"
+      ],
+      "interface_id": null,
+      "generated_at": "2026-02-13T22:13:54.311117"
+    },
+    {
+      "path": "src/features/delete_task.py",
+      "content": "```python\nfrom src.database.schema import Task, session\n\ndef delete_task(task_id):\n    \"\"\"\n    Deletes a task from the database given its task_id.\n\n    :param task_id: The unique identifier of the task to delete.\n    :return: None\n    \"\"\"\n    try:\n        task = session.query(Task).filter(Task.id == task_id).one_or_none()\n        if task is None:\n            print(f\"No task found with id: {task_id}\")\n            return\n\n        session.delete(task)\n        session.commit()\n        print(f\"Task with id {task_id} has been deleted.\")\n        \n    except Exception as e:\n        session.rollback()\n        print(f\"An error occurred while trying to delete the task: {e}\")\n```\n",
+      "language": "python",
+      "purpose": "Implement the feature to delete an existing task",
+      "dependencies": [
+        "src/database/schema.py"
+      ],
+      "interface_id": null,
+      "generated_at": "2026-02-13T22:13:56.387119"
+    },
+    {
+      "path": "src/features/complete_task.py",
+      "content": "```python\n# src/features/complete_task.py\n\nfrom src.database.schema import Task, session\n\ndef complete_task(task_id):\n    try:\n        task = session.query(Task).filter(Task.id == task_id).first()\n        if task is None:\n            return {\"success\": False, \"message\": \"Task not found\"}\n\n        task.is_complete = True\n        session.commit()\n        return {\"success\": True, \"message\": \"Task marked as complete\"}\n    except Exception as e:\n        session.rollback()\n        return {\"success\": False, \"message\": str(e)}\n```\n",
+      "language": "python",
+      "purpose": "Implement the feature to mark a task as complete",
+      "dependencies": [
+        "src/database/schema.py"
+      ],
+      "interface_id": null,
+      "generated_at": "2026-02-13T22:13:58.372895"
+    },
+    {
+      "path": "src/database/schema.py",
+      "content": "```python\nfrom sqlalchemy import create_engine, Column, Integer, String, Boolean\nfrom sqlalchemy.ext.declarative import declarative_base\nfrom sqlalchemy.orm import sessionmaker\n\nBase = declarative_base()\n\nclass Task(Base):\n    __tablename__ = 'tasks'\n    \n    id = Column(Integer, primary_key=True, autoincrement=True)\n    name = Column(String(255), nullable=False)\n    description = Column(String(1024), nullable=True)\n    completed = Column(Boolean, default=False)\n    \ndef init_db(uri='sqlite:///todo.db'):\n    engine = create_engine(uri)\n    Base.metadata.create_all(engine)\n    return sessionmaker(bind=engine)\n\n# Usage:\n# Session = init_db()\n# session = Session()\n# new_task = Task(name=\"Sample Task\", description=\"This is a sample task.\")\n# session.add(new_task)\n# session.commit()\n```\n",
+      "language": "python",
+      "purpose": "Create the database schema for storing tasks",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-13T22:14:00.346970"
+    },
+    {
+      "path": "src/integration/frontend_backend.py",
+      "content": "```python\n# File: src/integration/frontend_backend.py\n\nfrom src.ui.design import TodoUI\nfrom src.features.add_task import add_task\nfrom src.features.delete_task import delete_task\nfrom src.features.complete_task import complete_task\n\nclass TodoAppIntegration:\n    def __init__(self):\n        self.ui = TodoUI()\n        self.tasks = []\n\n    def setup_ui(self):\n        self.ui.setup()\n        self.ui.set_add_task_callback(self.add_task_callback)\n        self.ui.set_delete_task_callback(self.delete_task_callback)\n        self.ui.set_complete_task_callback(self.complete_task_callback)\n        self.refresh_ui()\n\n    def add_task_callback(self, task_description):\n        task = add_task(task_description)\n        if task:\n            self.tasks.append(task)\n            self.refresh_ui()\n\n    def delete_task_callback(self, task_id):\n        if delete_task(self.tasks, task_id):\n            self.refresh_ui()\n\n    def complete_task_callback(self, task_id):\n        if complete_task(self.tasks, task_id):\n            self.refresh_ui()\n\n    def refresh_ui(self):\n        self.ui.display_tasks(self.tasks)\n\nif __name__ == '__main__':\n    app_integration = TodoAppIntegration()\n    app_integration.setup_ui()\n    app_integration.ui.run()\n```\n",
+      "language": "python",
+      "purpose": "Integrate the frontend UI with the backend logic",
+      "dependencies": [
+        "src/ui/design.py",
+        "src/features/add_task.py",
+        "src/features/delete_task.py",
+        "src/features/complete_task.py"
+      ],
+      "interface_id": null,
+      "generated_at": "2026-02-13T22:14:03.624547"
+    },
+    {
+      "path": "tests/test_add_task.py",
+      "content": "```python\nimport unittest\nfrom src.features.add_task import add_task\n\nclass TestAddTask(unittest.TestCase):\n    def setUp(self):\n        self.task_list = []\n\n    def test_add_task_success(self):\n        task = \"Buy groceries\"\n        add_task(self.task_list, task)\n        self.assertIn(task, self.task_list)\n\n    def test_add_empty_task(self):\n        task = \"\"\n        with self.assertRaises(ValueError):\n            add_task(self.task_list, task)\n\n    def test_add_duplicate_task(self):\n        task = \"Read a book\"\n        add_task(self.task_list, task)\n        with self.assertRaises(ValueError):\n            add_task(self.task_list, task)\n\nif __name__ == \"__main__\":\n    unittest.main()\n```",
+      "language": "python",
+      "purpose": "Test the functionality of adding a new task",
+      "dependencies": [
+        "src/features/add_task.py"
+      ],
+      "interface_id": null,
+      "generated_at": "2026-02-13T22:14:10.988212"
+    },
+    {
+      "path": "tests/test_delete_task.py",
+      "content": "```python\nimport unittest\nfrom src.features.delete_task import delete_task\nfrom src.features.todo_list import TodoList\n\nclass TestDeleteTask(unittest.TestCase):\n\n    def setUp(self):\n        self.todo_list = TodoList()\n        self.todo_list.add_task(\"Task 1\")\n        self.todo_list.add_task(\"Task 2\")\n        self.todo_list.add_task(\"Task 3\")\n\n    def test_delete_existing_task(self):\n        task_to_delete = \"Task 2\"\n        delete_task(self.todo_list, task_to_delete)\n        self.assertNotIn(task_to_delete, self.todo_list.tasks)\n\n    def test_delete_non_existing_task(self):\n        initial_task_count = len(self.todo_list.tasks)\n        delete_task(self.todo_list, \"Task 4\")\n        self.assertEqual(len(self.todo_list.tasks), initial_task_count)\n\n    def test_delete_task_empty_list(self):\n        empty_todo_list = TodoList()\n        delete_task(empty_todo_list, \"Task 1\")\n        self.assertEqual(len(empty_todo_list.tasks), 0)\n\n    def test_delete_all_tasks(self):\n        for task in self.todo_list.tasks.copy():\n            delete_task(self.todo_list, task)\n        self.assertEqual(len(self.todo_list.tasks), 0)\n\nif __name__ == '__main__':\n    unittest.main()\n```",
+      "language": "python",
+      "purpose": "Test the functionality of deleting a task",
+      "dependencies": [
+        "src/features/delete_task.py"
+      ],
+      "interface_id": null,
+      "generated_at": "2026-02-13T22:14:14.309494"
+    },
+    {
+      "path": "tests/test_complete_task.py",
+      "content": "```python\nimport unittest\nfrom src.features.complete_task import complete_task\nfrom src.models.task import Task\n\nclass TestCompleteTask(unittest.TestCase):\n    def setUp(self):\n        self.task = Task(id=1, description=\"Test Task\", completed=False)\n\n    def test_complete_task(self):\n        # Ensure task is initially incomplete\n        self.assertFalse(self.task.completed)\n        \n        # Complete the task\n        complete_task(self.task)\n        \n        # Verify the task is marked as complete\n        self.assertTrue(self.task.completed)\n\n    def test_complete_task_already_completed(self):\n        # Set up the task as already completed\n        self.task.completed = True\n        \n        # Complete the task again\n        complete_task(self.task)\n        \n        # Verify the task remains completed\n        self.assertTrue(self.task.completed)\n\nif __name__ == '__main__':\n    unittest.main()\n```",
+      "language": "python",
+      "purpose": "Test the functionality of completing a task",
+      "dependencies": [
+        "src/features/complete_task.py"
+      ],
+      "interface_id": null,
+      "generated_at": "2026-02-13T22:14:18.304431"
+    }
+  ],
+  "structure": {
+    "root": "generated",
+    "directories": [
+      "src\\database",
+      "src\\features",
+      "src\\integration",
+      "tests",
+      "src\\ui"
+    ],
+    "entry_point": "src/ui/design.py"
+  },
+  "dependencies": [
+    "Axios",
+    "Bootstrap",
+    "Express",
+    "Jest",
+    "React",
+    "React Testing Library",
+    "SQLAlchemy",
+    "SQLite",
+    "flask"
+  ],
+  "readme_content": "# Todo List Application\n\nAn application to manage tasks with functionalities to add, delete, and mark tasks as complete.\n\n## Features\n\n- Add Task: Allows users to add new tasks to their todo list.\n- Delete Task: Enables users to remove tasks from their todo list.\n- Complete Task: Provides functionality to mark tasks as completed.\n\n## Setup\n\n```bash\npip install -r requirements.txt\npython app.py\n```\n\n## Usage\n\nOpen http://localhost:5000 in your browser.\n",
+  "created_at": "2026-02-13T22:14:18.304431"
+}

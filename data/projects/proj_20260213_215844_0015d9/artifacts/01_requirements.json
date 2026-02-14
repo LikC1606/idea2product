@@ -1,0 +1,18 @@
+{
+  "title": "Generated Application",
+  "description": "Build a todo list app",
+  "features": [
+    {
+      "id": "f1",
+      "name": "List all items",
+      "description": "Allow users to list all items",
+      "priority": 1,
+      "user_story": null
+    }
+  ],
+  "constraints": [],
+  "target_users": null,
+  "data_requirements": null,
+  "user_clarifications": {},
+  "created_at": "2026-02-13T21:58:48.032523"
+}

@@ -1,0 +1,214 @@
+{
+  "repository": {
+    "skeleton": null,
+    "files": [
+      {
+        "path": "blog_project/__init__.py",
+        "content": "# blog_project/__init__.py\n\n\"\"\"\nInitialize the blog_project package.\n\nApplication: Simple Blog Website\nDescription: A website for publishing blog posts with title, content, and publish date.\nFeatures: Post Creation, Post Display\n\"\"\"\n\n# Import necessary modules and functions for the blog project\nfrom .post_creation import create_post\nfrom .post_display import display_post\n\n__all__ = [\n    'create_post',\n    'display_post'\n]",
+        "language": "python",
+        "purpose": "Initialize the blog project package",
+        "dependencies": [],
+        "interface_id": null,
+        "generated_at": "2026-02-13T22:26:35.124701"
+      },
+      {
+        "path": "blog_project/settings.py",
+        "content": "import os\nfrom pathlib import Path\n\n# Build paths inside the project\nBASE_DIR = Path(__file__).resolve().parent.parent\n\n# Security settings\nSECRET_KEY = 'your-secret-key'\nDEBUG = True\nALLOWED_HOSTS = []\n\n# Application definition\nINSTALLED_APPS = [\n    'django.contrib.admin',\n    'django.contrib.auth',\n    'django.contrib.contenttypes',\n    'django.contrib.sessions',\n    'django.contrib.messages',\n    'django.contrib.staticfiles',\n    'blog',  # Assuming 'blog' is the name of the app for post creation and display\n]\n\nMIDDLEWARE = [\n    'django.middleware.security.SecurityMiddleware',\n    'django.contrib.sessions.middleware.SessionMiddleware',\n    'django.middleware.common.CommonMiddleware',\n    'django.middleware.csrf.CsrfViewMiddleware',\n    'django.contrib.auth.middleware.AuthenticationMiddleware',\n    'django.contrib.messages.middleware.MessageMiddleware',\n    'django.middleware.clickjacking.XFrameOptionsMiddleware',\n]\n\nROOT_URLCONF = 'blog_project.urls'\n\nTEMPLATES = [\n    {\n        'BACKEND': 'django.template.backends.django.DjangoTemplates',\n        'DIRS': [os.path.join(BASE_DIR, 'templates')],\n        'APP_DIRS': True,\n        'OPTIONS': {\n            'context_processors': [\n                'django.template.context_processors.debug',\n                'django.template.context_processors.request',\n                'django.contrib.auth.context_processors.auth',\n                'django.contrib.messages.context_processors.messages',\n            ],\n        },\n    },\n]\n\nWSGI_APPLICATION = 'blog_project.wsgi.application'\n\n# Database\nDATABASES = {\n    'default': {\n        'ENGINE': 'django.db.backends.sqlite3',\n        'NAME': BASE_DIR / 'db.sqlite3',\n    }\n}\n\n# Password validation\nAUTH_PASSWORD_VALIDATORS = [\n    {\n        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',\n    },\n    {\n        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',\n    },\n    {\n        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',\n    },\n    {\n        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',\n    },\n]\n\n# Internationalization\nLANGUAGE_CODE = 'en-us'\nTIME_ZONE = 'UTC'\nUSE_I18N = True\nUSE_L10N = True\nUSE_TZ = True\n\n# Static files (CSS, JavaScript, Images)\nSTATIC_URL = '/static/'\n\n# Default primary key field type\nDEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'",
+        "language": "python",
+        "purpose": "Configuration settings for the blog project",
+        "dependencies": [],
+        "interface_id": null,
+        "generated_at": "2026-02-13T22:26:40.083806"
+      },
+      {
+        "path": "blog_project/urls.py",
+        "content": "from django.urls import path\nfrom . import views\n\nurlpatterns = [\n    path('', views.post_list, name='post_list'),\n    path('post/<int:post_id>/', views.post_detail, name='post_detail'),\n    path('post/new/', views.post_create, name='post_create'),\n]",
+        "language": "python",
+        "purpose": "URL routing for the blog project",
+        "dependencies": [
+          "views.py"
+        ],
+        "interface_id": null,
+        "generated_at": "2026-02-13T22:26:41.440953"
+      },
+      {
+        "path": "blog_project/wsgi.py",
+        "content": "import os\nfrom django.core.wsgi import get_wsgi_application\n\nos.environ.setdefault('DJANGO_SETTINGS_MODULE', 'blog_project.settings')\n\napplication = get_wsgi_application()",
+        "language": "python",
+        "purpose": "WSGI configuration for deployment",
+        "dependencies": [],
+        "interface_id": null,
+        "generated_at": "2026-02-13T22:26:42.612696"
+      },
+      {
+        "path": "blog_app/__init__.py",
+        "content": "# blog_app/__init__.py\n\n\"\"\"\nThis package initializes the blog application.\n\nApplication: Simple Blog Website\nDescription: A website for publishing blog posts with title, content, and publish date.\nFeatures: Post Creation, Post Display\n\"\"\"\n\n# Import necessary modules for the blog app\nfrom . import post_creation\nfrom . import post_display\n\n# Define package-level variables or configurations if needed\n__version__ = '1.0.0'\n__author__ = 'Your Name'\n\n# Initialize any package-wide settings or configurations\ndef init_app(app):\n    \"\"\"Initialize the blog app with the given application instance.\"\"\"\n    # Register blueprints or extensions here if applicable\n    pass",
+        "language": "python",
+        "purpose": "Initialize the blog app package",
+        "dependencies": [],
+        "interface_id": null,
+        "generated_at": "2026-02-13T22:26:44.899418"
+      },
+      {
+        "path": "blog_app/models.py",
+        "content": "from django.db import models\n\nclass BlogPost(models.Model):\n    title = models.CharField(max_length=200)\n    content = models.TextField()\n    publish_date = models.DateTimeField(auto_now_add=True)\n\n    def __str__(self):\n        return self.title",
+        "language": "python",
+        "purpose": "Define database models for blog posts",
+        "dependencies": [],
+        "interface_id": null,
+        "generated_at": "2026-02-13T22:26:46.183073"
+      },
+      {
+        "path": "blog_app/views.py",
+        "content": "from django.shortcuts import render, get_object_or_404, redirect\nfrom .models import Post\nfrom .forms import PostForm\nfrom django.utils import timezone\n\ndef post_list(request):\n    posts = Post.objects.filter(publish_date__lte=timezone.now()).order_by('publish_date')\n    return render(request, 'blog/post_list.html', {'posts': posts})\n\ndef post_detail(request, pk):\n    post = get_object_or_404(Post, pk=pk)\n    return render(request, 'blog/post_detail.html', {'post': post})\n\ndef post_new(request):\n    if request.method == \"POST\":\n        form = PostForm(request.POST)\n        if form.is_valid():\n            post = form.save(commit=False)\n            post.publish_date = timezone.now()\n            post.save()\n            return redirect('post_detail', pk=post.pk)\n    else:\n        form = PostForm()\n    return render(request, 'blog/post_edit.html', {'form': form})\n\ndef post_edit(request, pk):\n    post = get_object_or_404(Post, pk=pk)\n    if request.method == \"POST\":\n        form = PostForm(request.POST, instance=post)\n        if form.is_valid():\n            post = form.save(commit=False)\n            post.publish_date = timezone.now()\n            post.save()\n            return redirect('post_detail', pk=post.pk)\n    else:\n        form = PostForm(instance=post)\n    return render(request, 'blog/post_edit.html', {'form': form})",
+        "language": "python",
+        "purpose": "Handle requests and return responses for blog operations",
+        "dependencies": [
+          "models.py",
+          "forms.py"
+        ],
+        "interface_id": null,
+        "generated_at": "2026-02-13T22:26:48.925945"
+      },
+      {
+        "path": "blog_app/forms.py",
+        "content": "from django import forms\nfrom .models import BlogPost\n\nclass BlogPostForm(forms.ModelForm):\n    class Meta:\n        model = BlogPost\n        fields = ['title', 'content', 'publish_date']\n        widgets = {\n            'title': forms.TextInput(attrs={'class': 'form-control'}),\n            'content': forms.Textarea(attrs={'class': 'form-control'}),\n            'publish_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),\n        }\n\n    def clean_title(self):\n        title = self.cleaned_data.get('title')\n        if len(title) < 5:\n            raise forms.ValidationError('Title must be at least 5 characters long.')\n        return title\n\n    def clean_content(self):\n        content = self.cleaned_data.get('content')\n        if len(content) < 10:\n            raise forms.ValidationError('Content must be at least 10 characters long.')\n        return content",
+        "language": "python",
+        "purpose": "Define forms for creating and editing blog posts",
+        "dependencies": [
+          "models.py"
+        ],
+        "interface_id": null,
+        "generated_at": "2026-02-13T22:26:51.129078"
+      },
+      {
+        "path": "blog_app/templates/blog_app/home.html",
+        "content": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>Simple Blog Website</title>\n    <link rel=\"stylesheet\" href=\"{% static 'blog_app/css/styles.css' %}\">\n</head>\n<body>\n    <header>\n        <h1>Welcome to My Blog</h1>\n        <nav>\n            <ul>\n                <li><a href=\"{% url 'home' %}\">Home</a></li>\n                <li><a href=\"{% url 'create_post' %}\">Create Post</a></li>\n            </ul>\n        </nav>\n    </header>\n\n    <main>\n        <section id=\"posts\">\n            <h2>Recent Posts</h2>\n            {% for post in posts %}\n                <article class=\"post\">\n                    <h3>{{ post.title }}</h3>\n                    <p>{{ post.content }}</p>\n                    <p><small>Published on {{ post.publish_date }}</small></p>\n                </article>\n            {% empty %}\n                <p>No posts available.</p>\n            {% endfor %}\n        </section>\n    </main>\n\n    <footer>\n        <p>&copy; 2023 Simple Blog Website</p>\n    </footer>\n</body>\n</html>",
+        "language": "html",
+        "purpose": "HTML template for the homepage layout",
+        "dependencies": [],
+        "interface_id": null,
+        "generated_at": "2026-02-13T22:26:54.732464"
+      },
+      {
+        "path": "blog_app/templates/blog_app/post_form.html",
+        "content": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>Create New Post</title>\n    <link rel=\"stylesheet\" href=\"{% static 'blog_app/css/styles.css' %}\">\n</head>\n<body>\n    <div class=\"container\">\n        <h1>Create a New Post</h1>\n        <form method=\"POST\" action=\"{% url 'blog_app:create_post' %}\">\n            {% csrf_token %}\n            <div class=\"form-group\">\n                <label for=\"title\">Title:</label>\n                <input type=\"text\" id=\"title\" name=\"title\" required>\n            </div>\n            <div class=\"form-group\">\n                <label for=\"content\">Content:</label>\n                <textarea id=\"content\" name=\"content\" rows=\"10\" required></textarea>\n            </div>\n            <div class=\"form-group\">\n                <label for=\"publish_date\">Publish Date:</label>\n                <input type=\"date\" id=\"publish_date\" name=\"publish_date\" required>\n            </div>\n            <button type=\"submit\">Submit</button>\n        </form>\n        <a href=\"{% url 'blog_app:post_list' %}\">Back to Post List</a>\n    </div>\n</body>\n</html>",
+        "language": "html",
+        "purpose": "HTML template for the post creation form",
+        "dependencies": [],
+        "interface_id": null,
+        "generated_at": "2026-02-13T22:27:17.147023"
+      },
+      {
+        "path": "blog_app/templates/blog_app/post_detail.html",
+        "content": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>{{ post.title }} - Blog</title>\n    <link rel=\"stylesheet\" href=\"{% static 'blog_app/styles.css' %}\">\n</head>\n<body>\n    <div class=\"container\">\n        <header>\n            <h1>{{ post.title }}</h1>\n            <p>Published on {{ post.publish_date }}</p>\n        </header>\n        <article>\n            <p>{{ post.content }}</p>\n        </article>\n        <footer>\n            <a href=\"{% url 'blog_app:index' %}\">Back to Home</a>\n        </footer>\n    </div>\n</body>\n</html>",
+        "language": "html",
+        "purpose": "HTML template for displaying individual blog posts",
+        "dependencies": [],
+        "interface_id": null,
+        "generated_at": "2026-02-13T22:27:19.212997"
+      },
+      {
+        "path": "blog_app/static/blog_app/styles.css",
+        "content": "/* Base Styles */\n\nbody {\n    font-family: Arial, sans-serif;\n    line-height: 1.6;\n    margin: 0;\n    padding: 0;\n    background-color: #f4f4f4;\n}\n\n.container {\n    width: 80%;\n    margin: auto;\n    overflow: hidden;\n}\n\n/* Header Styles */\n\nheader {\n    background-color: #333;\n    color: #fff;\n    padding: 20px 0;\n    text-align: center;\n}\n\nheader h1 {\n    margin: 0;\n    font-size: 2em;\n}\n\n/* Blog Post Styles */\n\n.blog-post {\n    background-color: #fff;\n    margin: 20px 0;\n    padding: 20px;\n    border-radius: 5px;\n    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);\n}\n\n.blog-post h2 {\n    margin-top: 0;\n    font-size: 1.5em;\n}\n\n.blog-post p {\n    margin: 10px 0;\n}\n\n.blog-post .publish-date {\n    font-size: 0.9em;\n    color: #777;\n}\n\n/* Form Styles */\n\n.post-form {\n    background-color: #fff;\n    padding: 20px;\n    border-radius: 5px;\n    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);\n}\n\n.post-form label {\n    display: block;\n    margin-bottom: 5px;\n    font-weight: bold;\n}\n\n.post-form input[type=\"text\"],\n.post-form textarea {\n    width: 100%;\n    padding: 10px;\n    margin-bottom: 10px;\n    border-radius: 5px;\n    border: 1px solid #ddd;\n}\n\n.post-form textarea {\n    resize: vertical;\n}\n\n.post-form button {\n    background-color: #333;\n    color: #fff;\n    border: none;\n    padding: 10px 20px;\n    border-radius: 5px;\n    cursor: pointer;\n}\n\n.post-form button:hover {\n    background-color: #555;\n}\n\n/* Responsive Styles */\n\n@media (max-width: 768px) {\n    .container {\n        width: 90%;\n    }\n\n    header h1 {\n        font-size: 1.5em;\n    }\n}",
+        "language": "css",
+        "purpose": "CSS styles for the blog application",
+        "dependencies": [],
+        "interface_id": null,
+        "generated_at": "2026-02-13T22:27:23.260949"
+      },
+      {
+        "path": "blog_app/tests.py",
+        "content": "from django.test import TestCase\nfrom django.urls import reverse\nfrom blog_app.models import Post\nfrom django.utils import timezone\n\nclass PostModelTests(TestCase):\n    def test_post_creation(self):\n        post = Post.objects.create(\n            title=\"Test Post\",\n            content=\"This is a test post.\",\n            publish_date=timezone.now()\n        )\n        self.assertEqual(post.title, \"Test Post\")\n        self.assertEqual(post.content, \"This is a test post.\")\n        self.assertIsNotNone(post.publish_date)\n\nclass PostViewTests(TestCase):\n    def setUp(self):\n        self.post = Post.objects.create(\n            title=\"Test Post\",\n            content=\"This is a test post.\",\n            publish_date=timezone.now()\n        )\n\n    def test_post_display(self):\n        url = reverse('post_detail', args=[self.post.id])\n        response = self.client.get(url)\n        self.assertEqual(response.status_code, 200)\n        self.assertContains(response, self.post.title)\n        self.assertContains(response, self.post.content)\n\n    def test_post_list_display(self):\n        url = reverse('post_list')\n        response = self.client.get(url)\n        self.assertEqual(response.status_code, 200)\n        self.assertContains(response, self.post.title)",
+        "language": "python",
+        "purpose": "Unit tests for post creation and display",
+        "dependencies": [
+          "views.py",
+          "models.py"
+        ],
+        "interface_id": null,
+        "generated_at": "2026-02-13T22:27:25.715383"
+      },
+      {
+        "path": "manage.py",
+        "content": "#!/usr/bin/env python\nimport os\nimport sys\n\ndef main():\n    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'simple_blog.settings')\n    try:\n        from django.core.management import execute_from_command_line\n    except ImportError as exc:\n        raise ImportError(\n            \"Couldn't import Django. Are you sure it's installed and \"\n            \"available on your PYTHONPATH environment variable? Did you \"\n            \"forget to activate a virtual environment?\"\n        ) from exc\n    execute_from_command_line(sys.argv)\n\nif __name__ == '__main__':\n    main()",
+        "language": "python",
+        "purpose": "Command-line utility for administrative tasks",
+        "dependencies": [],
+        "interface_id": null,
+        "generated_at": "2026-02-13T22:27:28.119908"
+      }
+    ],
+    "structure": {
+      "root": "generated",
+      "directories": [
+        "blog_app\\static\\blog_app",
+        "blog_app",
+        "blog_app\\templates\\blog_app",
+        "blog_project"
+      ],
+      "entry_point": "blog_project/__init__.py"
+    },
+    "dependencies": [
+      "AWS",
+      "Bootstrap",
+      "Cypress",
+      "Django",
+      "Docker",
+      "Express.js",
+      "Jest",
+      "Mocha",
+      "MongoDB",
+      "Mongoose",
+      "None",
+      "PostgreSQL",
+      "React",
+      "Selenium",
+      "Sequelize",
+      "Tailwind CSS",
+      "Vue.js",
+      "flask",
+      "jQuery"
+    ],
+    "readme_content": "# Simple Blog Website\n\nA website for publishing blog posts with title, content, and publish date.\n\n## Features\n\n- Post Creation: Allows users to create blog posts with a title, content, and publish date.\n- Post Display: Displays blog posts with their title, content, and publish date on the website.\n\n## Setup\n\n```bash\npip install -r requirements.txt\npython app.py\n```\n\n## Usage\n\nOpen http://localhost:5000 in your browser.\n",
+    "created_at": "2026-02-13T22:27:28.119908"
+  },
+  "test_results": {
+    "logic_passed": true,
+    "bdd_test_cases": [
+      {
+        "test_id": "test_1",
+        "feature": "Post Creation",
+        "scenario": "User can post creation",
+        "given": "User is on the application page",
+        "when": "User performs post creation",
+        "then": "The application should respond correctly",
+        "test_code": "def test_post_creation():\n    # TODO: Implement test for Post Creation",
+        "status": "pending"
+      },
+      {
+        "test_id": "test_2",
+        "feature": "Post Display",
+        "scenario": "User can post display",
+        "given": "User is on the application page",
+        "when": "User performs post display",
+        "then": "The application should respond correctly",
+        "test_code": "def test_post_display():\n    # TODO: Implement test for Post Display",
+        "status": "pending"
+      }
+    ],
+    "errors": [],
+    "warnings": [
+      "No app.py found"
+    ],
+    "visual_verification": null,
+    "execution_time": 0.024006128311157227,
+    "stdout": "",
+    "stderr": "",
+    "timestamp": "2026-02-13T22:27:28.149919"
+  },
+  "is_deployable": true,
+  "deployment_instructions": "To run the application:\n\n1. Navigate to the generated directory:\n   cd generated\n\n2. Install dependencies:\n   pip install -r requirements.txt\n\n3. Run the application:\n   python blog_project/__init__.py\n\n4. Open http://localhost:5000 in your browser\n",
+  "fix_attempts": 0,
+  "validated_at": "2026-02-13T22:27:28.150921"
+}

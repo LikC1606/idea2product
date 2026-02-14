@@ -1,0 +1,261 @@
+{
+  "repository": {
+    "skeleton": null,
+    "files": [
+      {
+        "path": "src/app.py",
+        "content": "from flask import Flask\nfrom src.routes import setup_routes\nfrom src.database import initialize_db\n\ndef create_app():\n    app = Flask(__name__)\n    \n    # Initialize database\n    initialize_db(app)\n    \n    # Setup routes\n    setup_routes(app)\n    \n    return app\n\nif __name__ == '__main__':\n    app = create_app()\n    app.run(debug=True)",
+        "language": "python",
+        "purpose": "Entry point for the application",
+        "dependencies": [
+          "src/routes.py",
+          "src/database.py"
+        ],
+        "interface_id": null,
+        "generated_at": "2026-02-13T22:16:46.391698"
+      },
+      {
+        "path": "src/routes.py",
+        "content": "from flask import Flask, request, jsonify\nfrom src.controllers import task_controller\n\napp = Flask(__name__)\n\n@app.route('/tasks', methods=['POST'])\ndef create_task():\n    try:\n        task_data = request.json\n        task = task_controller.create_task(task_data)\n        return jsonify(task), 201\n    except Exception as e:\n        return jsonify({'error': str(e)}), 400\n\n@app.route('/tasks/<int:task_id>', methods=['PUT'])\ndef edit_task(task_id):\n    try:\n        task_data = request.json\n        task = task_controller.edit_task(task_id, task_data)\n        return jsonify(task), 200\n    except Exception as e:\n        return jsonify({'error': str(e)}), 400\n\n@app.route('/tasks/<int:task_id>', methods=['DELETE'])\ndef delete_task(task_id):\n    try:\n        task_controller.delete_task(task_id)\n        return jsonify({'message': 'Task deleted successfully'}), 200\n    except Exception as e:\n        return jsonify({'error': str(e)}), 400\n\n@app.route('/tasks/<int:task_id>/prioritize', methods=['PATCH'])\ndef prioritize_task(task_id):\n    try:\n        priority = request.json.get('priority')\n        task = task_controller.prioritize_task(task_id, priority)\n        return jsonify(task), 200\n    except Exception as e:\n        return jsonify({'error': str(e)}), 400\n\n@app.route('/tasks/<int:task_id>/complete', methods=['PATCH'])\ndef complete_task(task_id):\n    try:\n        task = task_controller.complete_task(task_id)\n        return jsonify(task), 200\n    except Exception as e:\n        return jsonify({'error': str(e)}), 400\n\nif __name__ == '__main__':\n    app.run(debug=True)",
+        "language": "python",
+        "purpose": "Defines the API endpoints for task operations",
+        "dependencies": [
+          "src/controllers/task_controller.py"
+        ],
+        "interface_id": null,
+        "generated_at": "2026-02-13T22:16:49.616782"
+      },
+      {
+        "path": "src/controllers/task_controller.py",
+        "content": "from flask import Blueprint, request, jsonify\nfrom src.models.task_model import Task\n\ntask_controller = Blueprint('task_controller', __name__)\n\n# Create a new task\n@task_controller.route('/tasks', methods=['POST'])\ndef create_task():\n    data = request.get_json()\n    task = Task(name=data['name'], description=data.get('description', ''), priority=data.get('priority', 'Low'))\n    task.save()\n    return jsonify({'message': 'Task created successfully', 'task': task.to_dict()}), 201\n\n# Get all tasks\n@task_controller.route('/tasks', methods=['GET'])\ndef get_all_tasks():\n    tasks = Task.get_all()\n    return jsonify({'tasks': [task.to_dict() for task in tasks]}), 200\n\n# Get a specific task by ID\n@task_controller.route('/tasks/<int:task_id>', methods=['GET'])\ndef get_task(task_id):\n    task = Task.get_by_id(task_id)\n    if not task:\n        return jsonify({'message': 'Task not found'}), 404\n    return jsonify({'task': task.to_dict()}), 200\n\n# Edit a task\n@task_controller.route('/tasks/<int:task_id>', methods=['PUT'])\ndef edit_task(task_id):\n    task = Task.get_by_id(task_id)\n    if not task:\n        return jsonify({'message': 'Task not found'}), 404\n\n    data = request.get_json()\n    task.name = data.get('name', task.name)\n    task.description = data.get('description', task.description)\n    task.priority = data.get('priority', task.priority)\n    task.completed = data.get('completed', task.completed)\n    task.save()\n    return jsonify({'message': 'Task updated successfully', 'task': task.to_dict()}), 200\n\n# Delete a task\n@task_controller.route('/tasks/<int:task_id>', methods=['DELETE'])\ndef delete_task(task_id):\n    task = Task.get_by_id(task_id)\n    if not task:\n        return jsonify({'message': 'Task not found'}), 404\n    task.delete()\n    return jsonify({'message': 'Task deleted successfully'}), 200\n\n# Mark task as complete\n@task_controller.route('/tasks/<int:task_id>/complete', methods=['PUT'])\ndef complete_task(task_id):\n    task = Task.get_by_id(task_id)\n    if not task:\n        return jsonify({'message': 'Task not found'}), 404\n    task.completed = True\n    task.save()\n    return jsonify({'message': 'Task marked as complete', 'task': task.to_dict()}), 200\n\n# Change task priority\n@task_controller.route('/tasks/<int:task_id>/priority', methods=['PUT'])\ndef change_priority(task_id):\n    task = Task.get_by_id(task_id)\n    if not task:\n        return jsonify({'message': 'Task not found'}), 404\n\n    data = request.get_json()\n    task.priority = data.get('priority', task.priority)\n    task.save()\n    return jsonify({'message': 'Task priority updated', 'task': task.to_dict()}), 200\n```\n",
+        "language": "python",
+        "purpose": "Contains business logic for task operations",
+        "dependencies": [
+          "src/models/task_model.py"
+        ],
+        "interface_id": null,
+        "generated_at": "2026-02-13T22:16:53.985475"
+      },
+      {
+        "path": "src/models/task_model.py",
+        "content": "from datetime import datetime\nfrom src.database import Database\n\nclass TaskModel:\n    def __init__(self, task_id, title, description, priority, is_completed=False, created_at=None):\n        self.task_id = task_id\n        self.title = title\n        self.description = description\n        self.priority = priority\n        self.is_completed = is_completed\n        self.created_at = created_at or datetime.now()\n\n    def create_task(self):\n        db = Database()\n        db.insert({\n            'task_id': self.task_id,\n            'title': self.title,\n            'description': self.description,\n            'priority': self.priority,\n            'is_completed': self.is_completed,\n            'created_at': self.created_at\n        })\n\n    def update_task(self, title=None, description=None, priority=None, is_completed=None):\n        if title:\n            self.title = title\n        if description:\n            self.description = description\n        if priority:\n            self.priority = priority\n        if is_completed is not None:\n            self.is_completed = is_completed\n        \n        db = Database()\n        db.update(self.task_id, {\n            'title': self.title,\n            'description': self.description,\n            'priority': self.priority,\n            'is_completed': self.is_completed\n        })\n\n    def delete_task(self):\n        db = Database()\n        db.delete(self.task_id)\n\n    def mark_completed(self):\n        self.is_completed = True\n        db = Database()\n        db.update(self.task_id, {'is_completed': self.is_completed})\n\n    @staticmethod\n    def get_all_tasks():\n        db = Database()\n        return db.select_all()\n\n    @staticmethod\n    def get_task_by_id(task_id):\n        db = Database()\n        return db.select(task_id)\n```\n",
+        "language": "python",
+        "purpose": "Defines the task data model",
+        "dependencies": [
+          "src/database.py"
+        ],
+        "interface_id": null,
+        "generated_at": "2026-02-13T22:16:57.294179"
+      },
+      {
+        "path": "src/database.py",
+        "content": "import sqlite3\nfrom contextlib import closing\n\nclass Database:\n    def __init__(self, db_path=\"todo_list.db\"):\n        self.db_path = db_path\n        self._initialize_database()\n\n    def _initialize_database(self):\n        \"\"\"Initializes the database with the required tables.\"\"\"\n        create_table_query = \"\"\"\n        CREATE TABLE IF NOT EXISTS tasks (\n            id INTEGER PRIMARY KEY AUTOINCREMENT,\n            title TEXT NOT NULL,\n            description TEXT,\n            priority INTEGER DEFAULT 0,\n            completed BOOLEAN DEFAULT 0,\n            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP\n        );\n        \"\"\"\n        with closing(self._get_connection()) as conn, conn:\n            conn.execute(create_table_query)\n\n    def _get_connection(self):\n        \"\"\"Establishes and returns a database connection.\"\"\"\n        return sqlite3.connect(self.db_path)\n\n    def add_task(self, title, description=\"\", priority=0):\n        \"\"\"Adds a new task to the database.\"\"\"\n        query = \"\"\"\n        INSERT INTO tasks (title, description, priority, completed)\n        VALUES (?, ?, ?, 0);\n        \"\"\"\n        with closing(self._get_connection()) as conn, conn:\n            conn.execute(query, (title, description, priority))\n\n    def update_task(self, task_id, title=None, description=None, priority=None, completed=None):\n        \"\"\"Updates an existing task.\"\"\"\n        fields = []\n        values = []\n        \n        if title is not None:\n            fields.append(\"title = ?\")\n            values.append(title)\n        if description is not None:\n            fields.append(\"description = ?\")\n            values.append(description)\n        if priority is not None:\n            fields.append(\"priority = ?\")\n            values.append(priority)\n        if completed is not None:\n            fields.append(\"completed = ?\")\n            values.append(int(completed))\n\n        query = f\"UPDATE tasks SET {', '.join(fields)} WHERE id = ?;\"\n        values.append(task_id)\n\n        with closing(self._get_connection()) as conn, conn:\n            conn.execute(query, tuple(values))\n\n    def delete_task(self, task_id):\n        \"\"\"Deletes a task from the database.\"\"\"\n        query = \"DELETE FROM tasks WHERE id = ?;\"\n        with closing(self._get_connection()) as conn, conn:\n            conn.execute(query, (task_id,))\n\n    def get_all_tasks(self):\n        \"\"\"Retrieves all tasks from the database.\"\"\"\n        query = \"SELECT * FROM tasks ORDER BY priority DESC, created_at ASC;\"\n        with closing(self._get_connection()) as conn:\n            cursor = conn.execute(query)\n            return cursor.fetchall()\n\n    def get_task(self, task_id):\n        \"\"\"Retrieves a single task by ID.\"\"\"\n        query = \"SELECT * FROM tasks WHERE id = ?;\"\n        with closing(self._get_connection()) as conn:\n            cursor = conn.execute(query, (task_id,))\n            return cursor.fetchone()\n\n    def mark_task_completed(self, task_id):\n        \"\"\"Marks a task as completed.\"\"\"\n        query = \"UPDATE tasks SET completed = 1 WHERE id = ?;\"\n        with closing(self._get_connection()) as conn, conn:\n            conn.execute(query, (task_id,))\n\n# Example usage:\n# db = Database()\n# db.add_task(\"Buy groceries\", \"Milk, Eggs, Bread\", priority=1)\n# db.get_all_tasks()",
+        "language": "python",
+        "purpose": "Handles database connections and operations",
+        "dependencies": [],
+        "interface_id": null,
+        "generated_at": "2026-02-13T22:17:08.737829"
+      },
+      {
+        "path": "src/static/index.html",
+        "content": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>Todo List Application</title>\n    <link rel=\"stylesheet\" href=\"styles.css\">\n</head>\n<body>\n    <div class=\"app-container\">\n        <header>\n            <h1>Todo List</h1>\n        </header>\n        <main>\n            <section class=\"task-input\">\n                <input type=\"text\" id=\"new-task\" placeholder=\"Add a new task...\">\n                <button id=\"add-task-btn\">Add Task</button>\n            </section>\n            <section class=\"task-list\">\n                <ul id=\"tasks\"></ul>\n            </section>\n        </main>\n        <footer>\n            <p>Manage and organize your tasks efficiently</p>\n        </footer>\n    </div>\n    <script src=\"scripts.js\"></script>\n</body>\n</html>",
+        "language": "html",
+        "purpose": "Main HTML file for the frontend UI",
+        "dependencies": [
+          "src/static/styles.css",
+          "src/static/scripts.js"
+        ],
+        "interface_id": null,
+        "generated_at": "2026-02-13T22:17:11.392132"
+      },
+      {
+        "path": "src/static/styles.css",
+        "content": "/* Global Styles */\nbody {\n    font-family: Arial, sans-serif;\n    background-color: #f4f4f9;\n    margin: 0;\n    padding: 0;\n    color: #333;\n}\n\n.container {\n    width: 80%;\n    margin: 0 auto;\n    padding: 20px;\n}\n\n/* Header Styles */\nheader {\n    background-color: #6200ea;\n    color: #fff;\n    padding: 10px 0;\n    text-align: center;\n}\n\nheader h1 {\n    margin: 0;\n    font-size: 2em;\n}\n\n/* Task List Styles */\n.task-list {\n    list-style-type: none;\n    padding: 0;\n}\n\n.task-item {\n    background-color: #fff;\n    margin: 10px 0;\n    padding: 15px;\n    border-radius: 5px;\n    display: flex;\n    justify-content: space-between;\n    align-items: center;\n    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);\n}\n\n.task-item.completed {\n    text-decoration: line-through;\n    opacity: 0.7;\n}\n\n.task-item.high-priority {\n    border-left: 5px solid #ff1744;\n}\n\n.task-item.medium-priority {\n    border-left: 5px solid #ff9100;\n}\n\n.task-item.low-priority {\n    border-left: 5px solid #00e676;\n}\n\n/* Task Controls */\n.task-controls {\n    display: flex;\n    gap: 10px;\n}\n\nbutton {\n    background-color: #6200ea;\n    border: none;\n    color: #fff;\n    padding: 5px 10px;\n    cursor: pointer;\n    border-radius: 3px;\n    transition: background-color 0.3s ease;\n}\n\nbutton:hover {\n    background-color: #3700b3;\n}\n\n/* Form Styles */\nform {\n    background-color: #fff;\n    padding: 20px;\n    margin: 20px 0;\n    border-radius: 5px;\n    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);\n}\n\ninput[type=\"text\"], select {\n    width: calc(100% - 22px);\n    padding: 10px;\n    margin-bottom: 10px;\n    border-radius: 3px;\n    border: 1px solid #ddd;\n}\n\ninput[type=\"submit\"] {\n    width: 100%;\n    padding: 10px;\n    background-color: #6200ea;\n    border: none;\n    color: #fff;\n    font-size: 1em;\n    border-radius: 3px;\n    cursor: pointer;\n    transition: background-color 0.3s ease;\n}\n\ninput[type=\"submit\"]:hover {\n    background-color: #3700b3;\n}",
+        "language": "css",
+        "purpose": "Styles for the frontend UI",
+        "dependencies": [],
+        "interface_id": null,
+        "generated_at": "2026-02-13T22:17:16.105281"
+      },
+      {
+        "path": "src/static/scripts.js",
+        "content": "document.addEventListener(\"DOMContentLoaded\", function() {\n    // Task List\n    const taskList = document.getElementById('task-list');\n\n    // Task Input\n    const taskInput = document.getElementById('task-input');\n\n    // Add Task Button\n    const addTaskButton = document.getElementById('add-task');\n\n    // Event Listener for Adding Tasks\n    addTaskButton.addEventListener('click', function() {\n        const taskText = taskInput.value.trim();\n        if (taskText !== \"\") {\n            addTask(taskText);\n            taskInput.value = '';\n        }\n    });\n\n    // Function to Add Task\n    function addTask(taskText) {\n        const taskItem = document.createElement('li');\n        taskItem.className = 'task-item';\n\n        // Task Content\n        const taskContent = document.createElement('span');\n        taskContent.className = 'task-content';\n        taskContent.textContent = taskText;\n        taskItem.appendChild(taskContent);\n\n        // Task Priority\n        const prioritySelect = document.createElement('select');\n        prioritySelect.className = 'task-priority';\n        ['Low', 'Medium', 'High'].forEach(priority => {\n            const option = document.createElement('option');\n            option.value = priority;\n            option.textContent = priority;\n            prioritySelect.appendChild(option);\n        });\n        taskItem.appendChild(prioritySelect);\n\n        // Completion Checkbox\n        const completionCheckbox = document.createElement('input');\n        completionCheckbox.type = 'checkbox';\n        completionCheckbox.className = 'task-completion';\n        completionCheckbox.addEventListener('change', function() {\n            taskContent.classList.toggle('completed', completionCheckbox.checked);\n        });\n        taskItem.appendChild(completionCheckbox);\n\n        // Edit Button\n        const editButton = document.createElement('button');\n        editButton.className = 'edit-task';\n        editButton.textContent = 'Edit';\n        editButton.addEventListener('click', function() {\n            editTask(taskItem);\n        });\n        taskItem.appendChild(editButton);\n\n        // Delete Button\n        const deleteButton = document.createElement('button');\n        deleteButton.className = 'delete-task';\n        deleteButton.textContent = 'Delete';\n        deleteButton.addEventListener('click', function() {\n            deleteTask(taskItem);\n        });\n        taskItem.appendChild(deleteButton);\n\n        taskList.appendChild(taskItem);\n    }\n\n    // Function to Edit Task\n    function editTask(taskItem) {\n        const taskContent = taskItem.querySelector('.task-content');\n        const newTaskText = prompt(\"Edit Task:\", taskContent.textContent);\n        if (newTaskText !== null) {\n            taskContent.textContent = newTaskText.trim();\n        }\n    }\n\n    // Function to Delete Task\n    function deleteTask(taskItem) {\n        taskList.removeChild(taskItem);\n    }\n});",
+        "language": "javascript",
+        "purpose": "JavaScript for frontend interactions",
+        "dependencies": [],
+        "interface_id": null,
+        "generated_at": "2026-02-13T22:17:21.007612"
+      },
+      {
+        "path": "tests/test_app.py",
+        "content": "import unittest\nfrom src.app import TodoListApp, Task\n\nclass TestTodoListApp(unittest.TestCase):\n\n    def setUp(self):\n        self.app = TodoListApp()\n\n    def test_task_creation(self):\n        task = self.app.create_task(\"Test Task\", priority=3)\n        self.assertIn(task, self.app.tasks)\n        self.assertEqual(task.name, \"Test Task\")\n        self.assertEqual(task.priority, 3)\n        self.assertFalse(task.completed)\n\n    def test_task_editing(self):\n        task = self.app.create_task(\"Old Task\", priority=2)\n        self.app.edit_task(task, name=\"New Task\", priority=5)\n        self.assertEqual(task.name, \"New Task\")\n        self.assertEqual(task.priority, 5)\n\n    def test_task_deletion(self):\n        task = self.app.create_task(\"Delete Task\", priority=1)\n        self.app.delete_task(task)\n        self.assertNotIn(task, self.app.tasks)\n\n    def test_task_prioritization(self):\n        task1 = self.app.create_task(\"Task 1\", priority=1)\n        task2 = self.app.create_task(\"Task 2\", priority=5)\n        task3 = self.app.create_task(\"Task 3\", priority=3)\n        sorted_tasks = self.app.get_tasks_sorted_by_priority()\n        self.assertEqual(sorted_tasks, [task2, task3, task1])\n\n    def test_task_completion(self):\n        task = self.app.create_task(\"Complete Task\", priority=4)\n        self.app.complete_task(task)\n        self.assertTrue(task.completed)\n\nif __name__ == '__main__':\n    unittest.main()",
+        "language": "python",
+        "purpose": "Tests for the application logic",
+        "dependencies": [
+          "src/app.py"
+        ],
+        "interface_id": null,
+        "generated_at": "2026-02-13T22:17:24.595763"
+      },
+      {
+        "path": "tests/test_routes.py",
+        "content": "import unittest\nfrom fastapi.testclient import TestClient\nfrom src.routes import app\n\nclient = TestClient(app)\n\nclass TestTodoListAPI(unittest.TestCase):\n\n    def test_create_task(self):\n        response = client.post(\"/tasks/\", json={\"title\": \"New Task\", \"description\": \"Test task creation\"})\n        self.assertEqual(response.status_code, 201)\n        self.assertIn(\"id\", response.json())\n        self.assertEqual(response.json()[\"title\"], \"New Task\")\n\n    def test_get_tasks(self):\n        response = client.get(\"/tasks/\")\n        self.assertEqual(response.status_code, 200)\n        self.assertIsInstance(response.json(), list)\n\n    def test_edit_task(self):\n        # First create a task to edit\n        create_response = client.post(\"/tasks/\", json={\"title\": \"Task to Edit\", \"description\": \"Edit this task\"})\n        task_id = create_response.json()[\"id\"]\n\n        # Now, edit the task\n        response = client.put(f\"/tasks/{task_id}\", json={\"title\": \"Edited Task\", \"description\": \"Task has been edited\"})\n        self.assertEqual(response.status_code, 200)\n        self.assertEqual(response.json()[\"title\"], \"Edited Task\")\n\n    def test_delete_task(self):\n        # First create a task to delete\n        create_response = client.post(\"/tasks/\", json={\"title\": \"Task to Delete\", \"description\": \"Delete this task\"})\n        task_id = create_response.json()[\"id\"]\n\n        # Now, delete the task\n        response = client.delete(f\"/tasks/{task_id}\")\n        self.assertEqual(response.status_code, 204)\n\n        # Verify the task is deleted\n        get_response = client.get(f\"/tasks/{task_id}\")\n        self.assertEqual(get_response.status_code, 404)\n\n    def test_prioritize_task(self):\n        # First create a task to prioritize\n        create_response = client.post(\"/tasks/\", json={\"title\": \"Task to Prioritize\", \"description\": \"Prioritize this task\"})\n        task_id = create_response.json()[\"id\"]\n\n        # Now, prioritize the task\n        response = client.put(f\"/tasks/{task_id}/prioritize\", json={\"priority\": \"high\"})\n        self.assertEqual(response.status_code, 200)\n        self.assertEqual(response.json()[\"priority\"], \"high\")\n\n    def test_complete_task(self):\n        # First create a task to complete\n        create_response = client.post(\"/tasks/\", json={\"title\": \"Task to Complete\", \"description\": \"Complete this task\"})\n        task_id = create_response.json()[\"id\"]\n\n        # Now, complete the task\n        response = client.put(f\"/tasks/{task_id}/complete\")\n        self.assertEqual(response.status_code, 200)\n        self.assertTrue(response.json()[\"completed\"])\n\nif __name__ == \"__main__\":\n    unittest.main()",
+        "language": "python",
+        "purpose": "Tests for the API endpoints",
+        "dependencies": [
+          "src/routes.py"
+        ],
+        "interface_id": null,
+        "generated_at": "2026-02-13T22:17:29.078457"
+      },
+      {
+        "path": "tests/test_models.py",
+        "content": "import unittest\nfrom src.models.task_model import Task\n\nclass TestTaskModel(unittest.TestCase):\n\n    def setUp(self):\n        self.task = Task(title=\"Sample Task\", description=\"This is a sample task.\", priority=1, completed=False)\n\n    def test_task_creation(self):\n        self.assertEqual(self.task.title, \"Sample Task\")\n        self.assertEqual(self.task.description, \"This is a sample task.\")\n        self.assertEqual(self.task.priority, 1)\n        self.assertFalse(self.task.completed)\n\n    def test_task_editing(self):\n        self.task.title = \"Updated Task\"\n        self.task.description = \"Updated description.\"\n        self.task.priority = 2\n\n        self.assertEqual(self.task.title, \"Updated Task\")\n        self.assertEqual(self.task.description, \"Updated description.\")\n        self.assertEqual(self.task.priority, 2)\n\n    def test_task_completion(self):\n        self.task.completed = True\n        self.assertTrue(self.task.completed)\n\n    def test_task_deletion(self):\n        task_list = [self.task]\n        task_list.remove(self.task)\n        self.assertNotIn(self.task, task_list)\n\n    def test_task_prioritization(self):\n        low_priority_task = Task(title=\"Low Priority Task\", description=\"Another task\", priority=5, completed=False)\n        task_list = [self.task, low_priority_task]\n        task_list.sort(key=lambda x: x.priority)\n        \n        self.assertEqual(task_list[0], self.task)\n        self.assertEqual(task_list[1], low_priority_task)\n\nif __name__ == '__main__':\n    unittest.main()",
+        "language": "python",
+        "purpose": "Tests for the data models",
+        "dependencies": [
+          "src/models/task_model.py"
+        ],
+        "interface_id": null,
+        "generated_at": "2026-02-13T22:17:33.253631"
+      },
+      {
+        "path": "Dockerfile",
+        "content": "# Generated file: Dockerfile",
+        "language": "text",
+        "purpose": "Docker configuration for deployment",
+        "dependencies": [],
+        "interface_id": null,
+        "generated_at": "2026-02-13T22:17:33.253631"
+      },
+      {
+        "path": "docker-compose.yml",
+        "content": "# Generated file: docker-compose.yml",
+        "language": "text",
+        "purpose": "Docker Compose configuration for multi-container setup",
+        "dependencies": [
+          "Dockerfile"
+        ],
+        "interface_id": null,
+        "generated_at": "2026-02-13T22:17:33.253631"
+      }
+    ],
+    "structure": {
+      "root": "generated",
+      "directories": [
+        "src\\static",
+        "src\\controllers",
+        "src\\models",
+        "tests",
+        "src"
+      ],
+      "entry_point": "src/app.py"
+    },
+    "dependencies": [
+      "AWS",
+      "Angular",
+      "Axios",
+      "Cypress",
+      "Django",
+      "Docker",
+      "Express.js",
+      "Fetch API",
+      "Flask",
+      "Heroku",
+      "Jest",
+      "Mocha",
+      "MongoDB",
+      "None",
+      "React",
+      "SQLAlchemy",
+      "Sequelize",
+      "Vue.js",
+      "flask"
+    ],
+    "readme_content": "# Todo List Application\n\nAn application to manage and organize tasks efficiently.\n\n## Features\n\n- Task Creation: Allows users to create new tasks with titles and descriptions.\n- Task Editing: Enables users to edit existing tasks to update details.\n- Task Deletion: Provides functionality to delete tasks that are no longer needed.\n- Task Prioritization: Allows users to set priority levels for tasks to manage them effectively.\n- Task Completion: Enables users to mark tasks as completed.\n\n## Setup\n\n```bash\npip install -r requirements.txt\npython app.py\n```\n\n## Usage\n\nOpen http://localhost:5000 in your browser.\n",
+    "created_at": "2026-02-13T22:17:33.253631"
+  },
+  "test_results": {
+    "logic_passed": false,
+    "bdd_test_cases": [
+      {
+        "test_id": "test_1",
+        "feature": "Task Creation",
+        "scenario": "User can task creation",
+        "given": "User is on the application page",
+        "when": "User performs task creation",
+        "then": "The application should respond correctly",
+        "test_code": "def test_task_creation():\n    # TODO: Implement test for Task Creation",
+        "status": "pending"
+      },
+      {
+        "test_id": "test_2",
+        "feature": "Task Editing",
+        "scenario": "User can task editing",
+        "given": "User is on the application page",
+        "when": "User performs task editing",
+        "then": "The application should respond correctly",
+        "test_code": "def test_task_editing():\n    # TODO: Implement test for Task Editing",
+        "status": "pending"
+      },
+      {
+        "test_id": "test_3",
+        "feature": "Task Deletion",
+        "scenario": "User can task deletion",
+        "given": "User is on the application page",
+        "when": "User performs task deletion",
+        "then": "The application should respond correctly",
+        "test_code": "def test_task_deletion():\n    # TODO: Implement test for Task Deletion",
+        "status": "pending"
+      },
+      {
+        "test_id": "test_4",
+        "feature": "Task Prioritization",
+        "scenario": "User can task prioritization",
+        "given": "User is on the application page",
+        "when": "User performs task prioritization",
+        "then": "The application should respond correctly",
+        "test_code": "def test_task_prioritization():\n    # TODO: Implement test for Task Prioritization",
+        "status": "pending"
+      },
+      {
+        "test_id": "test_5",
+        "feature": "Task Completion",
+        "scenario": "User can task completion",
+        "given": "User is on the application page",
+        "when": "User performs task completion",
+        "then": "The application should respond correctly",
+        "test_code": "def test_task_completion():\n    # TODO: Implement test for Task Completion",
+        "status": "pending"
+      }
+    ],
+    "errors": [
+      {
+        "error_type": "syntax",
+        "file_path": "src/controllers/task_controller.py",
+        "line_number": 73,
+        "error_message": "invalid syntax (<unknown>, line 73)",
+        "stack_trace": null,
+        "suggestion": "Fix the syntax error"
+      },
+      {
+        "error_type": "syntax",
+        "file_path": "src/models/task_model.py",
+        "line_number": 60,
+        "error_message": "invalid syntax (<unknown>, line 60)",
+        "stack_trace": null,
+        "suggestion": "Fix the syntax error"
+      }
+    ],
+    "warnings": [],
+    "visual_verification": null,
+    "execution_time": 0.10767579078674316,
+    "stdout": "",
+    "stderr": "",
+    "timestamp": "2026-02-13T22:17:33.367311"
+  },
+  "is_deployable": false,
+  "deployment_instructions": "To run the application:\n\n1. Navigate to the generated directory:\n   cd generated\n\n2. Install dependencies:\n   pip install -r requirements.txt\n\n3. Run the application:\n   python src/app.py\n\n4. Open http://localhost:5000 in your browser\n",
+  "fix_attempts": 0,
+  "validated_at": "2026-02-13T22:17:33.368312"
+}

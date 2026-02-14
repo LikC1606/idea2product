@@ -1,0 +1,12 @@
+Axios
+Bootstrap
+Express
+Jest
+Material-UI
+Node.js
+PostgreSQL
+React
+Sequelize
+Supertest
+Tailwind CSS
+flask

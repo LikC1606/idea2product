@@ -39,7 +39,7 @@ env/
 .env.local
 
 # Data and generated files
-data/
+# data/  # Temporarily disabled to upload to GitHub
 !data/.gitkeep
 *.db
 *.sqlite

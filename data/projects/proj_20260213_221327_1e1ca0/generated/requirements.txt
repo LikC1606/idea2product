@@ -1,0 +1,9 @@
+Axios
+Bootstrap
+Express
+Jest
+React
+React Testing Library
+SQLAlchemy
+SQLite
+flask

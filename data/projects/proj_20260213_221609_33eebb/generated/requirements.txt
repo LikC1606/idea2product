@@ -1,0 +1,19 @@
+AWS
+Angular
+Axios
+Cypress
+Django
+Docker
+Express.js
+Fetch API
+Flask
+Heroku
+Jest
+Mocha
+MongoDB
+None
+React
+SQLAlchemy
+Sequelize
+Vue.js
+flask
