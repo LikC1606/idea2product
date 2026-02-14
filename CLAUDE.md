@@ -17,18 +17,20 @@ pip install -e .  # Development mode
 ### Environment Variables
 Copy `.env.example` to `.env` and configure:
 - `OPENAI_API_KEY` - Required for LLM calls (uses GPT-4o by default)
-- `OPENAI_BASE_URL` - Custom API endpoint (for compatible APIs like Ollama)
+- `OPENAI_BASE_URL` - Custom API endpoint (e.g., OpenRouter, Azure OpenAI)
 - `GITHUB_TOKEN` - Optional, for code mining features
 - `OPENAI_MODEL` - Default: `gpt-4o`
 - `OPENAI_VLM_MODEL` - For visual verification, default: `gpt-4o`
 
+**Note**: `.env` file takes priority over environment variables. Settings in [config/settings.py](config/settings.py) ensures .env is loaded first.
+
 ### Running the CLI
 ```bash
 python -m src.cli create "Build a todo list app"           # Create new project
-python -m src.cli create "Build a todo app" -i            # Interactive mode with clarification questions
-python -m src.cli create "Build a todo app" -o ./output    # Custom output directory
+python -m src.cli create "Build a todo app" --no-interactive  # Skip clarification
 python -m src.cli status proj_xxx                          # Check project status
 python -m src.cli list                                     # List all projects
+python -m src.cli details proj_xxx                        # View project details
 ```
 
 ### Testing
@@ -101,5 +103,9 @@ data/projects/{project_id}/
 ### Implementation Status
 - **Stage 1**: Fully implemented - Interaction Agent handles both interactive and non-interactive modes
 - **Stage 2**: Implemented - TaskDivision, AlgorithmAnalysis, SchemePlanning agents work
-- **Stage 3**: Implemented - CodeGeneration with dependency resolution (generates missing stubs for config, models, controllers, services)
-- **Stage 4**: Implemented - FullCycleTesting runs actual pytest, FineTuningAgent attempts to fix errors, generates __init__.py files
+- **Stage 3**: Implemented - CodeGeneration with dependency resolution, generates missing stubs for config/models/controllers/services, cleans markdown code blocks
+- **Stage 4**: Implemented - Runs actual pytest tests, FineTuningAgent fixes syntax/import errors, generates __init__.py files
+
+### Documentation
+- [README.md](README.md) - Project overview and quick reference
+- [TUTORIAL.md](TUTORIAL.md) - Step-by-step usage guide with examples
