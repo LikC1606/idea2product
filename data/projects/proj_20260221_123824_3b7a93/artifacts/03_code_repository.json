@@ -1,0 +1,182 @@
+{
+  "skeleton": null,
+  "files": [
+    {
+      "path": "app.py",
+      "content": "\"\"\"\n应用入口\n\"\"\"\nimport os\nfrom app import create_app\n\napp = create_app()\n\nif __name__ == '__main__':\n    host = os.getenv('HOST', '0.0.0.0')\n    port = int(os.getenv('PORT', 5000))\n    debug = os.getenv('DEBUG', 'True').lower() == 'true'\n\n    print(\"=\" * 50)\n    print(f\"Flask App Started: http://localhost:{port}\")\n    print(\"=\" * 50)\n\n    app.run(host=host, port=port, debug=debug)\n",
+      "language": "python",
+      "purpose": "Generated file: app.py",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-21T12:42:01.975662"
+    },
+    {
+      "path": "app_config.py",
+      "content": "import os\nfrom dotenv import load_dotenv\n\nBASE_DIR = os.path.dirname(os.path.abspath(__file__))\nload_dotenv(os.path.join(BASE_DIR, '.env'))\n\n\nclass Config:\n    SECRET_KEY = os.getenv('SECRET_KEY', 'dev-secret-key')\n    SQLALCHEMY_TRACK_MODIFICATIONS = False\n    SQLALCHEMY_DATABASE_URI = os.getenv(\n        'DATABASE_URL',\n        'sqlite:///' + os.path.join(BASE_DIR, 'data.db')\n    )\n\n\nclass DevelopmentConfig(Config):\n    DEBUG = True\n    ENV = 'development'\n\n\nclass ProductionConfig(Config):\n    DEBUG = False\n    ENV = 'production'\n\n\nclass TestingConfig(Config):\n    TESTING = True\n    SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'\n\n\nconfig_by_name = {\n    'development': DevelopmentConfig,\n    'production': ProductionConfig,\n    'testing': TestingConfig,\n    'default': DevelopmentConfig\n}\n\n\ndef get_config():\n    env = os.getenv('FLASK_ENV', 'development')\n    return config_by_name.get(env, DevelopmentConfig)",
+      "language": "python",
+      "purpose": "Generated file: app_config.py",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-21T12:42:01.975767"
+    },
+    {
+      "path": "config.py",
+      "content": "import os\nfrom dotenv import load_dotenv\n\nBASE_DIR = os.path.dirname(os.path.abspath(__file__))\nload_dotenv(os.path.join(BASE_DIR, '.env'))\n\n\nclass Config:\n    SECRET_KEY = os.getenv('SECRET_KEY', 'dev-secret-key')\n    SQLALCHEMY_TRACK_MODIFICATIONS = False\n    SQLALCHEMY_DATABASE_URI = os.getenv(\n        'DATABASE_URL',\n        'sqlite:///' + os.path.join(BASE_DIR, 'data.db')\n    )\n\n\nclass DevelopmentConfig(Config):\n    DEBUG = True\n    ENV = 'development'\n\n\nclass ProductionConfig(Config):\n    DEBUG = False\n    ENV = 'production'\n\n\nclass TestingConfig(Config):\n    TESTING = True\n    SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'\n\n\nconfig_by_name = {\n    'development': DevelopmentConfig,\n    'production': ProductionConfig,\n    'testing': TestingConfig,\n    'default': DevelopmentConfig\n}\n\n\ndef get_config():\n    env = os.getenv('FLASK_ENV', 'development')\n    return config_by_name.get(env, DevelopmentConfig)\n",
+      "language": "python",
+      "purpose": "Generated file: config.py",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-21T12:42:01.975853"
+    },
+    {
+      "path": "requirements.txt",
+      "content": "Flask==2.3.2\nFlask-SQLAlchemy==3.0.5\nFlask-CORS==4.0.0\npython-dotenv==1.0.0\n",
+      "language": "text",
+      "purpose": "Generated file: requirements.txt",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-21T12:42:01.975940"
+    },
+    {
+      "path": "SPEC.md",
+      "content": "# Flask Base Framework Template\n# This file defines the standard Flask project structure\n# AI can read this file as reference to generate code that follows framework conventions\n\n## File Structure\n\nflask_base/\n├── app/\n│   ├── __init__.py      # App factory - register blueprints here\n│   ├── models/\n│   │   └── __init__.py  # Models package\n│   ├── routes/\n│   │   └── __init__.py  # Routes package\n│   ├── static/          # Static files served by Flask\n│   │   └── uploads/     # Uploaded files (images, attachments)\n│   │       └── .gitkeep\n│   └── utils/           # Utility functions\n├── templates/\n│   └── index.html       # Frontend template\n├── config.py            # Multi-environment config\n├── app.py               # Entry point\n├── requirements.txt     # Dependencies\n└── .env                # Environment variables\n\n## Static Files\n\nFlask automatically serves static files from `app/static/`. All CSS, JS, images, and uploaded files should be stored here.\n\n- **CSS/JS/Images**: Store in `app/static/` subdirectories (e.g., `app/static/css/`, `app/static/images/`)\n- **Uploaded files**: Store in `app/static/uploads/` - Flask serves these at `/static/uploads/<filename>`\n- **URL format**: Use `/static/<path>` in HTML templates to reference static files\n\nExample for image upload:\n```python\nUPLOAD_FOLDER = 'app/static/uploads'\n\ndef save_image(image):\n    # Save to app/static/uploads/\n    filename = secure_filename(image.filename)\n    image.save(os.path.join(UPLOAD_FOLDER, filename))\n    # Return URL path: /static/uploads/<filename>\n    return '/static/uploads/' + filename\n```\n\n## Key Interface Specifications Example\n\n### 1. Model Specification (app/models/__init__.py)\n```python\nfrom app import db\n\nclass ModelName(db.Model):\n    __tablename__ = 'table_name'\n\n    id = db.Column(db.Integer, primary_key=True)\n    # Other fields...\n\n    def to_dict(self):\n        return {\n            'id': self.id,\n            # Other fields...\n        }\n```\n\n### 2. Route Specification (app/routes/xxx.py)\n```python\nfrom flask import Blueprint, request, jsonify\nfrom app import db\nfrom app.models.xxx import ModelName\n\nxxx_bp = Blueprint('xxx', __name__)\n\n@xxx_bp.route('/xxx', methods=['GET'])\ndef get_xxx():\n    items = ModelName.query.all()\n    return jsonify([item.to_dict() for item in items])\n\n@xxx_bp.route('/xxx', methods=['POST'])\ndef create_xxx():\n    data = request.get_json()\n    item = ModelName(field=data['field'])\n    db.session.add(item)\n    db.session.commit()\n    return jsonify(item.to_dict()), 201\n```\n\n### 3. Blueprint Registration Specification (app/__init__.py)\n```python\n# Import blueprints\nfrom app.routes.xxx import xxx_bp\n\n# Register blueprints\napp.register_blueprint(xxx_bp, url_prefix='/api')\n```\n\n### 4. Frontend Template Specification (templates/xxx.html)\n```html\n<!DOCTYPE html>\n<html>\n<head>\n    <title>Title</title>\n    <script>\n        const API_BASE = '/api';\n        // Use fetch to call API\n    </script>\n</head>\n<body>\n    <!-- Page content -->\n</body>\n</html>\n```\n\n### 5. Frontend Route Specification (app/__init__.py)\n```python\n# Frontend route - serves the main HTML page\n@app.route('/')\ndef index():\n    return render_template('index.html')\n\n# Or for single-page applications:\n@app.route('/<path:catch_all>')\ndef spa(catch_all):\n    return render_template('index.html')\n```\n\n## Common Modification Files\n\n1. **app/__init__.py** - Register new blueprints AND add frontend routes\n2. **app/models/__init__.py** - Add new model imports\n3. **app/routes/__init__.py** - Add new route imports\n4. **app/routes/xxx.py** - Create new route file\n5. **app/models/xxx.py** - Create new model file\n6. **templates/xxx.html** - Create new frontend page\n7. **app/static/uploads/** - Uploaded files directory\n8. **config.py** - Add configuration (optional)\n9. **requirements.txt** - Add dependencies (optional)\n\n## Frontend Routing\n\nFor a complete web application, you need both:\n- **API routes**: `/api/xxx` - Handle data operations (JSON)\n- **Frontend routes**: `/` or `/xxx` - Serve HTML pages\n\nExample frontend route setup:\n```python\nfrom flask import Flask, render_template\n\napp = Flask(__name__)\n\n# Serve main page\n@app.route('/')\ndef index():\n    return render_template('index.html')\n\n# Serve specific pages\n@app.route('/notes')\ndef notes_page():\n    return render_template('notes.html')\n\n# SPA mode - catch all routes\n@app.route('/<path:catch_all>')\ndef spa(catch_all):\n    return render_template('index.html')\n```\n",
+      "language": "markdown",
+      "purpose": "Generated file: SPEC.md",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-21T12:42:01.976032"
+    },
+    {
+      "path": "test_config.py",
+      "content": "from config import config_by_name\n\ndef test_config():\n    try:\n        config = config_by_name['development']\n        print(\"Config loaded successfully:\", config)\n    except Exception as e:\n        print(\"Error loading config:\", e)\n\nif __name__ == \"__main__\":\n    test_config()",
+      "language": "python",
+      "purpose": "Generated file: test_config.py",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-21T12:42:01.976116"
+    },
+    {
+      "path": "app\\__init__.py",
+      "content": "\"\"\"\nFlask 应用工厂\n框架代码，不包含具体业务逻辑\n\"\"\"\nimport os\nfrom flask import Flask, render_template\nfrom flask_sqlalchemy import SQLAlchemy\nfrom flask_cors import CORS\nfrom app_config import config_by_name\n\ndb = SQLAlchemy()\n\n# 项目根目录\nBASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))\n\n\ndef create_app(config_name=None):\n    \"\"\"应用工厂函数\"\"\"\n    # 设置模板路径\n    template_dir = os.path.join(BASE_DIR, 'templates')\n    app = Flask(__name__, template_folder=template_dir)\n\n    # 加载配置\n    if config_name:\n        app.config.from_object(config_name)\n    else:\n        app.config.from_object(config_by_name['default'])\n\n    # 初始化扩展\n    db.init_app(app)\n\n    # CORS 支持\n    CORS(app)\n\n    # ==== 在这里注册业务蓝图 ====\n    # from app.routes.xxx import xxx_bp\n    # app.register_blueprint(xxx_bp, url_prefix='/api')\n    # ==============================\n\n    @app.route('/blogs/new')\n    def create_blog():\n        return render_template('create_blog.html')\n\n    @app.route('/blogs')\n    def blog_list():\n        return render_template('blog_list.html')\n\n    from app.routes.blog_routes import blog_bp\n    from app.routes.comment_routes import comment_bp\n    app.register_blueprint(blog_bp, url_prefix='/api/blogs')\n    app.register_blueprint(comment_bp, url_prefix='/api/comments')\n    from app.routes.image_upload_routes import image_upload_bp\n    app.register_blueprint(image_upload_bp, url_prefix='/api')\n\n    @app.route('/blogs/<int:blog_id>')\n    def blog_detail(blog_id):\n        return render_template('blog_detail.html')\n\n    # 首页路由\n    @app.route('/')\n    def index():\n        return render_template('index.html')\n\n    # 健康检查\n    @app.route('/health')\n    def health():\n        return {'status': 'ok'}\n\n    # 创建数据库表\n    with app.app_context():\n        db.create_all()\n\n    return app\n",
+      "language": "python",
+      "purpose": "Generated file: app\\__init__.py",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-21T12:42:01.976313"
+    },
+    {
+      "path": "templates\\blog_detail.html",
+      "content": "<!DOCTYPE html>\n<html>\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>Blog Detail</title>\n    <style>\n        body {\n            font-family: 'Arial', sans-serif;\n            margin: 40px;\n            background-color: #f9f9f9;\n            color: #333;\n            line-height: 1.6;\n        }\n        .blog {\n            border: 1px solid #ddd;\n            border-radius: 8px;\n            padding: 20px;\n            margin-bottom: 20px;\n            background-color: #fff;\n            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);\n        }\n        .blog img {\n            max-width: 100%;\n            height: auto;\n            border-radius: 8px;\n        }\n        .comments {\n            margin-top: 40px;\n        }\n        .comment {\n            border-top: 1px solid #ddd;\n            padding: 10px 0;\n        }\n        form {\n            margin-top: 20px;\n            background-color: #fff;\n            padding: 20px;\n            border-radius: 8px;\n            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);\n        }\n        label {\n            display: block;\n            margin-top: 10px;\n            font-weight: bold;\n        }\n        input, textarea {\n            width: 100%;\n            padding: 10px;\n            margin-top: 5px;\n            border: 1px solid #ddd;\n            border-radius: 4px;\n        }\n        button {\n            margin-top: 10px;\n            padding: 10px 20px;\n            background-color: #4CAF50;\n            color: white;\n            border: none;\n            border-radius: 4px;\n            cursor: pointer;\n        }\n        button:hover {\n            background-color: #45a049;\n        }\n    </style>\n</head>\n<body>\n    <div class=\"blog\">\n        <h1 id=\"blog-title\"></h1>\n        <p id=\"blog-description\"></p>\n        <img id=\"blog-image\" alt=\"Blog Image\">\n        <p>Created at: <span id=\"blog-created-at\"></span></p>\n    </div>\n\n    <div class=\"comments\">\n        <h2>Comments</h2>\n        <div id=\"comments-list\">\n            <!-- Comments will be dynamically loaded here -->\n        </div>\n\n        <form id=\"commentForm\">\n            <label for=\"author\">Your Name</label>\n            <input type=\"text\" id=\"author\" name=\"author\" required>\n\n            <label for=\"content\">Your Comment</label>\n            <textarea id=\"content\" name=\"content\" required></textarea>\n\n            <button type=\"submit\">Add Comment</button>\n        </form>\n    </div>\n\n    <script>\n        const blogId = window.location.pathname.split('/').pop();\n\n        async function fetchBlog() {\n            const response = await fetch(`/api/blogs/${blogId}`);\n            const blog = await response.json();\n\n            document.getElementById('blog-title').textContent = blog.title;\n            document.getElementById('blog-description').textContent = blog.description;\n            document.getElementById('blog-image').src = blog.image_url;\n            document.getElementById('blog-created-at').textContent = new Date(blog.created_at).toLocaleString();\n        }\n\n        async function fetchComments() {\n            const response = await fetch(`/api/comments/${blogId}`);\n            const comments = await response.json();\n            const commentsList = document.getElementById('comments-list');\n            commentsList.innerHTML = '';\n\n            comments.forEach(comment => {\n                const commentDiv = document.createElement('div');\n                commentDiv.className = 'comment';\n                commentDiv.innerHTML = `\n                    <p><strong>${comment.author}</strong> says:</p>\n                    <p>${comment.content}</p>\n                    <p><small>${new Date(comment.created_at).toLocaleString()}</small></p>\n                `;\n                commentsList.appendChild(commentDiv);\n            });\n        }\n\n        document.getElementById('commentForm').addEventListener('submit', async (event) => {\n            event.preventDefault();\n\n            const author = document.getElementById('author').value;\n            const content = document.getElementById('content').value;\n\n            const response = await fetch('/api/comments', {\n                method: 'POST',\n                headers: {\n                    'Content-Type': 'application/json'\n                },\n                body: JSON.stringify({\n                    blog_id: blogId,\n                    author,\n                    content\n                })\n            });\n\n            if (response.ok) {\n                document.getElementById('author').value = '';\n                document.getElementById('content').value = '';\n                fetchComments();\n            } else {\n                alert('Failed to add comment.');\n            }\n        });\n\n        fetchBlog();\n        fetchComments();\n    </script>\n</body>\n</html>",
+      "language": "html",
+      "purpose": "Generated file: templates\\blog_detail.html",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-21T12:42:01.976452"
+    },
+    {
+      "path": "templates\\blog_list.html",
+      "content": "<!DOCTYPE html>\n<html>\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>Blog List</title>\n    <style>\n        body {\n            font-family: 'Arial', sans-serif;\n            margin: 40px;\n            background-color: #f9f9f9;\n            color: #333;\n            line-height: 1.6;\n        }\n        .blog {\n            border: 1px solid #ddd;\n            border-radius: 8px;\n            padding: 20px;\n            margin-bottom: 20px;\n            background-color: #fff;\n            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);\n        }\n        .blog img {\n            max-width: 100%;\n            height: auto;\n            border-radius: 8px;\n        }\n        h1 {\n            text-align: center;\n            color: #4CAF50;\n        }\n    </style>\n</head>\n<body>\n    <h1>Blog List</h1>\n    <div id=\"blogs\">\n        <!-- Blogs will be dynamically loaded here -->\n    </div>\n    <script>\n        async function fetchBlogs() {\n            const response = await fetch('/api/blogs');\n            const blogs = await response.json();\n            const blogsContainer = document.getElementById('blogs');\n\n            blogs.forEach(blog => {\n                const blogDiv = document.createElement('div');\n                blogDiv.className = 'blog';\n                blogDiv.innerHTML = `\n                    <h2>${blog.title}</h2>\n                    <p>${blog.description}</p>\n                    <img src=\"${blog.image_url}\" alt=\"Blog Image\">\n                    <p>Created at: ${new Date(blog.created_at).toLocaleString()}</p>\n                `;\n                blogsContainer.appendChild(blogDiv);\n            });\n        }\n\n        fetchBlogs();\n    </script>\n</body>\n</html>",
+      "language": "html",
+      "purpose": "Generated file: templates\\blog_list.html",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-21T12:42:01.976533"
+    },
+    {
+      "path": "templates\\create_blog.html",
+      "content": "<!DOCTYPE html>\n<html>\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>Create Blog</title>\n    <style>\n        body {\n            font-family: 'Arial', sans-serif;\n            margin: 40px;\n            background-color: #f9f9f9;\n            color: #333;\n            line-height: 1.6;\n        }\n        form {\n            max-width: 600px;\n            margin: auto;\n            background-color: #fff;\n            padding: 20px;\n            border-radius: 8px;\n            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);\n        }\n        label {\n            display: block;\n            margin-top: 10px;\n            font-weight: bold;\n        }\n        input, textarea {\n            width: 100%;\n            padding: 10px;\n            margin-top: 5px;\n            border: 1px solid #ddd;\n            border-radius: 4px;\n        }\n        button {\n            margin-top: 20px;\n            padding: 10px 20px;\n            background-color: #4CAF50;\n            color: white;\n            border: none;\n            border-radius: 4px;\n            cursor: pointer;\n        }\n        button:hover {\n            background-color: #45a049;\n        }\n        h1 {\n            text-align: center;\n            color: #4CAF50;\n        }\n    </style>\n</head>\n<body>\n    <h1>Create Blog</h1>\n    <form id=\"createBlogForm\">\n        <label for=\"title\">Title</label>\n        <input type=\"text\" id=\"title\" name=\"title\" required>\n\n        <label for=\"description\">Description</label>\n        <textarea id=\"description\" name=\"description\" required></textarea>\n\n        <label for=\"image\">Image</label>\n        <input type=\"file\" id=\"image\" name=\"image\" accept=\"image/*\" required>\n\n        <button type=\"submit\">Create Blog</button>\n    </form>\n\n    <script>\n        document.getElementById('createBlogForm').addEventListener('submit', async (event) => {\n            event.preventDefault();\n\n            const formData = new FormData();\n            formData.append('title', document.getElementById('title').value);\n            formData.append('description', document.getElementById('description').value);\n            formData.append('image', document.getElementById('image').files[0]);\n\n            const response = await fetch('/api/upload', {\n                method: 'POST',\n                body: formData\n            });\n\n            const imageUploadResult = await response.json();\n\n            if (imageUploadResult.url) {\n                const blogResponse = await fetch('/api/blogs', {\n                    method: 'POST',\n                    headers: {\n                        'Content-Type': 'application/json'\n                    },\n                    body: JSON.stringify({\n                        title: document.getElementById('title').value,\n                        description: document.getElementById('description').value,\n                        image_url: imageUploadResult.url\n                    })\n                });\n\n                if (blogResponse.ok) {\n                    alert('Blog created successfully!');\n                    window.location.href = '/';\n                } else {\n                    alert('Failed to create blog.');\n                }\n            } else {\n                alert('Failed to upload image.');\n            }\n        });\n    </script>\n</body>\n</html>",
+      "language": "html",
+      "purpose": "Generated file: templates\\create_blog.html",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-21T12:42:01.976605"
+    },
+    {
+      "path": "templates\\index.html",
+      "content": "<!DOCTYPE html>\n<html>\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>Welcome</title>\n    <style>\n        body {\n            font-family: 'Arial', sans-serif;\n            margin: 40px;\n            background-color: #f9f9f9;\n            color: #333;\n            line-height: 1.6;\n        }\n        nav {\n            margin-bottom: 20px;\n            text-align: center;\n        }\n        nav a {\n            margin-right: 15px;\n            text-decoration: none;\n            color: #4CAF50;\n            font-weight: bold;\n        }\n        nav a:hover {\n            text-decoration: underline;\n        }\n        h1 {\n            text-align: center;\n            color: #4CAF50;\n        }\n        p {\n            text-align: center;\n        }\n    </style>\n</head>\n<body>\n    <h1>Welcome to the Blog App</h1>\n    <nav>\n        <a href=\"/\">Home</a>\n        <a href=\"/blogs/new\">Create Blog</a>\n        <a href=\"/blogs\">View Blogs</a>\n    </nav>\n    <p>Explore and share your thoughts with the world!</p>\n</body>\n</html>",
+      "language": "html",
+      "purpose": "Generated file: templates\\index.html",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-21T12:42:01.976675"
+    },
+    {
+      "path": "app\\models\\blog.py",
+      "content": "from datetime import datetime\nfrom app.database import db\n\nclass Blog(db.Model):\n    __tablename__ = 'blogs'\n\n    id = db.Column(db.Integer, primary_key=True)\n    title = db.Column(db.String(255), nullable=False)\n    description = db.Column(db.Text, nullable=False)\n    image_url = db.Column(db.String(255), nullable=True)\n    created_at = db.Column(db.DateTime, default=datetime.utcnow)\n\n    def to_dict(self):\n        return {\n            'id': self.id,\n            'title': self.title,\n            'description': self.description,\n            'image_url': self.image_url,\n            'created_at': self.created_at.isoformat()\n        }",
+      "language": "python",
+      "purpose": "Generated file: app\\models\\blog.py",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-21T12:42:01.976902"
+    },
+    {
+      "path": "app\\models\\comment.py",
+      "content": "from datetime import datetime\nfrom app.database import db\n\nclass Comment(db.Model):\n    __tablename__ = 'comments'\n\n    id = db.Column(db.Integer, primary_key=True)\n    blog_id = db.Column(db.Integer, db.ForeignKey('blogs.id'), nullable=False)\n    content = db.Column(db.Text, nullable=False)\n    author = db.Column(db.String(255), nullable=False)\n    created_at = db.Column(db.DateTime, default=datetime.utcnow)\n\n    def to_dict(self):\n        return {\n            'id': self.id,\n            'blog_id': self.blog_id,\n            'content': self.content,\n            'author': self.author,\n            'created_at': self.created_at.isoformat()\n        }",
+      "language": "python",
+      "purpose": "Generated file: app\\models\\comment.py",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-21T12:42:01.976995"
+    },
+    {
+      "path": "app\\models\\__init__.py",
+      "content": "# 模型包\n# 在这里添加业务模型\nfrom app.models.blog import Blog\nfrom app.models.comment import Comment\n\n__all__ = ['Blog', 'Comment']\n",
+      "language": "python",
+      "purpose": "Generated file: app\\models\\__init__.py",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-21T12:42:01.977069"
+    },
+    {
+      "path": "app\\routes\\blog_routes.py",
+      "content": "from flask import Blueprint, request, jsonify\nfrom app.models.blog import Blog\nfrom app.database import db\n\nblog_bp = Blueprint('blogs', __name__)\n\n@blog_bp.route('/', methods=['GET'])\ndef get_blogs():\n    blogs = Blog.query.all()\n    return jsonify([blog.to_dict() for blog in blogs])\n\n@blog_bp.route('/', methods=['POST'])\ndef create_blog():\n    data = request.json\n    new_blog = Blog(\n        title=data['title'],\n        description=data['description'],\n        image_url=data.get('image_url')\n    )\n    db.session.add(new_blog)\n    db.session.commit()\n    return jsonify(new_blog.to_dict()), 201\n\n@blog_bp.route('/<int:blog_id>', methods=['GET'])\ndef get_blog(blog_id):\n    blog = Blog.query.get_or_404(blog_id)\n    return jsonify(blog.to_dict())\n\n@blog_bp.route('/<int:blog_id>', methods=['PUT'])\ndef update_blog(blog_id):\n    blog = Blog.query.get_or_404(blog_id)\n    data = request.json\n    blog.title = data['title']\n    blog.description = data['description']\n    blog.image_url = data.get('image_url')\n    db.session.commit()\n    return jsonify(blog.to_dict())\n\n@blog_bp.route('/<int:blog_id>', methods=['DELETE'])\ndef delete_blog(blog_id):\n    blog = Blog.query.get_or_404(blog_id)\n    db.session.delete(blog)\n    db.session.commit()\n    return jsonify({'message': 'Blog deleted successfully'})",
+      "language": "python",
+      "purpose": "Generated file: app\\routes\\blog_routes.py",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-21T12:42:01.977180"
+    },
+    {
+      "path": "app\\routes\\comment_routes.py",
+      "content": "from flask import Blueprint, request, jsonify\nfrom app.models.comment import Comment\nfrom app.database import db\n\ncomment_bp = Blueprint('comments', __name__)\n\n@comment_bp.route('/', methods=['POST'])\ndef add_comment():\n    data = request.get_json()\n    blog_id = data.get('blog_id')\n    content = data.get('content')\n    author = data.get('author')\n\n    if not blog_id or not content or not author:\n        return jsonify({'error': 'Missing required fields'}), 400\n\n    comment = Comment(blog_id=blog_id, content=content, author=author)\n    db.session.add(comment)\n    db.session.commit()\n\n    return jsonify(comment.to_dict()), 201\n\n@comment_bp.route('/<int:comment_id>', methods=['DELETE'])\ndef delete_comment(comment_id):\n    comment = Comment.query.get(comment_id)\n    if not comment:\n        return jsonify({'error': 'Comment not found'}), 404\n\n    db.session.delete(comment)\n    db.session.commit()\n\n    return jsonify({'message': 'Comment deleted successfully'}), 200\n\n@comment_bp.route('/<int:blog_id>', methods=['GET'])\ndef get_comments(blog_id):\n    comments = Comment.query.filter_by(blog_id=blog_id).all()\n    return jsonify([comment.to_dict() for comment in comments]), 200",
+      "language": "python",
+      "purpose": "Generated file: app\\routes\\comment_routes.py",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-21T12:42:01.977256"
+    },
+    {
+      "path": "app\\routes\\image_upload_routes.py",
+      "content": "import os\nfrom flask import Blueprint, request, jsonify\nfrom werkzeug.utils import secure_filename\n\nimage_upload_bp = Blueprint('image_upload', __name__)\n\nUPLOAD_FOLDER = 'app/static/uploads'\nALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}\n\ndef allowed_file(filename):\n    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS\n\n@image_upload_bp.route('/upload', methods=['POST'])\ndef upload_image():\n    if 'file' not in request.files:\n        return jsonify({'error': 'No file part'}), 400\n\n    file = request.files['file']\n\n    if file.filename == '':\n        return jsonify({'error': 'No selected file'}), 400\n\n    if file and allowed_file(file.filename):\n        filename = secure_filename(file.filename)\n        file_path = os.path.join(UPLOAD_FOLDER, filename)\n        file.save(file_path)\n        file_url = f'/static/uploads/{filename}'\n        return jsonify({'url': file_url}), 201\n\n    return jsonify({'error': 'File type not allowed'}), 400",
+      "language": "python",
+      "purpose": "Generated file: app\\routes\\image_upload_routes.py",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-21T12:42:01.977330"
+    },
+    {
+      "path": "app\\routes\\__init__.py",
+      "content": "# 路由包\n# 在这里注册业务蓝图\nfrom app.routes.blog_routes import blog_bp\n__all__ = ['blog_bp', 'comment_bp']\n",
+      "language": "python",
+      "purpose": "Generated file: app\\routes\\__init__.py",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-21T12:42:01.977401"
+    }
+  ],
+  "structure": {
+    "root": "generated",
+    "directories": [
+      "templates",
+      "app\\models",
+      "app\\routes",
+      "app"
+    ],
+    "entry_point": "app.py"
+  },
+  "dependencies": [
+    "flask"
+  ],
+  "readme_content": "# Relaxed Blog Creator\n\nA simple and beautiful blog webpage that allows users to create posts with titles, descriptions, and images. Users can also comment on blog posts to engage with the content.\n\n## Setup\n```bash\npip install -r requirements.txt\npython app.py\n```\n\n## Features\n- Create Blog Posts: Users can create blog posts by adding a title, description, and uploading images.\n- Image Upload: Users can upload images to include in their blog posts, enhancing the visual appeal of the content.\n- Commenting System: Users can leave comments on blog posts to interact and share their thoughts.\n- Bright and Relaxed Design: The webpage will feature a bright, beautiful, and relaxed design to provide a pleasant user experience.",
+  "created_at": "2026-02-21T12:42:01.977828"
+}

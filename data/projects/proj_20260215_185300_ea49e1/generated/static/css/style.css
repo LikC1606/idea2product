@@ -1,0 +1,142 @@
+/* File: static/css/style.css */
+/* Purpose: Frontend styles for ACM Problem-Solving Platform */
+
+/* General Reset */
+body, h1, h2, h3, h4, h5, h6, p, ul, ol, li, a {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* Body styling */
+body {
+  font-family: 'Arial', sans-serif;
+  background-color: #f8f9fa;
+  color: #212529;
+  line-height: 1.6;
+}
+
+/* Header */
+header {
+  background-color: #343a40;
+  color: #ffffff;
+  padding: 1rem 2rem;
+  text-align: center;
+}
+
+header a {
+  color: #ffc107;
+  text-decoration: none;
+}
+
+header a:hover {
+  text-decoration: underline;
+}
+
+/* Navigation */
+nav {
+  display: flex;
+  justify-content: center;
+  background-color: #495057;
+  padding: 0.5rem 0;
+}
+
+nav a {
+  color: #ffffff;
+  margin: 0 1rem;
+  text-decoration: none;
+}
+
+nav a:hover {
+  color: #ffc107;
+}
+
+/* Main Content */
+main {
+  padding: 2rem;
+}
+
+main h1 {
+  font-size: 2.5rem;
+  color: #343a40;
+  margin-bottom: 1rem;
+}
+
+main p {
+  font-size: 1.125rem;
+  margin-bottom: 1.5rem;
+}
+
+/* Buttons */
+button {
+  background-color: #007bff;
+  color: #ffffff;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 0.25rem;
+  cursor: pointer;
+}
+
+button:hover {
+  background-color: #0056b3;
+}
+
+/* Footer */
+footer {
+  background-color: #343a40;
+  color: #ffffff;
+  text-align: center;
+  padding: 1rem 0;
+}
+
+footer a {
+  color: #ffc107;
+  text-decoration: none;
+}
+
+footer a:hover {
+  text-decoration: underline;
+}
+
+/* Problem List */
+.problem-list {
+  list-style: none;
+  padding: 0;
+}
+
+.problem-list li {
+  background-color: #ffffff;
+  border: 1px solid #ced4da;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  border-radius: 0.25rem;
+}
+
+.problem-list li:hover {
+  background-color: #f1f3f5;
+}
+
+/* Leaderboard Table */
+.leaderboard {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 2rem;
+}
+
+.leaderboard th, .leaderboard td {
+  border: 1px solid #ced4da;
+  padding: 0.75rem;
+  text-align: left;
+}
+
+.leaderboard th {
+  background-color: #e9ecef;
+}
+
+.leaderboard tr:nth-child(even) {
+  background-color: #f8f9fa;
+}
+
+.leaderboard tr:hover {
+  background-color: #e2e6ea;
+}

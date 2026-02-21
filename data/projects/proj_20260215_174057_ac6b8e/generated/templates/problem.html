@@ -1,0 +1,82 @@
+<!-- templates/problem.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Problem Detail | ACM Problem-Solving Platform</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <header>
+        <nav>
+            <a href="/">Home</a>
+            <a href="/problems">Problems</a>
+            <a href="/profile">Profile</a>
+            <a href="/leaderboard">Leaderboard</a>
+        </nav>
+    </header>
+    
+    <main>
+        <div class="problem-container">
+            <h1>{{ problem.title }}</h1>
+            <p><strong>Difficulty:</strong> {{ problem.difficulty }}</p>
+            <p><strong>Category:</strong> {{ problem.category }}</p>
+            
+            <section>
+                <h2>Description:</h2>
+                <p>{{ problem.description }}</p>
+            </section>
+            
+            <section>
+                <h2>Input Format:</h2>
+                <p>{{ problem.input_format }}</p>
+            </section>
+            
+            <section>
+                <h2>Output Format:</h2>
+                <p>{{ problem.output_format }}</p>
+            </section>
+            
+            <section>
+                <h2>Hints:</h2>
+                <ul>
+                    {% for hint in problem.hints %}
+                        <li>{{ hint }}</li>
+                    {% endfor %}
+                </ul>
+            </section>
+            
+            <section>
+                <h2>Solutions:</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Username</th>
+                            <th>Submission Time</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for solution in solutions %}
+                        <tr>
+                            <td>{{ solution.user.username }}</td>
+                            <td>{{ solution.submission_time }}</td>
+                            <td>{{ solution.status }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </section>
+            
+            <section>
+                <a href="/problems/{{ problem.id }}/submit" class="submit-btn">Submit Your Solution</a>
+            </section>
+        </div>
+    </main>
+    
+    <footer>
+        <p>&copy; 2023 ACM Problem-Solving Platform</p>
+    </footer>
+</body>
+</html>

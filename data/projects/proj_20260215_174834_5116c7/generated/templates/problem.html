@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}Problem Detail{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1 class="text-center">{{ problem.title }}</h1>
+    <hr>
+    <div class="problem-details">
+        <h4>Description</h4>
+        <p>{{ problem.description }}</p>
+
+        <h4>Input Format</h4>
+        <p>{{ problem.input_format }}</p>
+
+        <h4>Output Format</h4>
+        <p>{{ problem.output_format }}</p>
+
+        <h4>Constraints</h4>
+        <pre>{{ problem.constraints }}</pre>
+    </div>
+    
+    <div class="problem-actions mt-5">
+        {% if current_user.is_authenticated %}
+            <a href="{{ url_for('solution_blueprint.submit_solution', problem_id=problem.id) }}" class="btn btn-primary">Submit Solution</a>
+        {% else %}
+            <p class="text-danger">Please <a href="{{ url_for('user_blueprint.login') }}">log in</a> to submit solutions.</p>
+        {% endif %}
+    </div>
+    
+    <div class="solutions mt-5">
+        <h4>Solutions</h4>
+        {% if solutions %}
+            <ul class="list-group">
+                {% for solution in solutions %}
+                    <li class="list-group-item">
+                        <strong>User:</strong> {{ solution.user.username }} <br>
+                        <strong>Submission Date:</strong> {{ solution.submitted_at.strftime('%Y-%m-%d %H:%M:%S') }} <br>
+                        <strong>Status:</strong> {{ solution.status }}
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p>No solutions submitted yet for this problem.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Profile</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <header>
+        <h1>ACM Problem-Solving Platform</h1>
+        <nav>
+            <ul>
+                <li><a href="/">Home</a></li>
+                <li><a href="/problems">Problems</a></li>
+                <li><a href="/profile">Profile</a></li>
+                <li><a href="/logout">Logout</a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        <section id="user-info">
+            <h2>User Profile</h2>
+            <p><strong>Name:</strong> {{ user.name }}</p>
+            <p><strong>Email:</strong> {{ user.email }}</p>
+            <p><strong>Joined:</strong> {{ user.join_date }}</p>
+        </section>
+        <section id="stats">
+            <h3>Statistics</h3>
+            <ul>
+                <li><strong>Problems Solved:</strong> {{ user.problems_solved }}</li>
+                <li><strong>Submissions:</strong> {{ user.submissions_count }}</li>
+                <li><strong>Rank:</strong> {{ user.rank }}</li>
+            </ul>
+        </section>
+        <section id="recent-activity">
+            <h3>Recent Activity</h3>
+            <ul>
+                {% for activity in user.recent_activity %}
+                <li>{{ activity }}</li>
+                {% endfor %}
+            </ul>
+        </section>
+    </main>
+    <footer>
+        <p>&copy; 2023 ACM Problem-Solving Platform</p>
+    </footer>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

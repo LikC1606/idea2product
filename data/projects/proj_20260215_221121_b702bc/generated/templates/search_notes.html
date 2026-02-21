@@ -1,0 +1,32 @@
+{% extends 'base.html' %}
+
+{% block title %}
+    Search Notes
+{% endblock %}
+
+{% block content %}
+    <div class="container mt-4">
+        <h1>Search Notes</h1>
+        <form method="GET" action="{{ url_for('routes_bp.search_notes') }}" class="form-inline my-2 my-lg-0">
+            <div class="form-group">
+                <input type="text" class="form-control mr-2" name="q" placeholder="Search notes..." required>
+            </div>
+            <button type="submit" class="btn btn-primary">Search</button>
+        </form>
+        <hr>
+        <h2>Search Results</h2>
+        {% if notes %}
+            <ul class="list-group">
+                {% for note in notes %}
+                    <li class="list-group-item">
+                        <h5>{{ note.title }}</h5>
+                        <p>{{ note.content }}</p>
+                        <a href="{{ url_for('routes_bp.get_note_by_id', note_id=note.id) }}" class="btn btn-link">View Note</a>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p>No notes found matching your query.</p>
+        {% endif %}
+    </div>
+{% endblock %}

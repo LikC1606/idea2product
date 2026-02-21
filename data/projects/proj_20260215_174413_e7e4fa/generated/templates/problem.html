@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Problem Detail</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <header>
+        <nav>
+            <ul>
+                <li><a href="/">Home</a></li>
+                <li><a href="/problems">Problem Library</a></li>
+                <li><a href="/leaderboard">Leaderboard</a></li>
+                <li><a href="/profile">Profile</a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        <section class="problem-detail">
+            <h1>{{ problem.title }}</h1>
+            <p><strong>Difficulty:</strong> {{ problem.difficulty }}</p>
+            <p><strong>Category:</strong> {{ problem.category }}</p>
+            <p><strong>Author:</strong> {{ problem.author.name }}</p>
+            <hr>
+            <div class="problem-description">
+                <h2>Description</h2>
+                <p>{{ problem.description }}</p>
+            </div>
+            <div class="problem-input">
+                <h2>Input</h2>
+                <p>{{ problem.input_description }}</p>
+            </div>
+            <div class="problem-output">
+                <h2>Output</h2>
+                <p>{{ problem.output_description }}</p>
+            </div>
+            <div class="example-section">
+                <h2>Examples</h2>
+                <div class="example">
+                    <h3>Input</h3>
+                    <pre>{{ problem.example_input }}</pre>
+                    <h3>Output</h3>
+                    <pre>{{ problem.example_output }}</pre>
+                </div>
+            </div>
+            <hr>
+            <div class="submission-section">
+                <h2>Submit Your Solution</h2>
+                <form action="/solutions/{{ problem.id }}/submit" method="POST" enctype="multipart/form-data">
+                    <textarea name="code" rows="10" placeholder="Write your solution here..." required></textarea>
+                    <button type="submit">Submit</button>
+                </form>
+            </div>
+        </section>
+    </main>
+    <footer>
+        <p>&copy; ACM Problem-Solving Platform</p>
+    </footer>
+</body>
+</html>

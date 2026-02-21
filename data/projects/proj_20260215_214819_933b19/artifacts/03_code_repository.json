@@ -1,0 +1,166 @@
+{
+  "skeleton": null,
+  "files": [
+    {
+      "path": "templates/index.html",
+      "content": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>Note-Taking Application</title>\n    <link rel=\"stylesheet\" href=\"/static/styles.css\">\n</head>\n<body>\n    <header>\n        <h1>Welcome to Note-Taking Application</h1>\n        <nav>\n            <ul>\n                <li><a href=\"/create\">Create Note</a></li>\n                <li><a href=\"/organize\">Organize Notes</a></li>\n                <li><a href=\"/search\">Search Notes</a></li>\n            </ul>\n        </nav>\n    </header>\n    <main>\n        <section>\n            <h2>About the App</h2>\n            <p>This application allows you to create, organize, and manage your notes efficiently. Use the navigation menu to explore the features.</p>\n        </section>\n    </main>\n    <footer>\n        <p>&copy; 2023 Note-Taking Application</p>\n    </footer>\n</body>\n</html>",
+      "language": "html",
+      "purpose": "",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T21:48:40.418160"
+    },
+    {
+      "path": "templates/problem.html",
+      "content": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>Problem Management</title>\n    <link rel=\"stylesheet\" href=\"{{ url_for('static', filename='styles.css') }}\">\n</head>\n<body>\n    <header>\n        <h1>Problem Management</h1>\n    </header>\n\n    <main>\n        <section>\n            <h2>Create a Problem</h2>\n            <form action=\"{{ url_for('problem.create_problem') }}\" method=\"POST\">\n                <label for=\"title\">Title:</label>\n                <input type=\"text\" id=\"title\" name=\"title\" required>\n\n                <label for=\"description\">Description:</label>\n                <textarea id=\"description\" name=\"description\" required></textarea>\n\n                <button type=\"submit\">Create Problem</button>\n            </form>\n        </section>\n\n        <section>\n            <h2>All Problems</h2>\n            <ul>\n                {% for problem in problems %}\n                <li>\n                    <h3>{{ problem.title }}</h3>\n                    <p>{{ problem.description }}</p>\n                    <a href=\"{{ url_for('problem.view_problem', problem_id=problem.id) }}\">View</a>\n                </li>\n                {% endfor %}\n            </ul>\n        </section>\n    </main>\n\n    <footer>\n        <p>&copy; 2023 Note-Taking Application</p>\n    </footer>\n</body>\n</html>",
+      "language": "html",
+      "purpose": "",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T21:48:43.082634"
+    },
+    {
+      "path": "templates/submit.html",
+      "content": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>Submit Note</title>\n    <link rel=\"stylesheet\" href=\"/static/styles.css\">\n</head>\n<body>\n    <header>\n        <nav>\n            <ul>\n                <li><a href=\"/\">Home</a></li>\n                <li><a href=\"/notes\">Notes</a></li>\n                <li><a href=\"/organize\">Organize</a></li>\n            </ul>\n        </nav>\n    </header>\n\n    <main>\n        <h1>Submit a New Note</h1>\n        <form action=\"/submit\" method=\"POST\">\n            <label for=\"title\">Title:</label>\n            <input type=\"text\" id=\"title\" name=\"title\" required>\n            \n            <label for=\"content\">Content:</label>\n            <textarea id=\"content\" name=\"content\" rows=\"10\" required></textarea>\n            \n            <label for=\"tags\">Tags (comma-separated):</label>\n            <input type=\"text\" id=\"tags\" name=\"tags\">\n            \n            <button type=\"submit\">Submit</button>\n        </form>\n    </main>\n\n    <footer>\n        <p>&copy; 2023 Note-Taking Application</p>\n    </footer>\n</body>\n</html>",
+      "language": "html",
+      "purpose": "",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T21:48:45.634928"
+    },
+    {
+      "path": "static/css/style.css",
+      "content": "/* static/css/style.css */\n/* Purpose: Define styles for the frontend of the Note-Taking Application */\n\nbody {\n    font-family: Arial, sans-serif;\n    background-color: #f9f9f9;\n    margin: 0;\n    padding: 0;\n    color: #333;\n}\n\nheader {\n    background-color: #4CAF50;\n    color: white;\n    padding: 20px;\n    text-align: center;\n    font-size: 24px;\n    font-weight: bold;\n}\n\nmain {\n    margin: 20px auto;\n    max-width: 800px;\n    background-color: #fff;\n    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);\n    border-radius: 8px;\n    overflow: hidden;\n}\n\n.container {\n    padding: 20px;\n}\n\nbutton {\n    background-color: #4CAF50;\n    color: white;\n    border: none;\n    padding: 10px 15px;\n    cursor: pointer;\n    border-radius: 5px;\n    font-size: 16px;\n}\n\nbutton:hover {\n    background-color: #45a049;\n}\n\ninput[type=\"text\"],\ntextarea {\n    width: 100%;\n    padding: 10px;\n    margin: 10px 0;\n    border: 1px solid #ccc;\n    border-radius: 4px;\n    font-size: 16px;\n}\n\ntextarea {\n    resize: vertical;\n    min-height: 100px;\n}\n\n.note {\n    background-color: #f1f1f1;\n    padding: 15px;\n    margin: 15px 0;\n    border-left: 4px solid #4CAF50;\n    border-radius: 4px;\n}\n\n.note h2 {\n    margin: 0 0 10px 0;\n    font-size: 20px;\n    color: #4CAF50;\n}\n\n.note p {\n    margin: 0;\n    font-size: 16px;\n}\n\nfooter {\n    text-align: center;\n    padding: 10px;\n    background-color: #4CAF50;\n    color: white;\n    font-size: 14px;\n    position: fixed;\n    bottom: 0;\n    width: 100%;\n}",
+      "language": "css",
+      "purpose": "",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T21:48:49.863599"
+    },
+    {
+      "path": "static/js/app.js",
+      "content": "document.addEventListener(\"DOMContentLoaded\", function () {\n    // Functions to handle notes operations\n    const createNoteButton = document.getElementById(\"create-note-btn\");\n    const searchInput = document.getElementById(\"search-input\");\n    const notesContainer = document.getElementById(\"notes-container\");\n\n    // Fetch notes from the server and display them\n    async function fetchNotes() {\n        try {\n            const response = await fetch(\"/api/notes\");\n            const notes = await response.json();\n            renderNotes(notes);\n        } catch (error) {\n            console.error(\"Error fetching notes:\", error);\n        }\n    }\n\n    // Render notes in the container\n    function renderNotes(notes) {\n        notesContainer.innerHTML = \"\"; // Clear existing notes\n        if (notes.length === 0) {\n            notesContainer.innerHTML = \"<p>No notes found</p>\";\n            return;\n        }\n        notes.forEach((note) => {\n            const noteElement = document.createElement(\"div\");\n            noteElement.className = \"note\";\n            noteElement.innerHTML = `\n                <h3>${note.title}</h3>\n                <p>${note.content}</p>\n                <button class=\"delete-note-btn\" data-id=\"${note.id}\">Delete</button>\n            `;\n            notesContainer.appendChild(noteElement);\n        });\n    }\n\n    // Create a new note\n    async function createNote() {\n        const title = prompt(\"Enter note title:\");\n        const content = prompt(\"Enter note content:\");\n        if (!title || !content) {\n            alert(\"Both title and content are required!\");\n            return;\n        }\n        try {\n            const response = await fetch(\"/api/notes\", {\n                method: \"POST\",\n                headers: {\n                    \"Content-Type\": \"application/json\",\n                },\n                body: JSON.stringify({ title, content }),\n            });\n            if (response.ok) {\n                fetchNotes();\n            } else {\n                console.error(\"Error creating note:\", await response.text());\n            }\n        } catch (error) {\n            console.error(\"Error creating note:\", error);\n        }\n    }\n\n    // Delete a note\n    async function deleteNote(noteId) {\n        try {\n            const response = await fetch(`/api/notes/${noteId}`, {\n                method: \"DELETE\",\n            });\n            if (response.ok) {\n                fetchNotes();\n            } else {\n                console.error(\"Error deleting note:\", await response.text());\n            }\n        } catch (error) {\n            console.error(\"Error deleting note:\", error);\n        }\n    }\n\n    // Search notes\n    function searchNotes(query) {\n        const allNotes = Array.from(notesContainer.querySelectorAll(\".note\"));\n        allNotes.forEach((note) => {\n            const title = note.querySelector(\"h3\").textContent.toLowerCase();\n            const content = note.querySelector(\"p\").textContent.toLowerCase();\n            if (title.includes(query) || content.includes(query)) {\n                note.style.display = \"block\";\n            } else {\n                note.style.display = \"none\";\n            }\n        });\n    }\n\n    // Event listeners\n    createNoteButton.addEventListener(\"click\", createNote);\n    searchInput.addEventListener(\"input\", (e) => {\n        const query = e.target.value.toLowerCase();\n        searchNotes(query);\n    });\n    notesContainer.addEventListener(\"click\", (e) => {\n        if (e.target.classList.contains(\"delete-note-btn\")) {\n            const noteId = e.target.getAttribute(\"data-id\");\n            deleteNote(noteId);\n        }\n    });\n\n    // Initial fetch of notes\n    fetchNotes();\n});",
+      "language": "javascript",
+      "purpose": "",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T21:48:56.977612"
+    },
+    {
+      "path": "app/database.py",
+      "content": "from flask_sqlalchemy import SQLAlchemy\n\n# Initialize SQLAlchemy instance\ndb = SQLAlchemy()",
+      "language": "python",
+      "purpose": "",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T21:48:57.905951"
+    },
+    {
+      "path": "app/models/problem.py",
+      "content": "from app.database import db\n\nclass Problem(db.Model):\n    __tablename__ = 'problems'\n\n    id = db.Column(db.Integer, primary_key=True)\n    title = db.Column(db.String(255), nullable=False)\n    description = db.Column(db.Text, nullable=False)\n    created_at = db.Column(db.DateTime, server_default=db.func.now())\n    updated_at = db.Column(db.DateTime, server_default=db.func.now(), onupdate=db.func.now())\n    \n    def __repr__(self):\n        return f'<Problem {self.id}: {self.title}>'\n\n    def to_dict(self):\n        return {\n            \"id\": self.id,\n            \"title\": self.title,\n            \"description\": self.description,\n            \"created_at\": self.created_at,\n            \"updated_at\": self.updated_at\n        }",
+      "language": "python",
+      "purpose": "",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T21:49:01.730318"
+    },
+    {
+      "path": "app/models/user.py",
+      "content": "from app.database import db\nfrom werkzeug.security import generate_password_hash, check_password_hash\n\n\nclass User(db.Model):\n    __tablename__ = 'users'\n\n    id = db.Column(db.Integer, primary_key=True)\n    username = db.Column(db.String(80), unique=True, nullable=False)\n    email = db.Column(db.String(120), unique=True, nullable=False)\n    password_hash = db.Column(db.String(128), nullable=False)\n\n    def __init__(self, username, email, password):\n        self.username = username\n        self.email = email\n        self.set_password(password)\n\n    def set_password(self, password):\n        \"\"\"Hash and store the password.\"\"\"\n        self.password_hash = generate_password_hash(password)\n\n    def check_password(self, password):\n        \"\"\"Verify the password against the hash.\"\"\"\n        return check_password_hash(self.password_hash, password)\n\n    def to_dict(self):\n        \"\"\"Return a dictionary representation of the user.\"\"\"\n        return {\n            'id': self.id,\n            'username': self.username,\n            'email': self.email\n        }",
+      "language": "python",
+      "purpose": "",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T21:49:06.724725"
+    },
+    {
+      "path": "app/models/solution.py",
+      "content": "from app.database import db\nfrom app.models.problem import Problem\nfrom app.models.user import User\n\nclass Solution(db.Model):\n    __tablename__ = 'solutions'\n\n    id = db.Column(db.Integer, primary_key=True)\n    content = db.Column(db.Text, nullable=False)\n    created_at = db.Column(db.DateTime, nullable=False, server_default=db.func.now())\n    updated_at = db.Column(db.DateTime, nullable=True, onupdate=db.func.now())\n\n    # Foreign keys\n    problem_id = db.Column(db.Integer, db.ForeignKey('problems.id'), nullable=False)\n    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)\n\n    # Relationships\n    problem = db.relationship('Problem', backref=db.backref('solutions', lazy=True))\n    user = db.relationship('User', backref=db.backref('solutions', lazy=True))\n\n    def __init__(self, content, problem_id, user_id):\n        self.content = content\n        self.problem_id = problem_id\n        self.user_id = user_id\n\n    def to_dict(self):\n        return {\n            'id': self.id,\n            'content': self.content,\n            'created_at': self.created_at,\n            'updated_at': self.updated_at,\n            'problem_id': self.problem_id,\n            'user_id': self.user_id\n        }",
+      "language": "python",
+      "purpose": "",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T21:49:13.361241"
+    },
+    {
+      "path": "app/controllers/problem_controller.py",
+      "content": "from flask import Blueprint, render_template, request, redirect, url_for, flash\nfrom app.database import db\nfrom app.models.problem import Problem\n\nproblem_bp = Blueprint('problem', __name__)\n\n@problem_bp.route('/problems', methods=['GET'])\ndef list_problems():\n    try:\n        problems = Problem.query.all()\n        return render_template('problem.html', problems=[problem.to_dict() for problem in problems])\n    except Exception as e:\n        flash(f\"Error loading problems: {str(e)}\", \"error\")\n        return render_template('problem.html', problems=[])\n\n@problem_bp.route('/problems/<int:problem_id>', methods=['GET'])\ndef view_problem(problem_id):\n    try:\n        problem = Problem.query.get(problem_id)\n        if not problem:\n            flash(\"Problem not found!\", \"error\")\n            return redirect(url_for('problem.list_problems'))\n        return render_template('problem.html', problem=problem.to_dict())\n    except Exception as e:\n        flash(f\"Error loading problem: {str(e)}\", \"error\")\n        return redirect(url_for('problem.list_problems'))\n\n@problem_bp.route('/problems/new', methods=['GET', 'POST'])\ndef create_problem():\n    if request.method == 'POST':\n        try:\n            title = request.form.get('title')\n            description = request.form.get('description')\n            if not title or not description:\n                flash(\"Title and description are required!\", \"error\")\n                return redirect(url_for('problem.create_problem'))\n\n            new_problem = Problem(title=title, description=description)\n            db.session.add(new_problem)\n            db.session.commit()\n            flash(\"Problem created successfully!\", \"success\")\n            return redirect(url_for('problem.list_problems'))\n        except Exception as e:\n            flash(f\"Error creating problem: {str(e)}\", \"error\")\n            return redirect(url_for('problem.create_problem'))\n\n    return render_template('submit.html')\n\n@problem_bp.route('/problems/<int:problem_id>/edit', methods=['GET', 'POST'])\ndef edit_problem(problem_id):\n    try:\n        problem = Problem.query.get(problem_id)\n        if not problem:\n            flash(\"Problem not found!\", \"error\")\n            return redirect(url_for('problem.list_problems'))\n\n        if request.method == 'POST':\n            title = request.form.get('title')\n            description = request.form.get('description')\n            if not title or not description:\n                flash(\"Title and description are required!\", \"error\")\n                return redirect(url_for('problem.edit_problem', problem_id=problem_id))\n\n            problem.title = title\n            problem.description = description\n            db.session.commit()\n            flash(\"Problem updated successfully!\", \"success\")\n            return redirect(url_for('problem.view_problem', problem_id=problem_id))\n\n        return render_template('submit.html', problem=problem.to_dict())\n    except Exception as e:\n        flash(f\"Error editing problem: {str(e)}\", \"error\")\n        return redirect(url_for('problem.list_problems'))\n\n@problem_bp.route('/problems/<int:problem_id>/delete', methods=['POST'])\ndef delete_problem(problem_id):\n    try:\n        problem = Problem.query.get(problem_id)\n        if not problem:\n            flash(\"Problem not found!\", \"error\")\n            return redirect(url_for('problem.list_problems'))\n\n        db.session.delete(problem)\n        db.session.commit()\n        flash(\"Problem deleted successfully!\", \"success\")\n        return redirect(url_for('problem.list_problems'))\n    except Exception as e:\n        flash(f\"Error deleting problem: {str(e)}\", \"error\")\n        return redirect(url_for('problem.list_problems'))",
+      "language": "python",
+      "purpose": "",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T21:49:20.515502"
+    },
+    {
+      "path": "app/controllers/user_controller.py",
+      "content": "from flask import Blueprint, request, jsonify, render_template\nfrom app.database import db\nfrom app.models.user import User\n\nuser_bp = Blueprint('user', __name__)\n\n@user_bp.route('/users', methods=['GET'])\ndef list_users():\n    try:\n        users = User.query.all()\n        user_list = [user.to_dict() for user in users]\n        return jsonify(user_list), 200\n    except Exception as e:\n        return jsonify({'error': str(e)}), 500\n\n@user_bp.route('/users/<int:user_id>', methods=['GET'])\ndef view_user(user_id):\n    try:\n        user = User.query.get(user_id)\n        if not user:\n            return jsonify({'error': 'User not found'}), 404\n        return jsonify(user.to_dict()), 200\n    except Exception as e:\n        return jsonify({'error': str(e)}), 500\n\n@user_bp.route('/users', methods=['POST'])\ndef create_user():\n    try:\n        data = request.json\n        if not data or 'username' not in data or 'password' not in data:\n            return jsonify({'error': 'Invalid input'}), 400\n        \n        new_user = User(username=data['username'])\n        new_user.set_password(data['password'])\n        \n        db.session.add(new_user)\n        db.session.commit()\n        \n        return jsonify(new_user.to_dict()), 201\n    except Exception as e:\n        db.session.rollback()\n        return jsonify({'error': str(e)}), 500\n\n@user_bp.route('/users/<int:user_id>', methods=['PUT'])\ndef update_user(user_id):\n    try:\n        user = User.query.get(user_id)\n        if not user:\n            return jsonify({'error': 'User not found'}), 404\n        \n        data = request.json\n        if not data:\n            return jsonify({'error': 'Invalid input'}), 400\n\n        if 'username' in data:\n            user.username = data['username']\n        if 'password' in data:\n            user.set_password(data['password'])\n        \n        db.session.commit()\n        \n        return jsonify(user.to_dict()), 200\n    except Exception as e:\n        db.session.rollback()\n        return jsonify({'error': str(e)}), 500\n\n@user_bp.route('/users/<int:user_id>', methods=['DELETE'])\ndef delete_user(user_id):\n    try:\n        user = User.query.get(user_id)\n        if not user:\n            return jsonify({'error': 'User not found'}), 404\n        \n        db.session.delete(user)\n        db.session.commit()\n        \n        return jsonify({'message': 'User deleted successfully'}), 200\n    except Exception as e:\n        db.session.rollback()\n        return jsonify({'error': str(e)}), 500",
+      "language": "python",
+      "purpose": "",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T21:49:29.213027"
+    },
+    {
+      "path": "app/controllers/solution_controller.py",
+      "content": "from flask import Blueprint, request, jsonify, render_template, redirect, url_for\nfrom app.database import db\nfrom app.models.solution import Solution\nfrom app.models.problem import Problem\n\nsolution_bp = Blueprint('solution', __name__)\n\n@solution_bp.route('/solutions', methods=['GET'])\ndef list_solutions():\n    \"\"\"Retrieve and list all solutions.\"\"\"\n    solutions = Solution.query.all()\n    return jsonify([solution.to_dict() for solution in solutions])\n\n@solution_bp.route('/solutions/<int:solution_id>', methods=['GET'])\ndef view_solution(solution_id):\n    \"\"\"View a specific solution.\"\"\"\n    solution = Solution.query.get(solution_id)\n    if not solution:\n        return jsonify({'error': 'Solution not found'}), 404\n    return jsonify(solution.to_dict())\n\n@solution_bp.route('/solutions/new', methods=['GET', 'POST'])\ndef create_solution():\n    \"\"\"Create a new solution.\"\"\"\n    if request.method == 'GET':\n        problems = Problem.query.all()\n        return render_template('submit.html', problems=problems)\n    \n    if request.method == 'POST':\n        data = request.form\n        problem_id = data.get('problem_id')\n        content = data.get('content')\n        \n        if not problem_id or not content:\n            return jsonify({'error': 'Problem ID and content are required'}), 400\n        \n        problem = Problem.query.get(problem_id)\n        if not problem:\n            return jsonify({'error': 'Invalid problem ID'}), 404\n        \n        solution = Solution(problem_id=problem_id, content=content)\n        db.session.add(solution)\n        db.session.commit()\n        return redirect(url_for('solution.list_solutions'))\n\n@solution_bp.route('/solutions/<int:solution_id>/edit', methods=['GET', 'POST'])\ndef edit_solution(solution_id):\n    \"\"\"Edit an existing solution.\"\"\"\n    solution = Solution.query.get(solution_id)\n    if not solution:\n        return jsonify({'error': 'Solution not found'}), 404\n    \n    if request.method == 'GET':\n        problems = Problem.query.all()\n        return render_template('submit.html', solution=solution, problems=problems)\n    \n    if request.method == 'POST':\n        data = request.form\n        solution.content = data.get('content', solution.content)\n        solution.problem_id = data.get('problem_id', solution.problem_id)\n        \n        db.session.commit()\n        return redirect(url_for('solution.list_solutions'))\n\n@solution_bp.route('/solutions/<int:solution_id>/delete', methods=['POST'])\ndef delete_solution(solution_id):\n    \"\"\"Delete a solution.\"\"\"\n    solution = Solution.query.get(solution_id)\n    if not solution:\n        return jsonify({'error': 'Solution not found'}), 404\n    \n    db.session.delete(solution)\n    db.session.commit()\n    return redirect(url_for('solution.list_solutions'))",
+      "language": "python",
+      "purpose": "",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T21:49:36.894226"
+    },
+    {
+      "path": "app/routes.py",
+      "content": "from flask import Blueprint\nfrom app.controllers.problem_controller import problem_bp\nfrom app.controllers.user_controller import user_bp\nfrom app.controllers.solution_controller import solution_bp\n\ndef register_routes(app):\n    # Registering blueprints for different modules\n    app.register_blueprint(problem_bp)\n    app.register_blueprint(user_bp)\n    app.register_blueprint(solution_bp)",
+      "language": "python",
+      "purpose": "",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T21:49:41.653223"
+    },
+    {
+      "path": "app/__init__.py",
+      "content": "from flask import Flask, render_template\nfrom app.database import db\nfrom app.routes import register_routes\n\ndef create_app():\n    app = Flask(\n        __name__,\n        template_folder='../templates',\n        static_folder='../static',\n        static_url_path='/static'\n    )\n\n    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///app.db'  # Replace with your DB URI\n    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False\n\n    db.init_app(app)\n\n    with app.app_context():\n        db.create_all()\n\n    register_routes(app)\n\n    @app.route('/')\n    def home():\n        return render_template('index.html')\n\n    return app",
+      "language": "python",
+      "purpose": "",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T21:49:45.310921"
+    },
+    {
+      "path": "app.py",
+      "content": "from flask import Flask\nfrom app.database import db\nfrom app.routes import register_routes\n\ndef create_app():\n    app = Flask(__name__, template_folder='../templates', static_folder='../static', static_url_path='/static')\n\n    # Configurations\n    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///app.db'\n    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False\n\n    # Initialize database\n    db.init_app(app)\n    with app.app_context():\n        db.create_all()\n\n    # Register routes\n    register_routes(app)\n\n    # Home route\n    @app.route('/')\n    def home():\n        return render_template('index.html')\n\n    return app\n\nif __name__ == \"__main__\":\n    app = create_app()\n    app.run(debug=True)",
+      "language": "python",
+      "purpose": "",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T21:49:48.656071"
+    },
+    {
+      "path": "werkzeug.security.py",
+      "content": "from werkzeug.security import generate_password_hash, check_password_hash\n\ndef hash_password(password):\n    \"\"\"\n    Hash a plaintext password using Werkzeug's security utilities.\n\n    Args:\n        password (str): The plaintext password to hash.\n\n    Returns:\n        str: The hashed password.\n    \"\"\"\n    return generate_password_hash(password)\n\ndef check_password(hashed_password, password):\n    \"\"\"\n    Verify a plaintext password against its hashed counterpart.\n\n    Args:\n        hashed_password (str): The hashed password.\n        password (str): The plaintext password to verify.\n\n    Returns:\n        bool: True if the password matches the hash, False otherwise.\n    \"\"\"\n    return check_password_hash(hashed_password, password)",
+      "language": "python",
+      "purpose": "Generated stub for werkzeug.security.py",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T21:49:51.667873"
+    }
+  ],
+  "structure": {
+    "root": "generated",
+    "directories": [
+      "app",
+      "static\\css",
+      "app\\models",
+      "app\\controllers",
+      "static\\js",
+      "templates"
+    ],
+    "entry_point": "app.py"
+  },
+  "dependencies": [
+    "flask"
+  ],
+  "readme_content": "# Note-Taking Application\n\nAn application for creating, organizing, and managing notes efficiently.\n\n## Features\n\n- Create Notes: Allows users to create and save text-based notes.\n- Organize Notes: Provides functionality to categorize or tag notes for better organization.\n- Search Notes: Enables users to search for specific notes using keywords.\n\n## Setup\n\n```bash\npip install -r requirements.txt\npython app.py\n```\n\n## Usage\n\nOpen http://localhost:5000 in your browser.\n",
+  "created_at": "2026-02-15T21:49:51.670629"
+}

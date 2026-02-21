@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="/static/css/style.css">
+  <title>Problem Details</title>
+</head>
+<body>
+  <header>
+    <nav>
+      <ul>
+        <li><a href="/">Home</a></li>
+        <li><a href="/problems">Problems</a></li>
+        <li><a href="/profile">Profile</a></li>
+        <li><a href="/submit">Submit Solution</a></li>
+      </ul>
+    </nav>
+  </header>
+  <main>
+    <section id="problem-details">
+      <h1>{{ problem.title }}</h1>
+      <p><strong>Difficulty:</strong> {{ problem.difficulty }}</p>
+      <p><strong>Description:</strong></p>
+      <p>{{ problem.description }}</p>
+      <p><strong>Input Format:</strong></p>
+      <p>{{ problem.input_format }}</p>
+      <p><strong>Output Format:</strong></p>
+      <p>{{ problem.output_format }}</p>
+      <p><strong>Constraints:</strong></p>
+      <ul>
+        {% for constraint in problem.constraints %}
+          <li>{{ constraint }}</li>
+        {% endfor %}
+      </ul>
+      <p><strong>Sample Input:</strong></p>
+      <pre>{{ problem.sample_input }}</pre>
+      <p><strong>Sample Output:</strong></p>
+      <pre>{{ problem.sample_output }}</pre>
+    </section>
+    <section id="actions">
+      <a class="button" href="/submit?problem_id={{ problem.id }}">Submit Solution</a>
+    </section>
+  </main>
+  <footer>
+    <p>&copy; 2023 ACM Problem-Solving Platform</p>
+  </footer>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notes</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <header>
+        <h1>Note-Taking App</h1>
+    </header>
+    <main>
+        <section>
+            <form method="POST" action="{{ url_for('notes_bp.save_note') }}">
+                <label for="note_content">Enter your note:</label><br>
+                <textarea id="note_content" name="note_content" rows="4" cols="50" required></textarea><br>
+                <button type="submit">Save Note</button>
+            </form>
+        </section>
+        <section>
+            <h2>Saved Notes</h2>
+            <ul>
+                {% for note in notes %}
+                    <li>{{ note.content }}</li>
+                {% endfor %}
+            </ul>
+        </section>
+    </main>
+    <footer>
+        <p>&copy; 2023 Note-Taking App</p>
+    </footer>
+</body>
+</html>

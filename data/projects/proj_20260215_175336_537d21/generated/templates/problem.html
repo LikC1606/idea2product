@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Problem Detail</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <header>
+        <div class="navbar">
+            <a href="/">Home</a>
+            <a href="/profile">Profile</a>
+            <a href="/submit">Submit</a>
+        </div>
+    </header>
+    <main>
+        <section class="problem-detail">
+            <h1>{{ problem.title }}</h1>
+            <p><strong>Difficulty:</strong> {{ problem.difficulty }}</p>
+            <p><strong>Time Limit:</strong> {{ problem.time_limit }} seconds</p>
+            <p><strong>Memory Limit:</strong> {{ problem.memory_limit }} MB</p>
+            <hr>
+            <div class="problem-description">
+                <h2>Description</h2>
+                <p>{{ problem.description }}</p>
+            </div>
+            <div class="problem-input">
+                <h2>Input</h2>
+                <p>{{ problem.input_description }}</p>
+            </div>
+            <div class="problem-output">
+                <h2>Output</h2>
+                <p>{{ problem.output_description }}</p>
+            </div>
+            <div class="problem-sample">
+                <h2>Sample Input</h2>
+                <pre>{{ problem.sample_input }}</pre>
+                <h2>Sample Output</h2>
+                <pre>{{ problem.sample_output }}</pre>
+            </div>
+        </section>
+        <section class="problem-actions">
+            <a href="/submit/{{ problem.id }}" class="btn">Submit Solution</a>
+        </section>
+    </main>
+    <footer>
+        <p>&copy; 2023 ACM Problem-Solving Platform</p>
+    </footer>
+</body>
+</html>

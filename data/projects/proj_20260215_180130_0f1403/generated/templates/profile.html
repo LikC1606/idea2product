@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Profile</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <header>
+        <nav>
+            <ul>
+                <li><a href="/">Home</a></li>
+                <li><a href="/profile">Profile</a></li>
+                <li><a href="/problems">Problems</a></li>
+                <li><a href="/leaderboard">Leaderboard</a></li>
+                <li><a href="/logout">Logout</a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        <section class="profile">
+            <h1>User Profile</h1>
+            <div class="profile-info">
+                <p><strong>Username:</strong> {{ user.username }}</p>
+                <p><strong>Email:</strong> {{ user.email }}</p>
+                <p><strong>Rank:</strong> {{ user.rank }}</p>
+                <p><strong>Problems Solved:</strong> {{ user.problems_solved }}</p>
+            </div>
+            <div class="profile-actions">
+                <a href="/edit-profile" class="btn">Edit Profile</a>
+                <a href="/change-password" class="btn">Change Password</a>
+            </div>
+        </section>
+    </main>
+    <footer>
+        <p>&copy; 2023 ACM Problem-Solving Platform. All rights reserved.</p>
+    </footer>
+</body>
+</html>

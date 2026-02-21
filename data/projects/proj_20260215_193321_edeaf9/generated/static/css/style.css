@@ -1,0 +1,104 @@
+/* Path: static/css/style.css */
+/* Purpose: Styles for the ACM Problem-Solving Platform */
+/* Layer: Frontend */
+
+/* General Reset */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Arial', sans-serif;
+  background-color: #f9f9f9;
+  color: #333;
+  line-height: 1.6;
+}
+
+/* Header */
+header {
+  background: #4CAF50;
+  color: white;
+  padding: 10px 20px;
+  text-align: center;
+}
+
+header h1 {
+  font-size: 2rem;
+  margin: 0;
+}
+
+/* Navigation Bar */
+nav {
+  display: flex;
+  justify-content: space-around;
+  background: #2E7D32;
+  padding: 10px;
+}
+
+nav a {
+  color: white;
+  text-decoration: none;
+  padding: 5px 10px;
+  transition: background 0.3s;
+}
+
+nav a:hover {
+  background: #1B5E20;
+  border-radius: 5px;
+}
+
+/* Main Content */
+main {
+  max-width: 1200px;
+  margin: 20px auto;
+  padding: 20px;
+  background: white;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+  border-radius: 5px;
+}
+
+/* Problem Library */
+.problem-library {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+.problem-card {
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  padding: 15px;
+  background: #f9f9f9;
+  transition: transform 0.3s;
+}
+
+.problem-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 5px 10px rgba(0, 0, 0, 0.2);
+}
+
+.problem-card h3 {
+  margin-bottom: 10px;
+  color: #2E7D32;
+}
+
+.problem-card p {
+  font-size: 0.9rem;
+  color: #666;
+}
+
+/* Footer */
+footer {
+  background: #2E7D32;
+  color: white;
+  text-align: center;
+  padding: 10px;
+  margin-top: 20px;
+}
+
+footer p {
+  margin: 0;
+  font-size: 0.9rem;
+}

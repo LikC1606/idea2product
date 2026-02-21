@@ -1,0 +1,272 @@
+{
+  "repository": {
+    "skeleton": null,
+    "files": [
+      {
+        "path": "app/database.py",
+        "content": "from flask_sqlalchemy import SQLAlchemy\n\ndb = SQLAlchemy()",
+        "language": "python",
+        "purpose": "Database connection",
+        "dependencies": [],
+        "interface_id": null,
+        "generated_at": "2026-02-15T18:31:16.647636"
+      },
+      {
+        "path": "app/models/problem.py",
+        "content": "from app.database import db\n\nclass Problem(db.Model):\n    __tablename__ = 'problems'\n\n    id = db.Column(db.Integer, primary_key=True)\n    title = db.Column(db.String(255), nullable=False)\n    description = db.Column(db.Text, nullable=False)\n    difficulty = db.Column(db.String(50), nullable=False)\n    created_at = db.Column(db.DateTime, default=db.func.now())\n    updated_at = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now())\n\n    def __repr__(self):\n        return f\"<Problem {self.title} ({self.difficulty})>\"",
+        "language": "python",
+        "purpose": "Problem model",
+        "dependencies": [
+          "app/database.py"
+        ],
+        "interface_id": null,
+        "generated_at": "2026-02-15T18:31:18.074377"
+      },
+      {
+        "path": "app/models/user.py",
+        "content": "from app.database import db\n\nclass User(db.Model):\n    __tablename__ = 'users'\n\n    id = db.Column(db.Integer, primary_key=True)\n    username = db.Column(db.String(80), nullable=False, unique=True)\n    email = db.Column(db.String(120), nullable=False, unique=True)\n    password_hash = db.Column(db.String(128), nullable=False)\n    created_at = db.Column(db.DateTime, nullable=False, default=db.func.current_timestamp())\n\n    def __repr__(self):\n        return f\"<User {self.username}>\"",
+        "language": "python",
+        "purpose": "User model",
+        "dependencies": [
+          "app/database.py"
+        ],
+        "interface_id": null,
+        "generated_at": "2026-02-15T18:31:19.828005"
+      },
+      {
+        "path": "app/models/solution.py",
+        "content": "from app.database import db\n\nclass Solution():\n    def __init__(self, id=None, problem_id=None, user_id=None, code=None, is_correct=None, submission_time=None):\n        self.id = id\n        self.problem_id = problem_id\n        self.user_id = user_id\n        self.code = code\n        self.is_correct = is_correct\n        self.submission_time = submission_time\n\n    def to_dict(self):\n        return {\n            \"id\": self.id,\n            \"problem_id\": self.problem_id,\n            \"user_id\": self.user_id,\n            \"code\": self.code,\n            \"is_correct\": self.is_correct,\n            \"submission_time\": self.submission_time\n        }",
+        "language": "python",
+        "purpose": "Solution model",
+        "dependencies": [
+          "app/database.py"
+        ],
+        "interface_id": null,
+        "generated_at": "2026-02-15T18:31:21.364924"
+      },
+      {
+        "path": "app/controllers/problem_controller.py",
+        "content": "from flask import Blueprint, jsonify, request\nfrom app.models.problem import Problem\nfrom app.database import db\n\nproblem_bp = Blueprint('problem', __name__)\n\n@problem_bp.route('/problems', methods=['GET'])\ndef get_all_problems():\n    try:\n        problems = Problem.query.all()\n        problems_data = [problem.to_dict() for problem in problems]\n        return jsonify(problems_data), 200\n    except Exception as e:\n        return jsonify({'error': str(e)}), 500\n\n@problem_bp.route('/problems/<int:problem_id>', methods=['GET'])\ndef get_problem(problem_id):\n    try:\n        problem = Problem.query.get(problem_id)\n        if not problem:\n            return jsonify({'error': 'Problem not found'}), 404\n        return jsonify(problem.to_dict()), 200\n    except Exception as e:\n        return jsonify({'error': str(e)}), 500\n\n@problem_bp.route('/problems', methods=['POST'])\ndef create_problem():\n    try:\n        data = request.get_json()\n        new_problem = Problem(**data)\n        db.session.add(new_problem)\n        db.session.commit()\n        return jsonify(new_problem.to_dict()), 201\n    except Exception as e:\n        return jsonify({'error': str(e)}), 500\n\n@problem_bp.route('/problems/<int:problem_id>', methods=['PUT'])\ndef update_problem(problem_id):\n    try:\n        problem = Problem.query.get(problem_id)\n        if not problem:\n            return jsonify({'error': 'Problem not found'}), 404\n        data = request.get_json()\n        for key, value in data.items():\n            setattr(problem, key, value)\n        db.session.commit()\n        return jsonify(problem.to_dict()), 200\n    except Exception as e:\n        return jsonify({'error': str(e)}), 500\n\n@problem_bp.route('/problems/<int:problem_id>', methods=['DELETE'])\ndef delete_problem(problem_id):\n    try:\n        problem = Problem.query.get(problem_id)\n        if not problem:\n            return jsonify({'error': 'Problem not found'}), 404\n        db.session.delete(problem)\n        db.session.commit()\n        return jsonify({'message': 'Problem deleted successfully'}), 200\n    except Exception as e:\n        return jsonify({'error': str(e)}), 500",
+        "language": "python",
+        "purpose": "Problem routes",
+        "dependencies": [
+          "app/models/problem.py",
+          "app/database.py"
+        ],
+        "interface_id": null,
+        "generated_at": "2026-02-15T18:31:24.021697"
+      },
+      {
+        "path": "app/controllers/user_controller.py",
+        "content": "from flask import Blueprint, jsonify, request\nfrom app.models.user import User\nfrom app.database import db\n\nuser_bp = Blueprint('user', __name__)\n\n@user_bp.route('/users', methods=['GET'])\ndef get_users():\n    users = User.query.all()\n    return jsonify([user.to_dict() for user in users]), 200\n\n@user_bp.route('/users/<int:user_id>', methods=['GET'])\ndef get_user(user_id):\n    user = User.query.get(user_id)\n    if not user:\n        return jsonify({'error': 'User not found'}), 404\n    return jsonify(user.to_dict()), 200\n\n@user_bp.route('/users', methods=['POST'])\ndef create_user():\n    data = request.get_json()\n    if not data or 'name' not in data or 'email' not in data:\n        return jsonify({'error': 'Invalid input'}), 400\n    new_user = User(name=data['name'], email=data['email'])\n    db.session.add(new_user)\n    db.session.commit()\n    return jsonify(new_user.to_dict()), 201\n\n@user_bp.route('/users/<int:user_id>', methods=['PUT'])\ndef update_user(user_id):\n    user = User.query.get(user_id)\n    if not user:\n        return jsonify({'error': 'User not found'}), 404\n    data = request.get_json()\n    if not data:\n        return jsonify({'error': 'Invalid input'}), 400\n    user.name = data.get('name', user.name)\n    user.email = data.get('email', user.email)\n    db.session.commit()\n    return jsonify(user.to_dict()), 200\n\n@user_bp.route('/users/<int:user_id>', methods=['DELETE'])\ndef delete_user(user_id):\n    user = User.query.get(user_id)\n    if not user:\n        return jsonify({'error': 'User not found'}), 404\n    db.session.delete(user)\n    db.session.commit()\n    return jsonify({'message': 'User deleted successfully'}), 200",
+        "language": "python",
+        "purpose": "User routes",
+        "dependencies": [
+          "app/models/user.py",
+          "app/database.py"
+        ],
+        "interface_id": null,
+        "generated_at": "2026-02-15T18:31:27.148980"
+      },
+      {
+        "path": "app/controllers/solution_controller.py",
+        "content": "from flask import Blueprint, jsonify, request\nfrom app.models.solution import Solution\nfrom app.database import db\n\nsolution_bp = Blueprint('solution', __name__)\n\n@solution_bp.route('/solutions', methods=['GET'])\ndef get_solutions():\n    solutions = Solution.query.all()\n    return jsonify([solution.to_dict() for solution in solutions])\n\n@solution_bp.route('/solutions/<int:solution_id>', methods=['GET'])\ndef get_solution(solution_id):\n    solution = Solution.query.get(solution_id)\n    if not solution:\n        return jsonify({\"error\": \"Solution not found\"}), 404\n    return jsonify(solution.to_dict())\n\n@solution_bp.route('/solutions', methods=['POST'])\ndef create_solution():\n    data = request.get_json()\n    try:\n        new_solution = Solution(**data)\n        db.session.add(new_solution)\n        db.session.commit()\n        return jsonify(new_solution.to_dict()), 201\n    except Exception as e:\n        db.session.rollback()\n        return jsonify({\"error\": str(e)}), 400\n\n@solution_bp.route('/solutions/<int:solution_id>', methods=['PUT'])\ndef update_solution(solution_id):\n    data = request.get_json()\n    solution = Solution.query.get(solution_id)\n    if not solution:\n        return jsonify({\"error\": \"Solution not found\"}), 404\n    try:\n        for key, value in data.items():\n            setattr(solution, key, value)\n        db.session.commit()\n        return jsonify(solution.to_dict())\n    except Exception as e:\n        db.session.rollback()\n        return jsonify({\"error\": str(e)}), 400\n\n@solution_bp.route('/solutions/<int:solution_id>', methods=['DELETE'])\ndef delete_solution(solution_id):\n    solution = Solution.query.get(solution_id)\n    if not solution:\n        return jsonify({\"error\": \"Solution not found\"}), 404\n    try:\n        db.session.delete(solution)\n        db.session.commit()\n        return jsonify({\"message\": \"Solution deleted successfully\"}), 200\n    except Exception as e:\n        db.session.rollback()\n        return jsonify({\"error\": str(e)}), 400",
+        "language": "python",
+        "purpose": "Solution routes",
+        "dependencies": [
+          "app/models/solution.py",
+          "app/database.py"
+        ],
+        "interface_id": null,
+        "generated_at": "2026-02-15T18:31:30.331412"
+      },
+      {
+        "path": "templates/index.html",
+        "content": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>ACM Problem-Solving Platform</title>\n    <link rel=\"stylesheet\" href=\"/static/css/styles.css\">\n</head>\n<body>\n    <header>\n        <nav>\n            <ul>\n                <li><a href=\"/\">Home</a></li>\n                <li><a href=\"/problems\">Problems</a></li>\n                <li><a href=\"/leaderboard\">Leaderboard</a></li>\n                <li><a href=\"/profile\">Profile</a></li>\n                <li><a href=\"/login\">Login</a></li>\n            </ul>\n        </nav>\n    </header>\n    <main>\n        <section id=\"welcome\">\n            <h1>Welcome to the ACM Problem-Solving Platform</h1>\n            <p>Sharpen your programming skills with ACM-style challenges and compete with others!</p>\n        </section>\n        <section id=\"features\">\n            <h2>Features</h2>\n            <ul>\n                <li>Explore a repository of programming problems.</li>\n                <li>Submit your code and get instant feedback.</li>\n                <li>Track your progress and improve your skills.</li>\n                <li>View the leaderboard and compete with fellow coders.</li>\n                <li>Access hints and tutorials to learn effectively.</li>\n            </ul>\n        </section>\n        <section id=\"cta\">\n            <a href=\"/register\" class=\"btn\">Get Started</a>\n        </section>\n    </main>\n    <footer>\n        <p>&copy; 2023 ACM Problem-Solving Platform. All rights reserved.</p>\n    </footer>\n</body>\n</html>",
+        "language": "html",
+        "purpose": "Main page",
+        "dependencies": [],
+        "interface_id": null,
+        "generated_at": "2026-02-15T18:31:34.363966"
+      },
+      {
+        "path": "templates/problem.html",
+        "content": "<!-- templates/problem.html -->\n<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>Problem Details</title>\n    <link rel=\"stylesheet\" href=\"{{ url_for('static', filename='styles.css') }}\">\n</head>\n<body>\n    <header>\n        <h1>ACM Problem-Solving Platform</h1>\n        <nav>\n            <a href=\"{{ url_for('problem.list_problems') }}\">Problem Repository</a>\n            <a href=\"{{ url_for('user.profile') }}\">My Profile</a>\n            <a href=\"{{ url_for('solution.leaderboard') }}\">Leaderboard</a>\n        </nav>\n    </header>\n    <main>\n        <section class=\"problem-detail\">\n            <h2>{{ problem.title }}</h2>\n            <p><strong>Difficulty:</strong> {{ problem.difficulty }}</p>\n            <p><strong>Tags:</strong> {% for tag in problem.tags %} {{ tag }} {% endfor %}</p>\n            <article>\n                <h3>Description</h3>\n                <p>{{ problem.description }}</p>\n            </article>\n            <article>\n                <h3>Input Format</h3>\n                <p>{{ problem.input_format }}</p>\n            </article>\n            <article>\n                <h3>Output Format</h3>\n                <p>{{ problem.output_format }}</p>\n            </article>\n            <article>\n                <h3>Sample Input</h3>\n                <pre>{{ problem.sample_input }}</pre>\n            </article>\n            <article>\n                <h3>Sample Output</h3>\n                <pre>{{ problem.sample_output }}</pre>\n            </article>\n        </section>\n        <section class=\"submission-form\">\n            <h2>Submit Your Solution</h2>\n            <form action=\"{{ url_for('solution.submit_solution', problem_id=problem.id) }}\" method=\"POST\">\n                <label for=\"code\">Your Code:</label>\n                <textarea id=\"code\" name=\"code\" rows=\"10\" cols=\"50\" required></textarea>\n                <button type=\"submit\">Submit</button>\n            </form>\n        </section>\n    </main>\n    <footer>\n        <p>&copy; 2023 ACM Problem-Solving Platform. All rights reserved.</p>\n    </footer>\n</body>\n</html>",
+        "language": "html",
+        "purpose": "Problem detail",
+        "dependencies": [],
+        "interface_id": null,
+        "generated_at": "2026-02-15T18:31:38.572228"
+      },
+      {
+        "path": "templates/submit.html",
+        "content": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>Submit Solution</title>\n    <link rel=\"stylesheet\" href=\"{{ url_for('static', filename='style.css') }}\">\n</head>\n<body>\n    <header>\n        <nav>\n            <a href=\"{{ url_for('problem_bp.problem_list') }}\">Problems</a>\n            <a href=\"{{ url_for('user_bp.profile') }}\">Profile</a>\n            <a href=\"{{ url_for('user_bp.logout') }}\">Logout</a>\n        </nav>\n    </header>\n    <main>\n        <section class=\"submit-section\">\n            <h1>Submit Your Solution</h1>\n            <form action=\"{{ url_for('solution_bp.submit_solution') }}\" method=\"POST\" enctype=\"multipart/form-data\">\n                <label for=\"problem_id\">Problem:</label>\n                <select id=\"problem_id\" name=\"problem_id\" required>\n                    {% for problem in problems %}\n                    <option value=\"{{ problem.id }}\">{{ problem.title }}</option>\n                    {% endfor %}\n                </select>\n\n                <label for=\"solution_code\">Code:</label>\n                <textarea id=\"solution_code\" name=\"solution_code\" rows=\"10\" required></textarea>\n\n                <label for=\"language\">Language:</label>\n                <select id=\"language\" name=\"language\" required>\n                    <option value=\"python\">Python</option>\n                    <option value=\"java\">Java</option>\n                    <option value=\"cpp\">C++</option>\n                </select>\n\n                <button type=\"submit\">Submit</button>\n            </form>\n        </section>\n    </main>\n    <footer>\n        <p>&copy; ACM Problem-Solving Platform</p>\n    </footer>\n</body>\n</html>",
+        "language": "html",
+        "purpose": "Submit code",
+        "dependencies": [],
+        "interface_id": null,
+        "generated_at": "2026-02-15T18:31:43.188004"
+      },
+      {
+        "path": "static/css/style.css",
+        "content": "/* Path: static/css/style.css */\n/* Purpose: Styles for the ACM Problem-Solving Platform */\n/* Layer: frontend */\n\n/* General Reset */\n* {\n  margin: 0;\n  padding: 0;\n  box-sizing: border-box;\n}\n\nbody {\n  font-family: Arial, sans-serif;\n  background-color: #f9f9f9;\n  color: #333;\n  line-height: 1.6;\n}\n\nheader {\n  background: #333;\n  color: #fff;\n  padding: 1rem 0;\n  text-align: center;\n  border-bottom: 5px solid #007bff;\n}\n\nheader h1 {\n  font-size: 2.5rem;\n  margin-bottom: 0.5rem;\n}\n\nheader p {\n  font-size: 1rem;\n}\n\n/* Navigation Bar */\nnav {\n  display: flex;\n  justify-content: space-around;\n  background-color: #007bff;\n  padding: 0.5rem;\n}\n\nnav a {\n  color: #fff;\n  text-decoration: none;\n  padding: 0.5rem 1rem;\n  font-weight: bold;\n}\n\nnav a:hover {\n  background-color: #0056b3;\n  border-radius: 5px;\n}\n\n/* Main Content */\nmain {\n  padding: 2rem;\n}\n\n.container {\n  max-width: 1100px;\n  margin: 0 auto;\n  overflow: hidden;\n}\n\n.card {\n  background: #fff;\n  border-radius: 5px;\n  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);\n  margin: 1rem 0;\n  padding: 1.5rem;\n}\n\n/* Leaderboard Table */\ntable {\n  width: 100%;\n  border-collapse: collapse;\n  margin: 1rem 0;\n}\n\ntable th,\ntable td {\n  padding: 0.75rem;\n  text-align: left;\n  border: 1px solid #ddd;\n}\n\ntable th {\n  background-color: #007bff;\n  color: #fff;\n}\n\ntable tr:nth-child(even) {\n  background-color: #f9f9f9;\n}\n\n/* Buttons */\nbutton {\n  display: inline-block;\n  background: #007bff;\n  color: #fff;\n  border: none;\n  padding: 0.5rem 1rem;\n  border-radius: 5px;\n  cursor: pointer;\n}\n\nbutton:hover {\n  background: #0056b3;\n}\n\n/* Forms */\nform input,\nform select,\nform textarea {\n  width: 100%;\n  padding: 0.5rem;\n  margin-bottom: 1rem;\n  border: 1px solid #ccc;\n  border-radius: 5px;\n}\n\nform textarea {\n  resize: none;\n}\n\nform input[type=\"submit\"] {\n  background: #007bff;\n  color: #fff;\n  border: none;\n  cursor: pointer;\n}\n\nform input[type=\"submit\"]:hover {\n  background: #0056b3;\n}\n\n/* Footer */\nfooter {\n  background: #333;\n  color: #fff;\n  text-align: center;\n  padding: 1rem 0;\n  margin-top: 1rem;\n}\n\nfooter p {\n  font-size: 0.9rem;\n}",
+        "language": "css",
+        "purpose": "Styles",
+        "dependencies": [],
+        "interface_id": null,
+        "generated_at": "2026-02-15T18:31:51.425500"
+      },
+      {
+        "path": "static/js/app.js",
+        "content": "// static/js/app.js\n\n// Purpose: Frontend JavaScript for ACM Problem-Solving Platform\n\n// Functionality for interacting with the backend and updating the UI\n\n// Constants\nconst API_BASE_URL = '/api';\n\n// Utility Functions\nfunction fetchData(endpoint, method = 'GET', data = null) {\n    const options = {\n        method: method,\n        headers: {\n            'Content-Type': 'application/json',\n        },\n    };\n\n    if (data) {\n        options.body = JSON.stringify(data);\n    }\n\n    return fetch(`${API_BASE_URL}/${endpoint}`, options)\n        .then((response) => {\n            if (!response.ok) {\n                throw new Error(`HTTP error! status: ${response.status}`);\n            }\n            return response.json();\n        })\n        .catch((error) => {\n            console.error('Fetch Error:', error);\n        });\n}\n\n// DOM Manipulation Functions\nfunction renderProblems(problemList) {\n    const problemsContainer = document.getElementById('problems-container');\n    problemsContainer.innerHTML = '';\n    problemList.forEach((problem) => {\n        const problemElement = document.createElement('div');\n        problemElement.classList.add('problem');\n        problemElement.innerHTML = `\n            <h3>${problem.title}</h3>\n            <p>${problem.description}</p>\n            <button onclick=\"viewProblem(${problem.id})\">View Problem</button>\n        `;\n        problemsContainer.appendChild(problemElement);\n    });\n}\n\nfunction renderLeaderboard(leaderboardData) {\n    const leaderboardContainer = document.getElementById('leaderboard-container');\n    leaderboardContainer.innerHTML = '';\n    leaderboardData.forEach((entry, index) => {\n        const entryElement = document.createElement('div');\n        entryElement.classList.add('leaderboard-entry');\n        entryElement.innerHTML = `\n            <span>${index + 1}. ${entry.username}</span>\n            <span>${entry.score}</span>\n        `;\n        leaderboardContainer.appendChild(entryElement);\n    });\n}\n\n// Event Handlers\nfunction viewProblem(problemId) {\n    fetchData(`problems/${problemId}`)\n        .then((problem) => {\n            const problemDetails = document.getElementById('problem-details');\n            problemDetails.innerHTML = `\n                <h2>${problem.title}</h2>\n                <p>${problem.description}</p>\n                <textarea id=\"solution-code\" placeholder=\"Write your solution here...\"></textarea>\n                <button onclick=\"submitSolution(${problemId})\">Submit Solution</button>\n            `;\n        });\n}\n\nfunction submitSolution(problemId) {\n    const solutionCode = document.getElementById('solution-code').value;\n    fetchData(`problems/${problemId}/submit`, 'POST', { solution: solutionCode })\n        .then((result) => {\n            alert(result.message);\n            if (result.success) {\n                loadLeaderboard();\n            }\n        });\n}\n\nfunction loadProblems() {\n    fetchData('problems')\n        .then((problems) => {\n            renderProblems(problems);\n        });\n}\n\nfunction loadLeaderboard() {\n    fetchData('leaderboard')\n        .then((leaderboard) => {\n            renderLeaderboard(leaderboard);\n        });\n}\n\n// Initialization\ndocument.addEventListener('DOMContentLoaded', () => {\n    loadProblems();\n    loadLeaderboard();\n});",
+        "language": "javascript",
+        "purpose": "Frontend JS",
+        "dependencies": [],
+        "interface_id": null,
+        "generated_at": "2026-02-15T18:31:58.261721"
+      },
+      {
+        "path": "app/routes.py",
+        "content": "from app.controllers.problem_controller import problem_bp\nfrom app.controllers.user_controller import user_bp\nfrom app.controllers.solution_controller import solution_bp\n\ndef register_blueprints(app):\n    app.register_blueprint(problem_bp)\n    app.register_blueprint(user_bp)\n    app.register_blueprint(solution_bp)",
+        "language": "python",
+        "purpose": "Register blueprints",
+        "dependencies": [
+          "app/controllers/problem_controller.py",
+          "app/controllers/user_controller.py",
+          "app/controllers/solution_controller.py"
+        ],
+        "interface_id": null,
+        "generated_at": "2026-02-15T18:31:59.293241"
+      },
+      {
+        "path": "app/__init__.py",
+        "content": "from flask import Flask\nfrom app.database import db\nfrom app.routes import register_blueprints\n\ndef create_app():\n    # Create the Flask app instance\n    app = Flask(__name__)\n    \n    # Configure the app (if any configuration is needed)\n    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False\n\n    # Initialize the database with the app\n    db.init_app(app)\n\n    # Register blueprints for routing\n    register_blueprints(app)\n\n    return app",
+        "language": "python",
+        "purpose": "Flask app factory",
+        "dependencies": [
+          "app/database.py",
+          "app/routes.py"
+        ],
+        "interface_id": null,
+        "generated_at": "2026-02-15T18:32:01.631457"
+      },
+      {
+        "path": "app.py",
+        "content": "from app import create_app\n\napp = create_app()\n\nif __name__ == \"__main__\":\n    app.run()",
+        "language": "python",
+        "purpose": "Entry point",
+        "dependencies": [
+          "app/__init__.py"
+        ],
+        "interface_id": null,
+        "generated_at": "2026-02-15T18:32:02.554017"
+      }
+    ],
+    "structure": {
+      "root": "generated",
+      "directories": [
+        "app\\models",
+        "app\\controllers",
+        "static\\css",
+        "app",
+        "static\\js",
+        "templates"
+      ],
+      "entry_point": "app.py"
+    },
+    "dependencies": [
+      "AWS",
+      "Axios",
+      "Bootstrap",
+      "Chart.js",
+      "Django",
+      "Docker",
+      "Express.js",
+      "Flask",
+      "GitHub Actions",
+      "Jest",
+      "Judge0",
+      "Material-UI",
+      "Mocha",
+      "MongoDB",
+      "MySQL",
+      "Node.js",
+      "PostgreSQL",
+      "Postman",
+      "Python",
+      "React",
+      "Redis",
+      "flask"
+    ],
+    "readme_content": "# ACM Problem-Solving Platform\n\nA website designed to help users solve ACM-style programming problems.\n\n## Features\n\n- Problem Repository: A comprehensive collection of ACM-style programming problems categorized by difficulty and topic.\n- Code Submission and Evaluation: Allows users to submit code solutions and receive automated feedback on correctness and performance.\n- User Progress Tracking: Tracks user progress, including solved problems, attempted problems, and performance metrics.\n- Leaderboard: Displays rankings of users based on their problem-solving performance.\n- Hints and Tutorials: Provides hints and tutorials for selected problems to help users improve their skills.\n\n## Setup\n\n```bash\npip install -r requirements.txt\npython app.py\n```\n\n## Usage\n\nOpen http://localhost:5000 in your browser.\n",
+    "created_at": "2026-02-15T18:32:02.556335"
+  },
+  "test_results": {
+    "logic_passed": true,
+    "bdd_test_cases": [
+      {
+        "test_id": "test_1",
+        "feature": "Problem Repository",
+        "scenario": "User can problem repository",
+        "given": "User is on the application page",
+        "when": "User performs problem repository",
+        "then": "The application should respond correctly",
+        "test_code": "def test_problem_repository():\n    # TODO: Implement test for Problem Repository",
+        "status": "pending"
+      },
+      {
+        "test_id": "test_2",
+        "feature": "Code Submission and Evaluation",
+        "scenario": "User can code submission and evaluation",
+        "given": "User is on the application page",
+        "when": "User performs code submission and evaluation",
+        "then": "The application should respond correctly",
+        "test_code": "def test_code_submission_and_evaluation():\n    # TODO: Implement test for Code Submission and Evaluation",
+        "status": "pending"
+      },
+      {
+        "test_id": "test_3",
+        "feature": "User Progress Tracking",
+        "scenario": "User can user progress tracking",
+        "given": "User is on the application page",
+        "when": "User performs user progress tracking",
+        "then": "The application should respond correctly",
+        "test_code": "def test_user_progress_tracking():\n    # TODO: Implement test for User Progress Tracking",
+        "status": "pending"
+      },
+      {
+        "test_id": "test_4",
+        "feature": "Leaderboard",
+        "scenario": "User can leaderboard",
+        "given": "User is on the application page",
+        "when": "User performs leaderboard",
+        "then": "The application should respond correctly",
+        "test_code": "def test_leaderboard():\n    # TODO: Implement test for Leaderboard",
+        "status": "pending"
+      },
+      {
+        "test_id": "test_5",
+        "feature": "Hints and Tutorials",
+        "scenario": "User can hints and tutorials",
+        "given": "User is on the application page",
+        "when": "User performs hints and tutorials",
+        "then": "The application should respond correctly",
+        "test_code": "def test_hints_and_tutorials():\n    # TODO: Implement test for Hints and Tutorials",
+        "status": "pending"
+      }
+    ],
+    "errors": [],
+    "warnings": [
+      "No Flask import found"
+    ],
+    "visual_verification": null,
+    "execution_time": 0.00716710090637207,
+    "stdout": "",
+    "stderr": "",
+    "timestamp": "2026-02-15T18:32:02.567021"
+  },
+  "is_deployable": true,
+  "deployment_instructions": "To run the application:\n\n1. Navigate to the generated directory:\n   cd generated\n\n2. Install dependencies:\n   pip install -r requirements.txt\n\n3. Run the application:\n   python app.py\n\n4. Open http://localhost:5000 in your browser\n",
+  "fix_attempts": 0,
+  "validated_at": "2026-02-15T18:32:02.567717"
+}

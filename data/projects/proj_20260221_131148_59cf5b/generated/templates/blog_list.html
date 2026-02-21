@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blog List</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <link rel="stylesheet" href="/static/css/responsive.css">
+    <script>
+        async function fetchBlogs() {
+            const response = await fetch('/api/blogs');
+            const blogs = await response.json();
+            const blogList = document.getElementById('blog-list');
+
+            blogs.forEach(blog => {
+                const blogDiv = document.createElement('div');
+                blogDiv.className = 'blog-item';
+
+                const title = document.createElement('h2');
+                title.textContent = blog.title;
+                blogDiv.appendChild(title);
+
+                if (blog.images && blog.images.length > 0) {
+                    const thumbnail = document.createElement('img');
+                    thumbnail.src = blog.images[0];
+                    thumbnail.alt = blog.title;
+                    thumbnail.className = 'thumbnail';
+                    blogDiv.appendChild(thumbnail);
+                }
+
+                const link = document.createElement('a');
+                link.href = `/blogs/${blog.id}`;
+                link.textContent = 'Read More';
+                blogDiv.appendChild(link);
+
+                blogList.appendChild(blogDiv);
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', fetchBlogs);
+    </script>
+</head>
+<body>
+    <h1>Blog List</h1>
+    <div id="blog-list"></div>
+</body>
+</html>

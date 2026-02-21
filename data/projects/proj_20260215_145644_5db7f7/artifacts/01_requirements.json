@@ -1,0 +1,18 @@
+{
+  "title": "Generated Application",
+  "description": "Build an ACM problem-solving website with problem library, code submission, user profiles, leaderboard and discussion forum",
+  "features": [
+    {
+      "id": "f1",
+      "name": "Basic Functionality",
+      "description": "Core application functionality",
+      "priority": 1,
+      "user_story": null
+    }
+  ],
+  "constraints": [],
+  "target_users": null,
+  "data_requirements": null,
+  "user_clarifications": {},
+  "created_at": "2026-02-15T14:56:48.741456"
+}

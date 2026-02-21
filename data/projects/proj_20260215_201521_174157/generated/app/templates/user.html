@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Profile</title>
+    <link href="{{ url_for('static', filename='styles.css') }}" rel="stylesheet">
+</head>
+<body>
+    <header>
+        <nav>
+            <ul>
+                <li><a href="{{ url_for('home.index') }}">Home</a></li>
+                <li><a href="{{ url_for('problem.library') }}">Problem Library</a></li>
+                <li><a href="{{ url_for('leaderboard.index') }}">Leaderboard</a></li>
+                <li><a href="{{ url_for('auth.logout') }}">Logout</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main>
+        <section>
+            <h1>User Profile</h1>
+            <div class="user-info">
+                <p><strong>Username:</strong> {{ user.username }}</p>
+                <p><strong>Email:</strong> {{ user.email }}</p>
+                <p><strong>Joined:</strong> {{ user.join_date.strftime('%B %d, %Y') }}</p>
+                <p><strong>Total Solved Problems:</strong> {{ user.solved_problems_count }}</p>
+                <p><strong>Rank:</strong> {{ user.rank }}</p>
+            </div>
+        </section>
+
+        <section>
+            <h2>Recent Activity</h2>
+            <ul>
+                {% for activity in user.recent_activities %}
+                    <li>{{ activity }}</li>
+                {% endfor %}
+            </ul>
+        </section>
+
+        <section>
+            <h2>Progress</h2>
+            <canvas id="progressChart"></canvas>
+        </section>
+    </main>
+
+    <footer>
+        <p>© ACM Problem-Solving Platform</p>
+    </footer>
+
+    <script src="{{ url_for('static', filename='chart.js') }}"></script>
+    <script>
+        // Example of rendering progress chart
+        const ctx = document.getElementById('progressChart').getContext('2d');
+        const progressChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: {{ user.progress_data.dates | safe }},
+                datasets: [{
+                    label: 'Problems Solved',
+                    data: {{ user.progress_data.solved_counts | safe }},
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    tension: 0.1
+                }]
+            },
+        });
+    </script>
+</body>
+</html>

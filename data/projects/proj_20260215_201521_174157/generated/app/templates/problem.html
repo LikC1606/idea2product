@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Problem Details</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <header>
+        <h1>ACM Problem-Solving Platform</h1>
+        <nav>
+            <ul>
+                <li><a href="{{ url_for('home.index') }}">Home</a></li>
+                <li><a href="{{ url_for('problem_library.index') }}">Problem Library</a></li>
+                <li><a href="{{ url_for('leaderboard.index') }}">Leaderboard</a></li>
+                <li><a href="{{ url_for('profile.index') }}">Profile</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main>
+        <section class="problem-details">
+            <h2>{{ problem.title }}</h2>
+            <p>{{ problem.description }}</p>
+
+            <h3>Constraints</h3>
+            <ul>
+                {% for constraint in problem.constraints %}
+                    <li>{{ constraint }}</li>
+                {% endfor %}
+            </ul>
+
+            <h3>Sample Input</h3>
+            <pre>{{ problem.sample_input }}</pre>
+
+            <h3>Sample Output</h3>
+            <pre>{{ problem.sample_output }}</pre>
+            
+            <h3>Hints</h3>
+            {% if problem.hints %}
+                <ul>
+                    {% for hint in problem.hints %}
+                        <li>{{ hint }}</li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p>No hints available for this problem.</p>
+            {% endif %}
+        </section>
+
+        <section class="code-submission">
+            <h3>Submit Your Solution</h3>
+            <form action="{{ url_for('problem.submit', problem_id=problem.id) }}" method="POST">
+                <label for="language">Programming Language:</label>
+                <select name="language" id="language">
+                    <option value="python">Python</option>
+                    <option value="cpp">C++</option>
+                    <option value="java">Java</option>
+                </select>
+
+                <label for="code">Your Code:</label>
+                <textarea name="code" id="code" rows="10" cols="50" required></textarea>
+
+                <button type="submit">Submit</button>
+            </form>
+        </section>
+    </main>
+
+    <footer>
+        <p>&copy; 2023 ACM Problem-Solving Platform. All rights reserved.</p>
+    </footer>
+</body>
+</html>

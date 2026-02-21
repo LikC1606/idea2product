@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ACM Problem-Solving Platform</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <header>
+        <h1>ACM Problem-Solving Platform</h1>
+        <nav>
+            <ul>
+                <li><a href="{{ url_for('problem_blueprint.problem_list') }}">Problems</a></li>
+                <li><a href="{{ url_for('user_blueprint.leaderboard') }}">Leaderboard</a></li>
+                <li><a href="{{ url_for('user_blueprint.profile') }}">Profile</a></li>
+                <li><a href="{{ url_for('user_blueprint.logout') }}">Logout</a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        <section id="problems">
+            <h2>Problem List</h2>
+            <ul>
+                {% for problem in problems %}
+                <li>
+                    <a href="{{ url_for('problem_blueprint.problem_detail', problem_id=problem.id) }}">
+                        {{ problem.title }}
+                    </a>
+                    <p>{{ problem.description }}</p>
+                </li>
+                {% endfor %}
+            </ul>
+        </section>
+
+        <section id="leaderboard">
+            <h2>Leaderboard</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Rank</th>
+                        <th>Username</th>
+                        <th>Score</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in leaderboard %}
+                    <tr>
+                        <td>{{ loop.index }}</td>
+                        <td>{{ user.username }}</td>
+                        <td>{{ user.score }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </section>
+    </main>
+    <footer>
+        <p>&copy; 2023 ACM Problem-Solving Platform. All rights reserved.</p>
+    </footer>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

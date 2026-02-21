@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Problem Details</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <header>
+        <h1>ACM Problem-Solving Platform</h1>
+        <nav>
+            <ul>
+                <li><a href="{{ url_for('home') }}">Home</a></li>
+                <li><a href="{{ url_for('problem_bp.problem_list') }}">Problems</a></li>
+                <li><a href="{{ url_for('profile') }}">Profile</a></li>
+                <li><a href="{{ url_for('leaderboard') }}">Leaderboard</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main>
+        <h2>{{ problem.title }}</h2>
+        <p><strong>Difficulty:</strong> {{ problem.difficulty }}</p>
+        <p><strong>Tags:</strong> {{ ', '.join(problem.tags) }}</p>
+        <hr>
+        <div>
+            <h3>Problem Statement</h3>
+            <p>{{ problem.description }}</p>
+        </div>
+        <hr>
+        <div>
+            <h3>Input Format</h3>
+            <p>{{ problem.input_format }}</p>
+        </div>
+        <div>
+            <h3>Output Format</h3>
+            <p>{{ problem.output_format }}</p>
+        </div>
+        <hr>
+        <div>
+            <h3>Sample Inputs and Outputs</h3>
+            <ul>
+                {% for example in problem.examples %}
+                <li>
+                    <strong>Input:</strong>
+                    <pre>{{ example.input }}</pre>
+                    <strong>Output:</strong>
+                    <pre>{{ example.output }}</pre>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        <hr>
+        <div>
+            <h3>Submit Your Solution</h3>
+            <form action="{{ url_for('problem_bp.submit_solution', problem_id=problem.id) }}" method="post">
+                <textarea name="solution_code" rows="10" cols="80" placeholder="Write your solution code here..."></textarea>
+                <br>
+                <button type="submit">Submit</button>
+            </form>
+        </div>
+    </main>
+
+    <footer>
+        <p>&copy; 2023 ACM Problem-Solving Platform</p>
+    </footer>
+</body>
+</html>

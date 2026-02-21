@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Profile - ACM Problem-Solving Platform</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <header>
+        <div class="navbar">
+            <a href="/">Home</a>
+            <a href="/problems">Problems</a>
+            <a href="/leaderboard">Leaderboard</a>
+            <a href="/profile">Profile</a>
+            <a href="/logout">Logout</a>
+        </div>
+    </header>
+
+    <main>
+        <div class="profile-container">
+            <h1>User Profile</h1>
+            <div class="profile-details">
+                <h2>{{ user.username }}</h2>
+                <p>Email: {{ user.email }}</p>
+                <p>Joined: {{ user.date_joined }}</p>
+                <p>Total Problems Solved: {{ user.problems_solved }}</p>
+            </div>
+
+            <div class="solved-problems">
+                <h2>Solved Problems</h2>
+                {% if solved_problems %}
+                    <ul>
+                        {% for problem in solved_problems %}
+                            <li>
+                                <a href="/problems/{{ problem.id }}">{{ problem.title }}</a>
+                                <span>({{ problem.difficulty }})</span>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <p>No problems solved yet. Start solving <a href="/problems">here</a>.</p>
+                {% endif %}
+            </div>
+
+            <div class="submitted-solutions">
+                <h2>Submitted Solutions</h2>
+                {% if solutions %}
+                    <ul>
+                        {% for solution in solutions %}
+                            <li>
+                                Problem: <a href="/problems/{{ solution.problem_id }}">{{ solution.problem_title }}</a>
+                                <span>Status: {{ solution.status }}</span>
+                                <span>Submitted on: {{ solution.date_submitted }}</span>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <p>No solutions submitted yet. Submit your code <a href="/problems">here</a>.</p>
+                {% endif %}
+            </div>
+        </div>
+    </main>
+
+    <footer>
+        <p>&copy; 2023 ACM Problem-Solving Platform</p>
+    </footer>
+</body>
+</html>

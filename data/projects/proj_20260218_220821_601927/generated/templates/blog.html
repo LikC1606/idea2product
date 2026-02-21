@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blog</title>
+    <link rel="stylesheet" type="text/css" href="/static/blog.css">
+</head>
+<body>
+    <header>
+        <h1>Blog Posts</h1>
+    </header>
+    <main>
+        <section id="blog-posts">
+            <!-- Blog posts will be dynamically loaded here -->
+        </section>
+        <section id="comments">
+            <h2>Comments</h2>
+            <form id="comment-form">
+                <textarea name="content" placeholder="Write your comment here..." required></textarea>
+                <button type="submit">Submit</button>
+            </form>
+            <ul id="comment-list">
+                <!-- Comments will be dynamically loaded here -->
+            </ul>
+        </section>
+    </main>
+    <script>
+        // Fetch and display blog posts
+        fetch('/api/blog_posts')
+            .then(response => response.json())
+            .then(posts => {
+                const postsSection = document.getElementById('blog-posts');
+                posts.forEach(post => {
+                    const postDiv = document.createElement('div');
+                    postDiv.className = 'blog-post';
+                    postDiv.innerHTML = `
+                        <h2>${post.title}</h2>
+                        <p>${post.description}</p>
+                        <img src="${post.image_url}" alt="${post.title}">
+                    `;
+                    postsSection.appendChild(postDiv);
+                });
+            });
+
+        // Handle comment submission
+        document.getElementById('comment-form').addEventListener('submit', function(event) {
+            event.preventDefault();
+            const content = event.target.content.value;
+            fetch('/api/comments', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ post_id: selectedPostId, content })
+            })
+            .then(response => response.json())
+            .then(comment => {
+                const commentList = document.getElementById('comment-list');
+                const commentItem = document.createElement('li');
+                commentItem.textContent = comment.content;
+                commentList.appendChild(commentItem);
+                event.target.reset();
+            });
+        });
+
+        // Fetch and display comments
+        fetch(`/api/comments/${selectedPostId}`)
+            .then(response => response.json())
+            .then(comments => {
+                const commentList = document.getElementById('comment-list');
+                comments.forEach(comment => {
+                    const commentItem = document.createElement('li');
+                    commentItem.textContent = comment.content;
+                    commentList.appendChild(commentItem);
+                });
+            });
+    </script>
+</body>
+</html>

@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Notes</title>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const notesList = document.getElementById('notes-list');
+            const form = document.getElementById('note-form');
+
+            // Fetch notes from the API
+            fetch('/api/notes')
+                .then(response => response.json())
+                .then(data => {
+                    notesList.innerHTML = '';
+                    data.forEach(note => {
+                        const li = document.createElement('li');
+                        li.textContent = `${note.content} (Created at: ${note.created_at})`;
+                        notesList.appendChild(li);
+                    });
+                });
+
+            // Handle form submission
+            form.addEventListener('submit', event => {
+                event.preventDefault();
+                const content = document.getElementById('note-content').value;
+
+                fetch('/api/notes', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ content })
+                })
+                    .then(response => response.json())
+                    .then(note => {
+                        const li = document.createElement('li');
+                        li.textContent = `${note.content} (Created at: ${note.created_at})`;
+                        notesList.appendChild(li);
+                        form.reset();
+                    });
+            });
+        });
+    </script>
+</head>
+<body>
+    <h1>Notes</h1>
+    <ul id="notes-list">
+        <!-- Notes will be dynamically populated here -->
+    </ul>
+
+    <form id="note-form">
+        <input type="text" id="note-content" placeholder="Enter note content" required />
+        <button type="submit">Add Note</button>
+    </form>
+</body>
+</html>

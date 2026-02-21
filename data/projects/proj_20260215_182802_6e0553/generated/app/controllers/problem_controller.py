@@ -1,0 +1,64 @@
+from flask import Blueprint, jsonify, request
+from app.models.problem import Problem
+from app.database import db
+
+problem_bp = Blueprint('problem', __name__)
+
+@problem_bp.route('/problems', methods=['GET'])
+def get_problems():
+    try:
+        problems = Problem.query.all()
+        result = [problem.to_dict() for problem in problems]
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@problem_bp.route('/problems/<int:problem_id>', methods=['GET'])
+def get_problem(problem_id):
+    try:
+        problem = Problem.query.get(problem_id)
+        if not problem:
+            return jsonify({'error': 'Problem not found'}), 404
+        return jsonify(problem.to_dict()), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@problem_bp.route('/problems', methods=['POST'])
+def create_problem():
+    try:
+        data = request.get_json()
+        new_problem = Problem(**data)
+        db.session.add(new_problem)
+        db.session.commit()
+        return jsonify(new_problem.to_dict()), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@problem_bp.route('/problems/<int:problem_id>', methods=['PUT'])
+def update_problem(problem_id):
+    try:
+        data = request.get_json()
+        problem = Problem.query.get(problem_id)
+        if not problem:
+            return jsonify({'error': 'Problem not found'}), 404
+        for key, value in data.items():
+            setattr(problem, key, value)
+        db.session.commit()
+        return jsonify(problem.to_dict()), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@problem_bp.route('/problems/<int:problem_id>', methods=['DELETE'])
+def delete_problem(problem_id):
+    try:
+        problem = Problem.query.get(problem_id)
+        if not problem:
+            return jsonify({'error': 'Problem not found'}), 404
+        db.session.delete(problem)
+        db.session.commit()
+        return jsonify({'message': 'Problem deleted successfully'}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500

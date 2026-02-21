@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ problem.title }}</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <header>
+        <h1>{{ problem.title }}</h1>
+        <p>Difficulty: {{ problem.difficulty }}</p>
+        <p>Author: {{ problem.author.username }}</p>
+    </header>
+
+    <main>
+        <section id="problem-statement">
+            <h2>Problem Statement</h2>
+            <p>{{ problem.statement }}</p>
+        </section>
+
+        <section id="input-format">
+            <h2>Input Format</h2>
+            <p>{{ problem.input_format }}</p>
+        </section>
+
+        <section id="output-format">
+            <h2>Output Format</h2>
+            <p>{{ problem.output_format }}</p>
+        </section>
+
+        <section id="constraints">
+            <h2>Constraints</h2>
+            <ul>
+                {% for constraint in problem.constraints %}
+                    <li>{{ constraint }}</li>
+                {% endfor %}
+            </ul>
+        </section>
+
+        <section id="examples">
+            <h2>Examples</h2>
+            <div class="example">
+                <h3>Input:</h3>
+                <pre>{{ problem.example_input }}</pre>
+                <h3>Output:</h3>
+                <pre>{{ problem.example_output }}</pre>
+            </div>
+        </section>
+
+        <section id="submission">
+            <h2>Submit Your Solution</h2>
+            <form action="{{ url_for('solution_blueprint.submit_solution', problem_id=problem.id) }}" method="POST">
+                <textarea name="solution_code" placeholder="Write your code here..." rows="10" required></textarea>
+                <button type="submit">Submit</button>
+            </form>
+        </section>
+
+        <section id="hints">
+            <h2>Hints</h2>
+            <ul>
+                {% for hint in problem.hints %}
+                    <li>{{ hint }}</li>
+                {% endfor %}
+            </ul>
+        </section>
+    </main>
+
+    <footer>
+        <p>&copy; 2023 ACM Problem-Solving Platform</p>
+    </footer>
+</body>
+</html>

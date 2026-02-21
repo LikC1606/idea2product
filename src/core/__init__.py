@@ -13,7 +13,14 @@ from .data_models import (
     TestResult,
     ValidatedProject,
 )
-from .orchestrator import Orchestrator
+
+# Lazy import to avoid circular import
+# orchestrator imports planning_agents which imports data_models
+def __getattr__(name):
+    if name == "Orchestrator":
+        from .orchestrator import Orchestrator
+        return Orchestrator
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 __all__ = [
     "AgentBase",

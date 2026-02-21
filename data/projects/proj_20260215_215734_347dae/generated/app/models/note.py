@@ -1,0 +1,14 @@
+from app.database import db
+
+class Note(db.Model):
+    __tablename__ = 'notes'
+
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(255), nullable=False)
+    content = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, server_default=db.func.now())
+    updated_at = db.Column(db.DateTime, nullable=False, server_default=db.func.now(), onupdate=db.func.now())
+    is_archived = db.Column(db.Boolean, default=False)
+
+    def __repr__(self):
+        return f'<Note id={self.id} title={self.title}>'

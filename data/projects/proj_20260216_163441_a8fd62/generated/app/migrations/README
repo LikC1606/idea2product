@@ -1,0 +1,2 @@
+This folder contains Alembic migrations for database schema changes.
+Run `flask db migrate` and `flask db upgrade` to apply schema changes.

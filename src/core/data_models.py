@@ -42,6 +42,7 @@ class ErrorType(str, Enum):
     LOGIC = "logic"
     DEPENDENCY = "dependency"
     TIMEOUT = "timeout"
+    IMPORT = "import"
 
 
 # ============================================================================
@@ -89,6 +90,9 @@ class Task(BaseModel):
     dependencies: List[str] = Field(default_factory=list, description="List of task IDs this depends on")
     priority: int = Field(default=1, ge=1, le=5, description="Priority (1-5)")
     estimated_complexity: TaskComplexity = Field(..., description="Complexity estimate")
+    # 新增：文件修改信息
+    files_to_add: List[str] = Field(default_factory=list, description="Files to create")
+    files_to_modify: List[str] = Field(default_factory=list, description="Files to modify")
 
 
 class Algorithm(BaseModel):
@@ -108,7 +112,33 @@ class FileSpec(BaseModel):
     path: str = Field(..., description="Relative file path")
     purpose: str = Field(..., description="Purpose of this file")
     dependencies: List[str] = Field(default_factory=list, description="Files this depends on")
+    layer: Optional[str] = Field(default=None, description="Layer: base (database/models), business (controllers/services), assembly (routes/__init__)")
     related_tasks: List[str] = Field(default_factory=list, description="Related task IDs")
+
+
+class ExportSpec(BaseModel):
+    """Specification for an exported class or function."""
+
+    type: str = Field(..., description="Type: class or function")
+    name: str = Field(..., description="Name of the class or function")
+    extends: Optional[str] = Field(None, description="Parent class if applicable")
+    params: List[str] = Field(default_factory=list, description="Function parameters")
+    returns: Optional[str] = Field(None, description="Return type hint")
+    docstring: Optional[str] = Field(None, description="Documentation")
+
+
+class InterfaceSpec(BaseModel):
+    """Detailed interface specification for a file."""
+
+    module_name: str = Field(..., description="Module name, e.g., app.models.problem")
+    file_path: str = Field(..., description="Relative file path, e.g., app/models/problem.py")
+    purpose: str = Field(..., description="Purpose of this module")
+    layer: Optional[str] = Field(default=None, description="Layer: base, business, or assembly")
+    exports: List[ExportSpec] = Field(default_factory=list, description="Classes and functions to export")
+    imports: List[str] = Field(default_factory=list, description="Required import statements")
+    database_access: str = Field(default="none", description="Database layer: sqlalchemy, sqlite3, or none")
+    related_files: List[str] = Field(default_factory=list, description="Related module paths")
+    usage_in_code: List[str] = Field(default_factory=list, description="How other files use this module")
 
 
 class EngineeringPlan(BaseModel):
@@ -117,8 +147,11 @@ class EngineeringPlan(BaseModel):
     tasks: List[Task] = Field(..., description="All tasks")
     algorithms: Dict[str, Algorithm] = Field(..., description="Algorithm per task")
     file_structure: List[FileSpec] = Field(..., description="Files to generate")
+    interface_specs: List[InterfaceSpec] = Field(default_factory=list, description="Detailed interface specifications for each module")
     dependencies: List[str] = Field(default_factory=list, description="Python packages needed")
     architecture_notes: str = Field(..., description="Overall architecture description")
+    api_specs: Dict[str, Any] = Field(default_factory=dict, description="API specifications for frontend-backend connection")
+    pyi_stubs: Dict[str, str] = Field(default_factory=dict, description="Python .pyi stub files with type definitions")
     created_at: datetime = Field(default_factory=datetime.now)
 
 

@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blog Detail</title>
+</head>
+<body>
+    <h1 id="title"></h1>
+    <img id="image" alt="Blog Image" style="max-width: 400px;">
+    <p id="description"></p>
+    <a href="/blogs">Back to Blog List</a>
+
+    <div>
+        <button id="edit-button">Edit</button>
+        <button id="delete-button">Delete</button>
+    </div>
+
+    <script>
+        async function fetchBlog() {
+            const blogId = window.location.pathname.split('/').pop();
+            const response = await fetch(`/api/blogs/${blogId}`);
+            const blog = await response.json();
+
+            document.getElementById('title').textContent = blog.title;
+            document.getElementById('description').textContent = blog.description;
+            document.getElementById('image').src = blog.image_path;
+
+            // Set edit button link
+            document.getElementById('edit-button').onclick = () => {
+                window.location.href = `/blogs/${blogId}/edit`;
+            };
+
+            // Set delete button functionality
+            document.getElementById('delete-button').onclick = async () => {
+                const confirmDelete = confirm('Are you sure you want to delete this blog post?');
+                if (confirmDelete) {
+                    const deleteResponse = await fetch(`/api/blogs/${blogId}`, {
+                        method: 'DELETE'
+                    });
+
+                    if (deleteResponse.ok) {
+                        alert('Blog post deleted successfully!');
+                        window.location.href = '/blogs';
+                    } else {
+                        alert('Failed to delete blog post.');
+                    }
+                }
+            };
+        }
+
+        fetchBlog();
+    </script>
+</body>
+</html>

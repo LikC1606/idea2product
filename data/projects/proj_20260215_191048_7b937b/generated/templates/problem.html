@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Problem Details</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <header>
+        <h1>ACM Problem-Solving Platform</h1>
+        <nav>
+            <ul>
+                <li><a href="/">Home</a></li>
+                <li><a href="/problems">Problem Library</a></li>
+                <li><a href="/leaderboard">Leaderboard</a></li>
+                <li><a href="/profile">Profile</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main>
+        <section id="problem-details">
+            <h2>{{ problem.title }}</h2>
+            <p><strong>Difficulty:</strong> {{ problem.difficulty }}</p>
+            <p><strong>Description:</strong></p>
+            <p>{{ problem.description }}</p>
+
+            <h3>Input Format</h3>
+            <p>{{ problem.input_format }}</p>
+            
+            <h3>Output Format</h3>
+            <p>{{ problem.output_format }}</p>
+            
+            <h3>Examples</h3>
+            <div id="examples">
+                {% for example in problem.examples %}
+                    <div class="example">
+                        <p><strong>Input:</strong></p>
+                        <pre>{{ example.input }}</pre>
+                        <p><strong>Output:</strong></p>
+                        <pre>{{ example.output }}</pre>
+                    </div>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section id="submission">
+            <h3>Submit Your Solution</h3>
+            <form action="/submit/{{ problem.id }}" method="POST">
+                <label for="code">Your Code:</label><br>
+                <textarea id="code" name="code" rows="10" cols="80" placeholder="Write your code here..."></textarea><br>
+                <button type="submit">Submit</button>
+            </form>
+        </section>
+    </main>
+
+    <footer>
+        <p>&copy; 2023 ACM Problem-Solving Platform</p>
+    </footer>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

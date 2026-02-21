@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Profile</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <header>
+        <nav>
+            <ul>
+                <li><a href="/">Home</a></li>
+                <li><a href="/problems">Problems</a></li>
+                <li><a href="/profile">Profile</a></li>
+                <li><a href="/logout">Logout</a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        <section class="profile-section">
+            <h1>User Profile</h1>
+            <div class="user-info">
+                <p><strong>Username:</strong> {{ username }}</p>
+                <p><strong>Email:</strong> {{ email }}</p>
+                <p><strong>Member Since:</strong> {{ member_since }}</p>
+            </div>
+            <div class="user-stats">
+                <h2>Statistics</h2>
+                <ul>
+                    <li><strong>Problems Solved:</strong> {{ problems_solved }}</li>
+                    <li><strong>Total Submissions:</strong> {{ total_submissions }}</li>
+                    <li><strong>Rank:</strong> {{ rank }}</li>
+                </ul>
+            </div>
+        </section>
+    </main>
+    <footer>
+        <p>&copy; 2023 ACM Problem-Solving Platform</p>
+    </footer>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
+
+{% macro none() %}
+{% endmacro %}

@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blog Detail</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 40px;
+            background-color: #f9f9f9;
+            color: #333;
+        }
+        h1 {
+            color: #2c3e50;
+        }
+        img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .comment {
+            margin-bottom: 20px;
+            padding: 10px;
+            background-color: #fff;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .comment p {
+            margin: 5px 0;
+        }
+        form {
+            margin-top: 20px;
+        }
+        textarea {
+            width: 100%;
+            height: 100px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        button {
+            background-color: #3498db;
+            color: #fff;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+    </style>
+</head>
+<body>
+    <h1 id="blog-title"></h1>
+    <p id="blog-description"></p>
+    <img id="blog-image" />
+
+    <h2>Comments</h2>
+    <div id="comments"></div>
+
+    <h3>Add a Comment</h3>
+    <form id="comment-form">
+        <textarea id="comment-content" required></textarea><br>
+        <button type="submit">Submit</button>
+    </form>
+
+    <script>
+        const blogId = window.location.pathname.split('/').pop();
+
+        async function fetchBlog() {
+            const response = await fetch(`/api/blogs/${blogId}`);
+            const blog = await response.json();
+            document.getElementById('blog-title').textContent = blog.title;
+            document.getElementById('blog-description').textContent = blog.description;
+            if (blog.image_url) {
+                document.getElementById('blog-image').src = blog.image_url;
+            }
+        }
+
+        async function fetchComments() {
+            const response = await fetch(`/api/comments/${blogId}`);
+            const comments = await response.json();
+            const commentsContainer = document.getElementById('comments');
+
+            comments.forEach(comment => {
+                const commentDiv = document.createElement('div');
+                commentDiv.className = 'comment';
+                commentDiv.innerHTML = `<p>${comment.content}</p>`;
+                commentsContainer.appendChild(commentDiv);
+            });
+        }
+
+        document.getElementById('comment-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const content = document.getElementById('comment-content').value;
+            const response = await fetch('/api/comments', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ blog_id: blogId, content })
+            });
+            if (response.ok) {
+                document.getElementById('comment-content').value = '';
+                fetchComments();
+            }
+        });
+
+        fetchBlog();
+        fetchComments();
+    </script>
+</body>
+</html>

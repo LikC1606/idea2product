@@ -1,0 +1,148 @@
+{
+  "skeleton": null,
+  "files": [
+    {
+      "path": ".env",
+      "content": "FLASK_ENV=development\nDEBUG=True\nHOST=0.0.0.0\nPORT=5000\nSECRET_KEY=dev-secret-key\n",
+      "language": "text",
+      "purpose": "Framework file: .env",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T16:15:06.764718"
+    },
+    {
+      "path": "app.py",
+      "content": "\"\"\"\n应用入口\n\"\"\"\nimport os\nfrom app import create_app\n\napp = create_app()\n\nif __name__ == '__main__':\n    host = os.getenv('HOST', '0.0.0.0')\n    port = int(os.getenv('PORT', 5000))\n    debug = os.getenv('DEBUG', 'True').lower() == 'true'\n\n    print(\"=\" * 50)\n    print(f\"Flask App Started: http://localhost:{port}\")\n    print(\"=\" * 50)\n\n    app.run(host=host, port=port, debug=debug)\n",
+      "language": "python",
+      "purpose": "Framework file: app.py",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T16:15:06.765019"
+    },
+    {
+      "path": "config.py",
+      "content": "import os\nfrom dotenv import load_dotenv\n\nBASE_DIR = os.path.dirname(os.path.abspath(__file__))\nload_dotenv(os.path.join(BASE_DIR, '.env'))\n\n\nclass Config:\n    SECRET_KEY = os.getenv('SECRET_KEY', 'dev-secret-key')\n    SQLALCHEMY_TRACK_MODIFICATIONS = False\n    SQLALCHEMY_DATABASE_URI = os.getenv(\n        'DATABASE_URL',\n        'sqlite:///' + os.path.join(BASE_DIR, 'data.db')\n    )\n\n\nclass DevelopmentConfig(Config):\n    DEBUG = True\n    ENV = 'development'\n\n\nclass ProductionConfig(Config):\n    DEBUG = False\n    ENV = 'production'\n\n\nclass TestingConfig(Config):\n    TESTING = True\n    SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'\n\n\nconfig_by_name = {\n    'development': DevelopmentConfig,\n    'production': ProductionConfig,\n    'testing': TestingConfig,\n    'default': DevelopmentConfig\n}\n\n\ndef get_config():\n    env = os.getenv('FLASK_ENV', 'development')\n    return config_by_name.get(env, DevelopmentConfig)\n",
+      "language": "python",
+      "purpose": "Framework file: config.py",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T16:15:06.765304"
+    },
+    {
+      "path": "requirements.txt",
+      "content": "Flask==2.3.2\nFlask-SQLAlchemy==3.0.5\nFlask-CORS==4.0.0\npython-dotenv==1.0.0\n",
+      "language": "text",
+      "purpose": "Framework file: requirements.txt",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T16:15:06.765491"
+    },
+    {
+      "path": "SPEC.md",
+      "content": "# Flask 基础框架模板\n# 此文件定义了标准的 Flask 项目结构\n# AI 可以读取此文件作为参考，生成符合框架规范的代码\n\n## 文件结构\n\nflask_base/\n├── app/\n│   ├── __init__.py      # 应用工厂 - 在这里注册蓝图\n│   ├── models/\n│   │   └── __init__.py  # 模型包\n│   └── routes/\n│       └── __init__.py  # 路由包\n├── templates/\n│   └── index.html       # 主页模板\n├── config.py            # 多环境配置\n├── app.py               # 入口文件\n├── requirements.txt     # 依赖\n└── .env                # 环境变量\n\n## 关键接口规范\n\n### 1. 模型规范 (app/models/__init__.py)\n```python\nfrom app import db\n\nclass ModelName(db.Model):\n    __tablename__ = 'table_name'\n\n    id = db.Column(db.Integer, primary_key=True)\n    # 其他字段...\n\n    def to_dict(self):\n        return {\n            'id': self.id,\n            # 其他字段...\n        }\n```\n\n### 2. 路由规范 (app/routes/xxx.py)\n```python\nfrom flask import Blueprint, request, jsonify\nfrom app import db\nfrom app.models.xxx import ModelName\n\nxxx_bp = Blueprint('xxx', __name__)\n\n@xxx_bp.route('/xxx', methods=['GET'])\ndef get_xxx():\n    items = ModelName.query.all()\n    return jsonify([item.to_dict() for item in items])\n\n@xxx_bp.route('/xxx', methods=['POST'])\ndef create_xxx():\n    data = request.get_json()\n    item = ModelName(字段=data['字段'])\n    db.session.add(item)\n    db.session.commit()\n    return jsonify(item.to_dict()), 201\n```\n\n### 3. 注册蓝图规范 (app/__init__.py)\n```python\n# 导入蓝图\nfrom app.routes.xxx import xxx_bp\n\n# 注册蓝图\napp.register_blueprint(xxx_bp, url_prefix='/api')\n```\n\n### 4. 前端模板规范 (templates/xxx.html)\n```html\n<!DOCTYPE html>\n<html>\n<head>\n    <title>Title</title>\n    <script>\n        const API_BASE = '/api';\n        // 使用 fetch 调用 API\n    </script>\n</head>\n<body>\n    <!-- 页面内容 -->\n</body>\n</html>\n```\n\n## 常见修改文件\n\n1. **app/__init__.py** - 注册新蓝图\n2. **app/models/__init__.py** - 添加新模型导入\n3. **app/routes/__init__.py** - 添加新路由导入\n4. **app/routes/xxx.py** - 新建路由文件\n5. **app/models/xxx.py** - 新建模型文件\n6. **templates/xxx.html** - 新建前端页面\n7. **config.py** - 添加配置项（可选）\n8. **requirements.txt** - 添加依赖（可选）\n",
+      "language": "markdown",
+      "purpose": "Framework file: SPEC.md",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T16:15:06.765656"
+    },
+    {
+      "path": "app\\__init__.py",
+      "content": "from flask import Flask\nfrom flask_sqlalchemy import SQLAlchemy\nfrom flask_cors import CORS\nfrom app.routes.notes import notes_bp\n\ndb = SQLAlchemy()\n\ndef create_app():\n    app = Flask(__name__)\n    app.config.from_object('config.get_config')\n\n    db.init_app(app)\n    CORS(app)\n\n    app.register_blueprint(notes_bp, url_prefix='/api')\n\n    @app.route('/')\n    def index():\n        return app.send_static_file('index.html')\n\n    return app",
+      "language": "python",
+      "purpose": "Framework file: app\\__init__.py",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T16:15:06.765986"
+    },
+    {
+      "path": "templates\\index.html",
+      "content": "<!DOCTYPE html>\n<html>\n<head>\n    <meta charset=\"UTF-8\">\n    <title>Flask App</title>\n</head>\n<body>\n    <h1>Welcome to Flask App</h1>\n    <p>请在 app/__init__.py 中注册蓝图以启用功能</p>\n</body>\n</html>\n",
+      "language": "html",
+      "purpose": "Framework file: templates\\index.html",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T16:15:06.766198"
+    },
+    {
+      "path": "app\\models\\__init__.py",
+      "content": "# 模型包\n# 在这里添加业务模型\n# from app.models.note import Note\n# __all__ = ['Note']\n",
+      "language": "python",
+      "purpose": "Framework file: app\\models\\__init__.py",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T16:15:06.766494"
+    },
+    {
+      "path": "app\\routes\\__init__.py",
+      "content": "# 路由包\n# 在这里注册业务蓝图\n# from app.routes.notes import notes_bp\n# __all__ = ['notes_bp']\n",
+      "language": "python",
+      "purpose": "Framework file: app\\routes\\__init__.py",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T16:15:06.766692"
+    },
+    {
+      "path": "app\\models\\note.py",
+      "content": "from app import db\nfrom datetime import datetime\n\nclass Note(db.Model):\n    __tablename__ = 'notes'\n\n    id = db.Column(db.Integer, primary_key=True)\n    content = db.Column(db.String(255), nullable=False)\n    created_at = db.Column(db.DateTime, default=datetime.utcnow)\n\n    def to_dict(self):\n        return {\n            'id': self.id,\n            'content': self.content,\n            'created_at': self.created_at.isoformat()\n        }",
+      "language": "python",
+      "purpose": "Task T1: 创建笔记模型",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T16:15:10.547943"
+    },
+    {
+      "path": "app\\routes\\notes.py",
+      "content": "from flask import Blueprint, request, jsonify, render_template\nfrom app import db\nfrom app.models.note import Note\n\nnotes_bp = Blueprint('notes', __name__)\n\n@notes_bp.route('/notes', methods=['GET'])\ndef get_notes():\n    notes = Note.query.order_by(Note.created_at.desc()).all()\n    return jsonify([note.to_dict() for note in notes])\n\n@notes_bp.route('/notes', methods=['POST'])\ndef create_note():\n    data = request.get_json()\n    note = Note(content=data['content'])\n    db.session.add(note)\n    db.session.commit()\n    return jsonify(note.to_dict()), 201\n\n@notes_bp.route('/notes.html', methods=['GET'])\ndef notes_page():\n    return render_template('notes.html')",
+      "language": "python",
+      "purpose": "Task T1: 创建笔记模型",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T16:15:10.548152"
+    },
+    {
+      "path": "app\\migrations\\env.py",
+      "content": "from __future__ import with_statement\nimport logging\nfrom logging.config import fileConfig\nfrom flask import current_app\nfrom alembic import context\nfrom sqlalchemy import engine_from_config, pool\n\n# this is the Alembic Config object, which provides\nthe values used by the Alembic Command utility.\nconfig = context.config\n\n# Interpret the config file for Python logging.\n# This line sets up loggers basically.\nfileConfig(config.config_file_name)\nlogger = logging.getLogger('alembic.env')\n\ndef get_engine():\n    return current_app.extensions['migrate'].db.engine\n\ndef run_migrations_online():\n    with get_engine().connect() as connection:\n        context.configure(\n            connection=connection,\n            target_metadata=current_app.extensions['migrate'].db.metadata,\n            compare_type=True\n        )\n\n        with context.begin_transaction():\n            context.run_migrations()\n\nif context.is_offline_mode():\n    raise RuntimeError('Offline migrations not supported.')\nelse:\n    run_migrations_online()\n",
+      "language": "python",
+      "purpose": "Task T2: 设置数据库迁移",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T16:15:16.902454"
+    },
+    {
+      "path": "app\\migrations\\versions\\001_create_notes_table.py",
+      "content": "from alembic import op\nimport sqlalchemy as sa\n\n# revision identifiers, used by Alembic.\nrevision = '001_create_notes_table'\ndown_revision = None\nbranch_labels = None\ndepends_on = None\n\ndef upgrade():\n    op.create_table(\n        'notes',\n        sa.Column('id', sa.Integer, primary_key=True),\n        sa.Column('content', sa.Text, nullable=False),\n        sa.Column('created_at', sa.DateTime, server_default=sa.func.now(), nullable=False),\n    )\n\ndef downgrade():\n    op.drop_table('notes')\n",
+      "language": "python",
+      "purpose": "Task T2: 设置数据库迁移",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T16:15:16.903137"
+    },
+    {
+      "path": "templates\\notes.html",
+      "content": "<!DOCTYPE html>\n<html>\n<head>\n    <title>Notes</title>\n    <script src=\"/static/js/notes.js\" defer></script>\n</head>\n<body>\n    <h1>Notes</h1>\n    <form id=\"note-form\">\n        <input type=\"text\" id=\"note-input\" placeholder=\"Write your note here...\" required>\n        <button type=\"submit\">Add Note</button>\n    </form>\n    <ul id=\"notes-list\">\n        <!-- Notes will be displayed here -->\n    </ul>\n</body>\n</html>",
+      "language": "html",
+      "purpose": "Task T4: 创建笔记前端页面",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T16:15:26.999939"
+    }
+  ],
+  "structure": {
+    "root": "generated",
+    "directories": [
+      "app\\routes",
+      "app\\migrations",
+      "app\\migrations\\versions",
+      "templates",
+      "app",
+      "app\\models"
+    ],
+    "entry_point": "app.py"
+  },
+  "dependencies": [
+    "flask"
+  ],
+  "readme_content": "# Simple Note-Taking App\n\nAn application that allows users to input and save text notes.\n\n## Features\n\n- Text Input: Users can input text to create a new note.\n- Save Notes: Users can save their notes for future reference.\n\n## Setup\n\n```bash\npip install -r requirements.txt\npython app.py\n```\n\n## Usage\n\nOpen http://localhost:5000 in your browser.\n",
+  "created_at": "2026-02-16T16:15:33.390013"
+}

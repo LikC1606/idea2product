@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Problem Details</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <header>
+        <nav>
+            <ul>
+                <li><a href="{{ url_for('index') }}">Home</a></li>
+                <li><a href="{{ url_for('problem_bp.get_problems') }}">Problems</a></li>
+                <li><a href="{{ url_for('user_bp.get_users') }}">Users</a></li>
+                <li><a href="{{ url_for('solution_bp.get_solutions') }}">Solutions</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main>
+        <section class="problem-details">
+            <h1>{{ problem.title }}</h1>
+            <p><strong>Description:</strong> {{ problem.description }}</p>
+            <p><strong>Difficulty:</strong> {{ problem.difficulty }}</p>
+        </section>
+
+        <section class="solutions">
+            <h2>Solutions</h2>
+            <ul>
+                {% for solution in solutions %}
+                <li>
+                    <p><strong>Language:</strong> {{ solution.language }}</p>
+                    <p><strong>Status:</strong> {{ solution.status }}</p>
+                    <p><strong>Code:</strong></p>
+                    <pre>{{ solution.code }}</pre>
+                </li>
+                {% endfor %}
+            </ul>
+        </section>
+
+        <section class="submit-solution">
+            <h2>Submit Your Solution</h2>
+            <form action="{{ url_for('solution_bp.create_solution') }}" method="POST">
+                <input type="hidden" name="problem_id" value="{{ problem.id }}">
+                <div>
+                    <label for="language">Language:</label>
+                    <select name="language" id="language">
+                        <option value="Python">Python</option>
+                        <option value="C++">C++</option>
+                        <option value="Java">Java</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="code">Code:</label>
+                    <textarea name="code" id="code" rows="10"></textarea>
+                </div>
+                <button type="submit">Submit</button>
+            </form>
+        </section>
+    </main>
+
+    <footer>
+        <p>&copy; 2023 ACM Problem-Solving Platform</p>
+    </footer>
+</body>
+</html>

@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notes</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <header>
+        <h1>Note-Taking Application</h1>
+        <nav>
+            <ul>
+                <li><a href="{{ url_for('home') }}">Home</a></li>
+                <li><a href="{{ url_for('create_note') }}">Create Note</a></li>
+                <li><a href="{{ url_for('search_notes') }}">Search Notes</a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        <h2>Your Notes</h2>
+        <div class="notes-container">
+            {% if notes %}
+                {% for note in notes %}
+                    <div class="note-card">
+                        <h3>{{ note.title }}</h3>
+                        <p>{{ note.content }}</p>
+                        <small>Created on: {{ note.timestamp }}</small>
+                    </div>
+                {% endfor %}
+            {% else %}
+                <p>No notes available. Start by creating a new note!</p>
+            {% endif %}
+        </div>
+    </main>
+    <footer>
+        <p>&copy; 2023 Note-Taking Application</p>
+    </footer>
+</body>
+</html>

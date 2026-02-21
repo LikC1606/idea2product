@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Blog Detail</title>
+    <script>
+        async function fetchBlog() {
+            const blogId = window.location.pathname.split('/').pop();
+            const response = await fetch(`/api/blogs/${blogId}`);
+            const blog = await response.json();
+
+            const blogDetail = document.getElementById('blog-detail');
+            blogDetail.innerHTML = `
+                <h1>${blog.title}</h1>
+                <p>${blog.content}</p>
+                <h3>Images:</h3>
+                <div id="images">
+                    ${blog.images.map(image => `<img src="/${image.image_url}" alt="Blog Image" style="max-width: 200px;">`).join('')}
+                </div>
+            `;
+        }
+
+        document.addEventListener('DOMContentLoaded', fetchBlog);
+    </script>
+</head>
+<body>
+    <div id="blog-detail">
+        <!-- Blog details will be loaded here -->
+    </div>
+</body>
+</html>

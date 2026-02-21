@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel='stylesheet' href='/static/css/styles.css'>
+    <link rel='stylesheet' href='/static/css/responsive.css'>
+</head>
+<body>
+    <h1>Create New Blog</h1>
+    <form id='blog-form' action='/api/blogs/' method='post' enctype='multipart/form-data'>
+        <input type='text' name='title' placeholder='Title' required>
+        <textarea name='content' placeholder='Content' required></textarea>
+        <input type='file' name='images' id='image-upload' multiple>
+        <div id='image-preview'></div>
+        <button type='submit'>Submit</button>
+    </form>
+
+    <script>
+        document.getElementById('image-upload').addEventListener('change', function(event) {
+            const previewContainer = document.getElementById('image-preview');
+            previewContainer.innerHTML = ''; // Clear previous previews
+
+            const files = event.target.files;
+            for (const file of files) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const img = document.createElement('img');
+                    img.src = e.target.result;
+                    img.style.maxWidth = '200px';
+                    img.style.margin = '10px';
+                    previewContainer.appendChild(img);
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+    </script>
+</body>
+</html>

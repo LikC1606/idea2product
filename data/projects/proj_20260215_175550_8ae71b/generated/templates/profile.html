@@ -1,0 +1,46 @@
+<!-- templates/profile.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Profile</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <header>
+        <nav>
+            <ul>
+                <li><a href="{{ url_for('problem_blueprint.problem_library') }}">Problem Library</a></li>
+                <li><a href="{{ url_for('solution_blueprint.leaderboard') }}">Leaderboard</a></li>
+                <li><a href="{{ url_for('user_blueprint.profile', user_id=user.id) }}">Profile</a></li>
+                <li><a href="{{ url_for('user_blueprint.logout') }}">Logout</a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        <section class="profile-section">
+            <h1>User Profile</h1>
+            <div class="profile-info">
+                <p><strong>Name:</strong> {{ user.name }}</p>
+                <p><strong>Email:</strong> {{ user.email }}</p>
+                <p><strong>Username:</strong> {{ user.username }}</p>
+                <p><strong>Member Since:</strong> {{ user.created_at.strftime('%B %d, %Y') }}</p>
+            </div>
+            <h2>Solutions Submitted</h2>
+            <ul>
+                {% for solution in solutions %}
+                <li>
+                    <a href="{{ url_for('solution_blueprint.view_solution', solution_id=solution.id) }}">
+                        Problem: {{ solution.problem.title }} | Submission Date: {{ solution.submitted_at.strftime('%B %d, %Y') }}
+                    </a>
+                </li>
+                {% endfor %}
+            </ul>
+        </section>
+    </main>
+    <footer>
+        <p>&copy; {{ current_year }} ACM Problem-Solving Platform</p>
+    </footer>
+</body>
+</html>

@@ -1,0 +1,128 @@
+{
+  "skeleton": null,
+  "files": [
+    {
+      "path": ".env",
+      "content": "FLASK_ENV=development\nDEBUG=True\nHOST=0.0.0.0\nPORT=5000\nSECRET_KEY=dev-secret-key\n",
+      "language": "text",
+      "purpose": "Framework file: .env",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T15:18:49.715909"
+    },
+    {
+      "path": "app.py",
+      "content": "\"\"\"\n应用入口\n\"\"\"\nimport os\nfrom app import create_app\n\napp = create_app()\n\nif __name__ == '__main__':\n    host = os.getenv('HOST', '0.0.0.0')\n    port = int(os.getenv('PORT', 5000))\n    debug = os.getenv('DEBUG', 'True').lower() == 'true'\n\n    print(\"=\" * 50)\n    print(f\"Flask App Started: http://localhost:{port}\")\n    print(\"=\" * 50)\n\n    app.run(host=host, port=port, debug=debug)\n",
+      "language": "python",
+      "purpose": "Framework file: app.py",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T15:18:49.716090"
+    },
+    {
+      "path": "config.py",
+      "content": "import os\nfrom dotenv import load_dotenv\n\nBASE_DIR = os.path.dirname(os.path.abspath(__file__))\nload_dotenv(os.path.join(BASE_DIR, '.env'))\n\n\nclass Config:\n    SECRET_KEY = os.getenv('SECRET_KEY', 'dev-secret-key')\n    SQLALCHEMY_TRACK_MODIFICATIONS = False\n    SQLALCHEMY_DATABASE_URI = os.getenv(\n        'DATABASE_URL',\n        'sqlite:///' + os.path.join(BASE_DIR, 'data.db')\n    )\n\n\nclass DevelopmentConfig(Config):\n    DEBUG = True\n    ENV = 'development'\n\n\nclass ProductionConfig(Config):\n    DEBUG = False\n    ENV = 'production'\n\n\nclass TestingConfig(Config):\n    TESTING = True\n    SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'\n\n\nconfig_by_name = {\n    'development': DevelopmentConfig,\n    'production': ProductionConfig,\n    'testing': TestingConfig,\n    'default': DevelopmentConfig\n}\n\n\ndef get_config():\n    env = os.getenv('FLASK_ENV', 'development')\n    return config_by_name.get(env, DevelopmentConfig)\n",
+      "language": "python",
+      "purpose": "Framework file: config.py",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T15:18:49.716235"
+    },
+    {
+      "path": "requirements.txt",
+      "content": "Flask==2.3.2\nFlask-SQLAlchemy==3.0.5\nFlask-CORS==4.0.0\npython-dotenv==1.0.0\n",
+      "language": "text",
+      "purpose": "Framework file: requirements.txt",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T15:18:49.716365"
+    },
+    {
+      "path": "SPEC.md",
+      "content": "# Flask 基础框架模板\n# 此文件定义了标准的 Flask 项目结构\n# AI 可以读取此文件作为参考，生成符合框架规范的代码\n\n## 文件结构\n\nflask_base/\n├── app/\n│   ├── __init__.py      # 应用工厂 - 在这里注册蓝图\n│   ├── models/\n│   │   └── __init__.py  # 模型包\n│   └── routes/\n│       └── __init__.py  # 路由包\n├── templates/\n│   └── index.html       # 主页模板\n├── config.py            # 多环境配置\n├── app.py               # 入口文件\n├── requirements.txt     # 依赖\n└── .env                # 环境变量\n\n## 关键接口规范\n\n### 1. 模型规范 (app/models/__init__.py)\n```python\nfrom app import db\n\nclass ModelName(db.Model):\n    __tablename__ = 'table_name'\n\n    id = db.Column(db.Integer, primary_key=True)\n    # 其他字段...\n\n    def to_dict(self):\n        return {\n            'id': self.id,\n            # 其他字段...\n        }\n```\n\n### 2. 路由规范 (app/routes/xxx.py)\n```python\nfrom flask import Blueprint, request, jsonify\nfrom app import db\nfrom app.models.xxx import ModelName\n\nxxx_bp = Blueprint('xxx', __name__)\n\n@xxx_bp.route('/xxx', methods=['GET'])\ndef get_xxx():\n    items = ModelName.query.all()\n    return jsonify([item.to_dict() for item in items])\n\n@xxx_bp.route('/xxx', methods=['POST'])\ndef create_xxx():\n    data = request.get_json()\n    item = ModelName(字段=data['字段'])\n    db.session.add(item)\n    db.session.commit()\n    return jsonify(item.to_dict()), 201\n```\n\n### 3. 注册蓝图规范 (app/__init__.py)\n```python\n# 导入蓝图\nfrom app.routes.xxx import xxx_bp\n\n# 注册蓝图\napp.register_blueprint(xxx_bp, url_prefix='/api')\n```\n\n### 4. 前端模板规范 (templates/xxx.html)\n```html\n<!DOCTYPE html>\n<html>\n<head>\n    <title>Title</title>\n    <script>\n        const API_BASE = '/api';\n        // 使用 fetch 调用 API\n    </script>\n</head>\n<body>\n    <!-- 页面内容 -->\n</body>\n</html>\n```\n\n## 常见修改文件\n\n1. **app/__init__.py** - 注册新蓝图\n2. **app/models/__init__.py** - 添加新模型导入\n3. **app/routes/__init__.py** - 添加新路由导入\n4. **app/routes/xxx.py** - 新建路由文件\n5. **app/models/xxx.py** - 新建模型文件\n6. **templates/xxx.html** - 新建前端页面\n7. **config.py** - 添加配置项（可选）\n8. **requirements.txt** - 添加依赖（可选）\n",
+      "language": "markdown",
+      "purpose": "Framework file: SPEC.md",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T15:18:49.716514"
+    },
+    {
+      "path": "app\\__init__.py",
+      "content": "\"\"\"\nFlask 应用工厂\n框架代码，不包含具体业务逻辑\n\"\"\"\nimport os\nfrom flask import Flask, render_template\nfrom flask_sqlalchemy import SQLAlchemy\nfrom flask_cors import CORS\nfrom config import get_config\n\ndb = SQLAlchemy()\n\n# 项目根目录\nBASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))\n\n\ndef create_app(config_name=None):\n    \"\"\"应用工厂函数\"\"\"\n    # 设置模板路径\n    template_dir = os.path.join(BASE_DIR, 'templates')\n    app = Flask(__name__, template_folder=template_dir)\n\n    # 加载配置\n    if config_name:\n        app.config.from_object(config_name)\n    else:\n        app.config.from_object(get_config())\n\n    # 初始化扩展\n    db.init_app(app)\n\n    # CORS 支持\n    CORS(app)\n\n    # ==== 在这里注册业务蓝图 ====\n    # from app.routes.xxx import xxx_bp\n    # app.register_blueprint(xxx_bp, url_prefix='/api')\n    # ==============================\n\n    # 首页路由\n    @app.route('/')\n    def index():\n        return render_template('index.html')\n\n    # 健康检查\n    @app.route('/health')\n    def health():\n        return {'status': 'ok'}\n\n    # 创建数据库表\n    with app.app_context():\n        db.create_all()\n\n    return app\n",
+      "language": "python",
+      "purpose": "Framework file: app\\__init__.py",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T15:18:49.716795"
+    },
+    {
+      "path": "templates\\index.html",
+      "content": "<!DOCTYPE html>\n<html>\n<head>\n    <meta charset=\"UTF-8\">\n    <title>Flask App</title>\n</head>\n<body>\n    <h1>Welcome to Flask App</h1>\n    <p>请在 app/__init__.py 中注册蓝图以启用功能</p>\n</body>\n</html>\n",
+      "language": "html",
+      "purpose": "Framework file: templates\\index.html",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T15:18:49.716994"
+    },
+    {
+      "path": "app\\models\\__init__.py",
+      "content": "# 模型包\n# 在这里添加业务模型\n# from app.models.note import Note\n# __all__ = ['Note']\n",
+      "language": "python",
+      "purpose": "Framework file: app\\models\\__init__.py",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T15:18:49.717254"
+    },
+    {
+      "path": "app\\routes\\__init__.py",
+      "content": "# 路由包\n# 在这里注册业务蓝图\n# from app.routes.notes import notes_bp\n# __all__ = ['notes_bp']\n",
+      "language": "python",
+      "purpose": "Framework file: app\\routes\\__init__.py",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T15:18:49.717423"
+    },
+    {
+      "path": "app/models/note.py",
+      "content": "from app import db\nfrom datetime import datetime\n\nclass Note(db.Model):\n    __tablename__ = 'notes'\n\n    id = db.Column(db.Integer, primary_key=True)\n    content = db.Column(db.Text, nullable=False)\n    category = db.Column(db.String(50), nullable=True)\n    created_at = db.Column(db.DateTime, default=datetime.utcnow)\n\n    def to_dict(self):\n        return {\n            'id': self.id,\n            'content': self.content,\n            'category': self.category,\n            'created_at': self.created_at.isoformat()\n        }",
+      "language": "python",
+      "purpose": "Modified by task T5: 优化笔记组织功能",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T15:18:59.912340"
+    },
+    {
+      "path": "app/routes/notes.py",
+      "content": "from flask import Blueprint, request, jsonify\nfrom app import db\nfrom app.models.note import Note\n\nnotes_bp = Blueprint('notes', __name__)\n\n@notes_bp.route('/notes', methods=['POST'])\ndef create_note():\n    data = request.get_json()\n    if not data or 'content' not in data:\n        return jsonify({'error': 'Content is required'}), 400\n\n    category = data.get('category', None)\n    note = Note(content=data['content'], category=category)\n    db.session.add(note)\n    db.session.commit()\n    return jsonify(note.to_dict()), 201\n\n@notes_bp.route('/notes', methods=['GET'])\ndef get_notes():\n    notes = Note.query.all()\n    return jsonify([note.to_dict() for note in notes])\n\n@notes_bp.route('/notes/<int:note_id>', methods=['GET'])\ndef get_note_by_id(note_id):\n    note = Note.query.get(note_id)\n    if not note:\n        return jsonify({'error': 'Note not found'}), 404\n    return jsonify(note.to_dict())\n\n@notes_bp.route('/notes/<int:note_id>', methods=['PUT'])\ndef update_note(note_id):\n    data = request.get_json()\n    if not data or 'content' not in data:\n        return jsonify({'error': 'Content is required'}), 400\n\n    note = Note.query.get(note_id)\n    if not note:\n        return jsonify({'error': 'Note not found'}), 404\n\n    note.content = data['content']\n    note.category = data.get('category', note.category)\n    db.session.commit()\n    return jsonify(note.to_dict())\n\n@notes_bp.route('/notes/<int:note_id>', methods=['DELETE'])\ndef delete_note(note_id):\n    note = Note.query.get(note_id)\n    if not note:\n        return jsonify({'error': 'Note not found'}), 404\n\n    db.session.delete(note)\n    db.session.commit()\n    return jsonify({'message': 'Note deleted successfully'})\n\n@notes_bp.route('/notes/search', methods=['GET'])\ndef search_notes():\n    query = request.args.get('query', '')\n    if not query:\n        return jsonify({'error': 'Query parameter is required'}), 400\n\n    notes = Note.query.filter(Note.content.ilike(f'%{query}%')).all()\n    return jsonify([note.to_dict() for note in notes])",
+      "language": "python",
+      "purpose": "Modified by task T5: 优化笔记组织功能",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T15:18:59.912420"
+    },
+    {
+      "path": "templates/notes.html",
+      "content": "<!DOCTYPE html>\n<html>\n<head>\n    <meta charset=\"UTF-8\">\n    <title>Notes Management</title>\n    <script>\n        const API_BASE = '/api';\n\n        async function fetchNotes() {\n            const response = await fetch(`${API_BASE}/notes`);\n            const notes = await response.json();\n            const notesList = document.getElementById('notes-list');\n            notesList.innerHTML = '';\n            notes.forEach(note => {\n                const noteItem = document.createElement('li');\n                noteItem.textContent = `${note.content} (Category: ${note.category || 'None'}, Created at: ${new Date(note.created_at).toLocaleString()})`;\n                noteItem.innerHTML += ` <button onclick=\"deleteNote(${note.id})\">Delete</button>`;\n                notesList.appendChild(noteItem);\n            });\n        }\n\n        async function createNote() {\n            const content = document.getElementById('note-content').value;\n            const category = document.getElementById('note-category').value;\n            if (!content) {\n                alert('Content cannot be empty');\n                return;\n            }\n            const response = await fetch(`${API_BASE}/notes`, {\n                method: 'POST',\n                headers: {\n                    'Content-Type': 'application/json'\n                },\n                body: JSON.stringify({ content, category })\n            });\n            if (response.ok) {\n                document.getElementById('note-content').value = '';\n                document.getElementById('note-category').value = '';\n                fetchNotes();\n            } else {\n                alert('Failed to create note');\n            }\n        }\n\n        async function deleteNote(noteId) {\n            const response = await fetch(`${API_BASE}/notes/${noteId}`, {\n                method: 'DELETE'\n            });\n            if (response.ok) {\n                fetchNotes();\n            } else {\n                alert('Failed to delete note');\n            }\n        }\n\n        async function searchNotes() {\n            const query = document.getElementById('search-query').value;\n            if (!query) {\n                alert('Search query cannot be empty');\n                return;\n            }\n            const response = await fetch(`${API_BASE}/notes/search?query=${query}`);\n            const notes = await response.json();\n            const notesList = document.getElementById('notes-list');\n            notesList.innerHTML = '';\n            notes.forEach(note => {\n                const noteItem = document.createElement('li');\n                noteItem.textContent = `${note.content} (Category: ${note.category || 'None'}, Created at: ${new Date(note.created_at).toLocaleString()})`;\n                notesList.appendChild(noteItem);\n            });\n        }\n    </script>\n</head>\n<body>\n    <h1>Notes Management</h1>\n    <div>\n        <input type=\"text\" id=\"note-content\" placeholder=\"Note content\">\n        <input type=\"text\" id=\"note-category\" placeholder=\"Category\">\n        <button onclick=\"createNote()\">Create Note</button>\n    </div>\n    <div>\n        <input type=\"text\" id=\"search-query\" placeholder=\"Search notes\">\n        <button onclick=\"searchNotes()\">Search</button>\n    </div>\n    <ul id=\"notes-list\"></ul>\n    <script>\n        fetchNotes();\n    </script>\n</body>\n</html>",
+      "language": "html",
+      "purpose": "Modified by task T5: 优化笔记组织功能",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T15:19:11.022772"
+    }
+  ],
+  "structure": {
+    "root": "generated",
+    "directories": [
+      "app\\models",
+      "app\\routes",
+      "templates",
+      "app"
+    ],
+    "entry_point": "app.py"
+  },
+  "dependencies": [
+    "flask"
+  ],
+  "readme_content": "# Note-Taking App\n\nAn application for creating, organizing, and managing notes.\n\n## Features\n\n- Create Notes: Allows users to create and save text-based notes.\n- Organize Notes: Enables users to categorize or tag notes for better organization.\n- Search Notes: Provides a search functionality to quickly find specific notes.\n\n## Setup\n\n```bash\npip install -r requirements.txt\npython app.py\n```\n\n## Usage\n\nOpen http://localhost:5000 in your browser.\n",
+  "created_at": "2026-02-16T15:19:26.024543"
+}

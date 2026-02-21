@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notes</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+
+        .note {
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Notes</h1>
+
+    <form id="note-form">
+        <textarea id="note-content" placeholder="Write a note..." required></textarea>
+        <button type="submit">Add Note</button>
+    </form>
+
+    <h2>Search Notes</h2>
+    <input type="text" id="search-query" placeholder="Search...">
+    <button id="search-button">Search</button>
+
+    <h2>Notes List</h2>
+    <div id="notes-list"></div>
+
+    <script>
+        function fetchNotes() {
+            $.get('/api/notes', function(data) {
+                const notesList = $('#notes-list');
+                notesList.empty();
+                data.forEach(note => {
+                    const noteElement = $(
+                        `<div class="note">
+                            <p>${note.content}</p>
+                            <small>Created at: ${note.created_at}</small>
+                            <button onclick="deleteNote(${note.id})">Delete</button>
+                        </div>`
+                    );
+                    notesList.append(noteElement);
+                });
+            });
+        }
+
+        function deleteNote(noteId) {
+            $.ajax({
+                url: `/api/notes/${noteId}`,
+                type: 'DELETE',
+                success: function() {
+                    fetchNotes();
+                }
+            });
+        }
+
+        $('#note-form').on('submit', function(e) {
+            e.preventDefault();
+            const content = $('#note-content').val();
+            $.post('/api/notes', JSON.stringify({ content }), function() {
+                $('#note-content').val('');
+                fetchNotes();
+            }, 'json');
+        });
+
+        $('#search-button').on('click', function() {
+            const query = $('#search-query').val();
+            $.get(`/api/notes/search?query=${query}`, function(data) {
+                const notesList = $('#notes-list');
+                notesList.empty();
+                data.forEach(note => {
+                    const noteElement = $(
+                        `<div class="note">
+                            <p>${note.content}</p>
+                            <small>Created at: ${note.created_at}</small>
+                        </div>`
+                    );
+                    notesList.append(noteElement);
+                });
+            });
+        });
+
+        $(document).ready(function() {
+            fetchNotes();
+        });
+    </script>
+</body>
+</html>

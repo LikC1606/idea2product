@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Problem Details</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <header>
+        <nav>
+            <ul>
+                <li><a href="/">Home</a></li>
+                <li><a href="/problems">Problems</a></li>
+                <li><a href="/profile">Profile</a></li>
+                <li><a href="/leaderboard">Leaderboard</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main>
+        <section class="problem-details">
+            <h1>{{ problem.title }}</h1>
+            <p><strong>Problem ID:</strong> {{ problem.id }}</p>
+            <p><strong>Difficulty:</strong> {{ problem.difficulty }}</p>
+            <p><strong>Description:</strong></p>
+            <p>{{ problem.description }}</p>
+        </section>
+
+        <section class="problem-actions">
+            <a href="/submit/{{ problem.id }}" class="button">Submit Solution</a>
+        </section>
+
+        <section class="problem-solutions">
+            <h2>Solutions</h2>
+            {% if solutions %}
+                <ul>
+                    {% for solution in solutions %}
+                        <li>
+                            <strong>{{ solution.user.username }}</strong>: 
+                            <a href="/solution/{{ solution.id }}">View Solution</a>
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p>No solutions submitted yet.</p>
+            {% endif %}
+        </section>
+    </main>
+
+    <footer>
+        <p>&copy; 2023 ACM Problem-Solving Platform</p>
+    </footer>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

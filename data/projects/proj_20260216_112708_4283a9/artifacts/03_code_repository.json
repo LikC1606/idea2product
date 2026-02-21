@@ -1,0 +1,83 @@
+{
+  "skeleton": null,
+  "files": [
+    {
+      "path": "app/__init__.py",
+      "content": "from flask import Flask\nfrom app.database import db\nfrom app.routes import notes_bp\n\ndef create_app():\n    app = Flask(__name__)\n    app.secret_key = 'your_secret_key_here'\n\n    # Register blueprints\n    app.register_blueprint(notes_bp)\n\n    # Initialize the database\n    db.init_app(app)\n\n    # Create tables\n    with app.app_context():\n        db.create_all()\n\n    # Add a home route\n    @app.route('/')\n    def home():\n        return \"Welcome to the Simple Note-Taking App!\"\n\n    return app",
+      "language": "python",
+      "purpose": "Flask app factory",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T11:27:23.716378"
+    },
+    {
+      "path": "app/database.py",
+      "content": "from flask_sqlalchemy import SQLAlchemy\n\ndb = SQLAlchemy()",
+      "language": "python",
+      "purpose": "database setup",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T11:27:27.178941"
+    },
+    {
+      "path": "app/models/note.py",
+      "content": "# app/models/note.py\n\nfrom app.database import db\n\nclass Note(db.Model):\n    id = db.Column(db.Integer, primary_key=True)\n    content = db.Column(db.Text, nullable=False)\n    created_at = db.Column(db.DateTime, server_default=db.func.now())",
+      "language": "python",
+      "purpose": "note model",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T11:27:30.885482"
+    },
+    {
+      "path": "app/routes.py",
+      "content": "from flask import Blueprint, render_template, request, redirect\nfrom app.models.note import Note\nfrom app.database import db\n\nnotes_bp = Blueprint('notes', __name__)\n\n@notes_bp.route('/', methods=['GET'])\ndef index():\n    notes = Note.query.all()\n    return render_template('index.html', notes=notes)\n\n@notes_bp.route('/add', methods=['POST'])\ndef add_note():\n    note_content = request.form.get('content')\n    if note_content:\n        new_note = Note(content=note_content)\n        db.session.add(new_note)\n        db.session.commit()\n    return redirect('/')\n\n@notes_bp.route('/delete/<int:note_id>', methods=['POST'])\ndef delete_note(note_id):\n    note = Note.query.get(note_id)\n    if note:\n        db.session.delete(note)\n        db.session.commit()\n    return redirect('/')",
+      "language": "python",
+      "purpose": "API routes",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T11:27:34.433197"
+    },
+    {
+      "path": "app.py",
+      "content": "from app import create_app\n\nif __name__ == \"__main__\":\n    app = create_app()\n    app.run(debug=True)",
+      "language": "python",
+      "purpose": "application entry point",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T11:27:39.709210"
+    },
+    {
+      "path": "templates/index.html",
+      "content": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>Note-Taking App</title>\n    <link rel=\"stylesheet\" href=\"../static/styles.css\">\n</head>\n<body>\n    <header>\n        <h1>Note-Taking App</h1>\n    </header>\n    <main>\n        <form method=\"POST\" action=\"/add-note\">\n            <textarea name=\"note_content\" placeholder=\"Write your note here...\" required></textarea>\n            <button type=\"submit\">Save Note</button>\n        </form>\n        <section>\n            <h2>Saved Notes</h2>\n            <ul>\n                {% for note in notes %}\n                    <li>{{ note.content }}</li>\n                {% endfor %}\n            </ul>\n        </section>\n    </main>\n</body>\n</html>",
+      "language": "html",
+      "purpose": "HTML template for note-taking interface",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T11:27:43.223643"
+    },
+    {
+      "path": "static/styles.css",
+      "content": "/* styles.css */\n\n/* General reset */\nbody, h1, h2, h3, p, ul, ol, li, input, button {\n    margin: 0;\n    padding: 0;\n    box-sizing: border-box;\n}\n\n/* Body styling */\nbody {\n    font-family: Arial, sans-serif;\n    background-color: #f9f9f9;\n    color: #333;\n    line-height: 1.6;\n    padding: 20px;\n}\n\n/* Container styling */\n.container {\n    max-width: 800px;\n    margin: 0 auto;\n    background: #ffffff;\n    padding: 20px;\n    border-radius: 8px;\n    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);\n}\n\n/* Heading styling */\nh1 {\n    font-size: 2rem;\n    margin-bottom: 20px;\n    color: #222;\n    text-align: center;\n}\n\n/* Form styling */\nform {\n    margin-bottom: 30px;\n}\n\nform input[type=\"text\"] {\n    width: calc(100% - 100px);\n    padding: 10px;\n    border: 1px solid #ddd;\n    border-radius: 4px;\n    font-size: 1rem;\n}\n\nform button {\n    padding: 10px 15px;\n    background-color: #007bff;\n    color: #fff;\n    border: none;\n    border-radius: 4px;\n    font-size: 1rem;\n    cursor: pointer;\n}\n\nform button:hover {\n    background-color: #0056b3;\n}\n\n/* Notes list styling */\n.notes-list {\n    list-style: none;\n    margin-top: 20px;\n    padding: 0;\n}\n\n.notes-list li {\n    background: #f4f4f4;\n    margin-bottom: 10px;\n    padding: 15px;\n    border: 1px solid #ddd;\n    border-radius: 4px;\n}\n\n.notes-list li p {\n    margin: 0;\n    font-size: 1rem;\n}",
+      "language": "css",
+      "purpose": "CSS for styling the application",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T11:27:46.719296"
+    }
+  ],
+  "structure": {
+    "root": "generated",
+    "directories": [
+      "app",
+      "templates",
+      "static",
+      "app\\models"
+    ],
+    "entry_point": "app.py"
+  },
+  "dependencies": [
+    "flask"
+  ],
+  "readme_content": "# Simple Note-Taking App\n\nAn application that allows users to enter and save text on a single page.\n\n## Features\n\n- Text Input: A text box where users can type their notes.\n- Save Notes: A feature to save the entered text for future reference.\n\n## Setup\n\n```bash\npip install -r requirements.txt\npython app.py\n```\n\n## Usage\n\nOpen http://localhost:5000 in your browser.\n",
+  "created_at": "2026-02-16T11:27:46.719676"
+}

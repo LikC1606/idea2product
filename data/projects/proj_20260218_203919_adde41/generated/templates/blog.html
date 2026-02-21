@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blog Management</title>
+    <script>
+        const API_BASE = '/api';
+
+        async function fetchBlogs() {
+            const response = await fetch(`${API_BASE}/blogs`);
+            const blogs = await response.json();
+            const blogList = document.getElementById('blog-list');
+            blogList.innerHTML = '';
+            blogs.forEach(blog => {
+                const blogItem = document.createElement('li');
+                blogItem.textContent = `${blog.title} - ${blog.content}`;
+                blogList.appendChild(blogItem);
+            });
+        }
+
+        async function createBlog(event) {
+            event.preventDefault();
+            const formData = new FormData(event.target);
+            const response = await fetch(`${API_BASE}/blogs`, {
+                method: 'POST',
+                body: formData
+            });
+            if (response.ok) {
+                fetchBlogs();
+                event.target.reset();
+            } else {
+                alert('Failed to create blog');
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchBlogs();
+            document.getElementById('blog-form').addEventListener('submit', createBlog);
+        });
+    </script>
+</head>
+<body>
+    <h1>Blog Management</h1>
+
+    <form id="blog-form">
+        <label for="title">Title:</label>
+        <input type="text" id="title" name="title" required>
+
+        <label for="content">Content:</label>
+        <textarea id="content" name="content" required></textarea>
+
+        <label for="image">Image:</label>
+        <input type="file" id="image" name="image" accept="image/*">
+
+        <button type="submit">Create Blog</button>
+    </form>
+
+    <h2>Blog List</h2>
+    <ul id="blog-list">
+        <!-- Blog items will be populated here -->
+    </ul>
+</body>
+</html>

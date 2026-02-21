@@ -1,0 +1,120 @@
+/* static/css/style.css */
+/* Stylesheet for the ACM Problem-Solving Platform */
+/* Layer: frontend */
+
+/* General Reset */
+body, h1, h2, h3, h4, h5, h6, p, ul, ol, li, a {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* Body Styling */
+body {
+  font-family: Arial, sans-serif;
+  background-color: #f9f9f9;
+  color: #333;
+  line-height: 1.6;
+  padding: 0;
+  margin: 0;
+}
+
+/* Navigation Bar */
+nav {
+  background: #007bff;
+  color: #fff;
+  padding: 1rem;
+}
+
+nav a {
+  color: #fff;
+  text-decoration: none;
+  margin-right: 1rem;
+  font-weight: bold;
+}
+
+nav a:hover {
+  text-decoration: underline;
+}
+
+/* Header Section */
+header {
+  background: #343a40;
+  color: #fff;
+  padding: 2rem 0;
+  text-align: center;
+}
+
+header h1 {
+  font-size: 2.5rem;
+  margin-bottom: 0.5rem;
+}
+
+header p {
+  font-size: 1.2rem;
+}
+
+/* Main Content */
+main {
+  padding: 2rem;
+}
+
+/* Problem List */
+.problem-list {
+  list-style: none;
+  margin-top: 2rem;
+  padding: 0;
+}
+
+.problem-list li {
+  background: #fff;
+  margin: 0.5rem 0;
+  padding: 1rem;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  transition: all 0.3s ease;
+}
+
+.problem-list li:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+}
+
+.problem-list li a {
+  color: #007bff;
+  text-decoration: none;
+  font-weight: bold;
+}
+
+.problem-list li a:hover {
+  text-decoration: underline;
+}
+
+/* Button Styles */
+button {
+  background: #007bff;
+  color: #fff;
+  border: none;
+  padding: 0.5rem 1rem;
+  font-size: 1rem;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #0056b3;
+}
+
+/* Footer */
+footer {
+  background: #343a40;
+  color: #fff;
+  text-align: center;
+  padding: 1rem 0;
+  margin-top: 2rem;
+}
+
+footer p {
+  margin: 0;
+  font-size: 0.9rem;
+}

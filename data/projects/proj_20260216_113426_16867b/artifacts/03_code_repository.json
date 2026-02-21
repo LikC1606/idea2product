@@ -1,0 +1,191 @@
+{
+  "skeleton": null,
+  "files": [
+    {
+      "path": "app/__init__.py",
+      "content": "from flask import Flask\nfrom flask_sqlalchemy import SQLAlchemy\n\ndb = SQLAlchemy()\n\ndef create_app():\n    app = Flask(__name__)\n    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///notes.db'\n    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False\n    \n    db.init_app(app)\n    \n    # Import models before creating the database\n    from app.models.note import Note\n    with app.app_context():\n        db.create_all()\n    \n    # Register routes\n    from app.routes import main_bp\n    app.register_blueprint(main_bp)\n    \n    return app",
+      "language": "python",
+      "purpose": "Flask app factory",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T11:34:44.092280"
+    },
+    {
+      "path": "app.py",
+      "content": "from app import create_app\n\napp = create_app()\n\nif __name__ == \"__main__\":\n    app.run(debug=True)",
+      "language": "python",
+      "purpose": "application entry point",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T11:34:44.092295"
+    },
+    {
+      "path": "templates/index.html",
+      "content": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>Note-Taking App</title>\n    <link rel=\"stylesheet\" href=\"{{ url_for('static', filename='styles.css') }}\">\n</head>\n<body>\n    <div class=\"container\">\n        <h1>Simple Note-Taking App</h1>\n        <form method=\"POST\" action=\"/save-note\">\n            <textarea name=\"note\" placeholder=\"Write your note here...\" required></textarea>\n            <button type=\"submit\">Save Note</button>\n        </form>\n    </div>\n</body>\n</html>",
+      "language": "html",
+      "purpose": "HTML template for the note-taking interface",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T11:34:44.092302"
+    },
+    {
+      "path": "static/styles.css",
+      "content": "body {\n    font-family: Arial, sans-serif;\n    margin: 0;\n    padding: 0;\n    background-color: #f4f4f9;\n}\n\n.container {\n    max-width: 600px;\n    margin: 50px auto;\n    padding: 20px;\n    background: #fff;\n    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);\n    border-radius: 8px;\n}\n\nh1 {\n    text-align: center;\n    color: #333;\n}\n\nform {\n    display: flex;\n    flex-direction: column;\n}\n\ntextarea {\n    min-height: 150px;\n    margin-bottom: 20px;\n    padding: 10px;\n    border: 1px solid #ccc;\n    border-radius: 4px;\n    font-size: 16px;\n}\n\nbutton {\n    padding: 10px 20px;\n    background-color: #007BFF;\n    color: white;\n    border: none;\n    border-radius: 4px;\n    cursor: pointer;\n    font-size: 16px;\n}\n\nbutton:hover {\n    background-color: #0056b3;\n}",
+      "language": "css",
+      "purpose": "CSS styles for the application",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T11:34:44.092308"
+    },
+    {
+      "path": "app/__init__.py",
+      "content": "from flask import Flask\nfrom flask_sqlalchemy import SQLAlchemy\n\ndb = SQLAlchemy()\n\ndef create_app():\n    app = Flask(__name__)\n    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///notes.db'\n    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False\n    \n    db.init_app(app)\n    \n    # Import models before creating the database\n    from app.models.note import Note\n    with app.app_context():\n        db.create_all()\n    \n    # Register routes\n    from app.routes import main_bp\n    app.register_blueprint(main_bp)\n    \n    return app",
+      "language": "python",
+      "purpose": "Flask app factory",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T11:34:46.947456"
+    },
+    {
+      "path": "app/routes.py",
+      "content": "from flask import Blueprint, request, jsonify\nfrom app.models.note import Note\nfrom app import db\n\nmain_bp = Blueprint('main', __name__)\n\n@main_bp.route('/save-note', methods=['POST'])\ndef save_note():\n    try:\n        note_text = request.form.get('note')\n        if not note_text:\n            return jsonify({\"error\": \"Note text is required\"}), 400\n        \n        note = Note(content=note_text)\n        db.session.add(note)\n        db.session.commit()\n        return jsonify({\"message\": \"Note saved successfully\", \"note_id\": note.id}), 201\n    except Exception as e:\n        return jsonify({\"error\": str(e)}), 500\n\n@main_bp.route('/notes', methods=['GET'])\ndef get_notes():\n    try:\n        notes = Note.query.all()\n        notes_data = [{\"id\": note.id, \"content\": note.content} for note in notes]\n        return jsonify(notes_data), 200\n    except Exception as e:\n        return jsonify({\"error\": str(e)}), 500",
+      "language": "python",
+      "purpose": "API routes",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T11:34:46.947469"
+    },
+    {
+      "path": "app.py",
+      "content": "from app import create_app\n\napp = create_app()\n\nif __name__ == \"__main__\":\n    app.run(debug=True)",
+      "language": "python",
+      "purpose": "application entry point",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T11:34:46.947476"
+    },
+    {
+      "path": "app/__init__.py",
+      "content": "from flask import Flask\nfrom flask_sqlalchemy import SQLAlchemy\n\ndb = SQLAlchemy()\n\ndef create_app():\n    app = Flask(__name__)\n    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///notes.db'\n    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False\n    \n    db.init_app(app)\n    \n    # Import models before creating the database\n    from app.models.note import Note\n    with app.app_context():\n        db.create_all()\n    \n    # Register routes\n    from app.routes import main_bp\n    app.register_blueprint(main_bp)\n    \n    return app",
+      "language": "python",
+      "purpose": "Flask app factory",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T11:34:49.177273"
+    },
+    {
+      "path": "app/database.py",
+      "content": "from flask_sqlalchemy import SQLAlchemy\n\ndb = SQLAlchemy()",
+      "language": "python",
+      "purpose": "database setup",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T11:34:49.177290"
+    },
+    {
+      "path": "app.py",
+      "content": "",
+      "language": "python",
+      "purpose": "application entry point",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T11:34:49.177298"
+    },
+    {
+      "path": "app/__init__.py",
+      "content": "",
+      "language": "python",
+      "purpose": "Flask app factory",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T11:34:57.126290"
+    },
+    {
+      "path": "app.py",
+      "content": "",
+      "language": "python",
+      "purpose": "application entry point",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T11:34:57.126321"
+    },
+    {
+      "path": "app/__init__.py",
+      "content": "from flask import Flask\nfrom flask_sqlalchemy import SQLAlchemy\n\ndb = SQLAlchemy()\n\ndef create_app():\n    app = Flask(__name__)\n    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///notes.db'\n    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False\n    \n    db.init_app(app)\n    \n    # Import models before creating the database\n    from app.models.note import Note\n    with app.app_context():\n        db.create_all()\n    \n    # Register routes\n    from app.routes import main_bp\n    app.register_blueprint(main_bp)\n    \n    return app",
+      "language": "python",
+      "purpose": "Flask app factory",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T11:35:01.822050"
+    },
+    {
+      "path": "app/database.py",
+      "content": "from flask_sqlalchemy import SQLAlchemy\n\ndb = SQLAlchemy()",
+      "language": "python",
+      "purpose": "database setup",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T11:35:01.822075"
+    },
+    {
+      "path": "app/models/note.py",
+      "content": "from app.database import db\n\nclass Note(db.Model):\n    id = db.Column(db.Integer, primary_key=True)\n    content = db.Column(db.Text, nullable=False)\n\n    def __repr__(self):\n        return f\"<Note {self.id}>\"",
+      "language": "python",
+      "purpose": "note model",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T11:35:01.822081"
+    },
+    {
+      "path": "app/routes.py",
+      "content": "from flask import Blueprint, request, redirect, render_template\nfrom app.database import db\nfrom app.models.note import Note\n\nmain_bp = Blueprint('main', __name__)\n\n@main_bp.route('/')\ndef index():\n    return render_template('index.html')\n\n@main_bp.route('/save-note', methods=['POST'])\ndef save_note():\n    note_content = request.form.get('note')\n    if note_content:\n        new_note = Note(content=note_content)\n        db.session.add(new_note)\n        db.session.commit()\n    return redirect('/')",
+      "language": "python",
+      "purpose": "API routes",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T11:35:01.822087"
+    },
+    {
+      "path": "app.py",
+      "content": "from app import create_app\n\napp = create_app()\n\nif __name__ == \"__main__\":\n    app.run(debug=True)",
+      "language": "python",
+      "purpose": "application entry point",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T11:35:01.822092"
+    },
+    {
+      "path": "templates/index.html",
+      "content": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>Note-Taking App</title>\n    <link rel=\"stylesheet\" href=\"{{ url_for('static', filename='styles.css') }}\">\n</head>\n<body>\n    <div class=\"container\">\n        <h1>Simple Note-Taking App</h1>\n        <form method=\"POST\" action=\"/save-note\">\n            <textarea name=\"note\" placeholder=\"Write your note here...\" required></textarea>\n            <button type=\"submit\">Save Note</button>\n        </form>\n    </div>\n</body>\n</html>",
+      "language": "html",
+      "purpose": "HTML template for the note-taking interface",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T11:35:01.822096"
+    },
+    {
+      "path": "static/styles.css",
+      "content": "body {\n    font-family: Arial, sans-serif;\n    margin: 0;\n    padding: 0;\n    background-color: #f4f4f9;\n}\n\n.container {\n    max-width: 600px;\n    margin: 50px auto;\n    padding: 20px;\n    background: #ffffff;\n    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);\n    border-radius: 8px;\n}\n\nh1 {\n    text-align: center;\n    color: #333333;\n}\n\nform {\n    display: flex;\n    flex-direction: column;\n    gap: 10px;\n}\n\ntextarea {\n    width: 100%;\n    height: 100px;\n    padding: 10px;\n    border: 1px solid #cccccc;\n    border-radius: 4px;\n    font-size: 16px;\n}\n\nbutton {\n    padding: 10px 15px;\n    border: none;\n    background-color: #007bff;\n    color: white;\n    font-size: 16px;\n    border-radius: 4px;\n    cursor: pointer;\n}\n\nbutton:hover {\n    background-color: #0056b3;\n}",
+      "language": "css",
+      "purpose": "CSS styles for the application",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-16T11:35:01.822100"
+    }
+  ],
+  "structure": {
+    "root": "generated",
+    "directories": [
+      "app\\models",
+      "app",
+      "static",
+      "templates"
+    ],
+    "entry_point": "app.py"
+  },
+  "dependencies": [
+    "flask"
+  ],
+  "readme_content": "# Simple Note-Taking App\n\nAn application for entering and saving text on a single page.\n\n## Features\n\n- Text Entry: Allows users to input text on a single page.\n- Save Notes: Enables users to save the entered text for future reference.\n\n## Setup\n\n```bash\npip install -r requirements.txt\npython app.py\n```\n\n## Usage\n\nOpen http://localhost:5000 in your browser.\n",
+  "created_at": "2026-02-16T11:35:01.822463"
+}

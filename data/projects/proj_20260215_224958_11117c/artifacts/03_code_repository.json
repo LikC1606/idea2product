@@ -1,0 +1,128 @@
+{
+  "skeleton": null,
+  "files": [
+    {
+      "path": "app/database.py",
+      "content": "from flask_sqlalchemy import SQLAlchemy\n# app/database.py\nfrom sqlalchemy import create_engine\nfrom sqlalchemy.ext.declarative import declarative_base\nfrom sqlalchemy.orm import sessionmaker\n\n# Define the database URL (SQLite for simplicity)\nDATABASE_URL = \"sqlite:///notes_app.db\"\n\n# Create the database engine\nengine = create_engine(DATABASE_URL, connect_args={\"check_same_thread\": False})\n\n# Create a configured \"Session\" class\nSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)\n\n# Define the declarative base class\nBase = declarative_base()\n\n# Export the interfaces\n__all__ = [\"engine\", \"SessionLocal\", \"Base\"]\n# SQLAlchemy db instance for models\ndb = SQLAlchemy()\n",
+      "language": "python",
+      "purpose": "database setup",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T22:50:54.591997"
+    },
+    {
+      "path": "app/models/note.py",
+      "content": "from app.database import db\n\nfrom app import db\n\nclass Note(db.Model):\n    __tablename__ = 'notes'\n\n    id = db.Column(db.Integer, primary_key=True)\n    title = db.Column(db.String(255), nullable=False)\n    content = db.Column(db.Text, nullable=False)\n    created_at = db.Column(db.DateTime, nullable=False, default=db.func.current_timestamp())\n    updated_at = db.Column(db.DateTime, nullable=False, default=db.func.current_timestamp(), onupdate=db.func.current_timestamp())\n\n    def __repr__(self):\n        return f'<Note {self.title}>'",
+      "language": "python",
+      "purpose": "note model definition",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T22:50:54.592011"
+    },
+    {
+      "path": "app/routes.py",
+      "content": "from flask import Blueprint, request, jsonify\nfrom app.models import Note\nfrom app import db\n\nnotes_bp = Blueprint('notes', __name__)\n\n# Route to create a new note\n@notes_bp.route('/notes', methods=['POST'])\ndef create_note():\n    data = request.get_json()\n    title = data.get('title', '')\n    content = data.get('content', '')\n    if not title or not content:\n        return jsonify({'error': 'Title and content are required'}), 400\n    new_note = Note(title=title, content=content)\n    db.session.add(new_note)\n    db.session.commit()\n    return jsonify({'message': 'Note created successfully', 'note': new_note.to_dict()}), 201\n\n# Route to get all notes\n@notes_bp.route('/notes', methods=['GET'])\ndef get_notes():\n    notes = Note.query.all()\n    return jsonify([note.to_dict() for note in notes]), 200\n\n# Route to get a specific note by ID\n@notes_bp.route('/notes/<int:note_id>', methods=['GET'])\ndef get_note(note_id):\n    note = Note.query.get(note_id)\n    if not note:\n        return jsonify({'error': 'Note not found'}), 404\n    return jsonify(note.to_dict()), 200\n\n# Route to update a note by ID\n@notes_bp.route('/notes/<int:note_id>', methods=['PUT'])\ndef update_note(note_id):\n    data = request.get_json()\n    note = Note.query.get(note_id)\n    if not note:\n        return jsonify({'error': 'Note not found'}), 404\n    title = data.get('title', note.title)\n    content = data.get('content', note.content)\n    note.title = title\n    note.content = content\n    db.session.commit()\n    return jsonify({'message': 'Note updated successfully', 'note': note.to_dict()}), 200\n\n# Route to delete a note by ID\n@notes_bp.route('/notes/<int:note_id>', methods=['DELETE'])\ndef delete_note(note_id):\n    note = Note.query.get(note_id)\n    if not note:\n        return jsonify({'error': 'Note not found'}), 404\n    db.session.delete(note)\n    db.session.commit()\n    return jsonify({'message': 'Note deleted successfully'}), 200",
+      "language": "python",
+      "purpose": "API routes for note operations",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T22:50:26.985164"
+    },
+    {
+      "path": "app.py",
+      "content": "from flask import Flask, render_template\nfrom app.notes import notes_blueprint\nfrom app.database import db\n\ndef create_app():\n    app = Flask(__name__)\n    app.secret_key = \"your_secret_key_here\"\n\n    # Register blueprints\n    app.register_blueprint(notes_blueprint)\n\n    # Initialize database\n    with app.app_context():\n        db.create_all()\n\n    # Home route\n    @app.route('/')\n    def home():\n        return render_template('index.html')\n\n    return app\n\nif __name__ == \"__main__\":\n    app = create_app()\n    app.run(debug=True)",
+      "language": "python",
+      "purpose": "application entry point",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T22:50:34.509991"
+    },
+    {
+      "path": "templates/base.html",
+      "content": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>{% block title %}Note-Taking Application{% endblock %}</title>\n    <link rel=\"stylesheet\" href=\"{{ url_for('static', filename='styles.css') }}\">\n</head>\n<body>\n    <header>\n        <nav>\n            <ul>\n                <li><a href=\"{{ url_for('home') }}\">Home</a></li>\n                <li><a href=\"{{ url_for('create_note') }}\">Create Note</a></li>\n                <li><a href=\"{{ url_for('organize_notes') }}\">Organize Notes</a></li>\n                <li><a href=\"{{ url_for('search_notes') }}\">Search Notes</a></li>\n            </ul>\n        </nav>\n    </header>\n    <main>\n        {% block content %}\n        {% endblock %}\n    </main>\n    <footer>\n        <p>&copy; 2023 Note-Taking Application. All rights reserved.</p>\n    </footer>\n</body>\n</html>",
+      "language": "html",
+      "purpose": "base HTML template",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T22:50:38.550349"
+    },
+    {
+      "path": "templates/notes.html",
+      "content": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>Notes</title>\n    <link rel=\"stylesheet\" href=\"{{ url_for('static', filename='styles.css') }}\">\n</head>\n<body>\n    <header>\n        <h1>Note-Taking Application</h1>\n        <nav>\n            <ul>\n                <li><a href=\"{{ url_for('home') }}\">Home</a></li>\n                <li><a href=\"{{ url_for('create_note') }}\">Create Note</a></li>\n                <li><a href=\"{{ url_for('search_notes') }}\">Search Notes</a></li>\n            </ul>\n        </nav>\n    </header>\n    <main>\n        <h2>Your Notes</h2>\n        <div class=\"notes-container\">\n            {% if notes %}\n                {% for note in notes %}\n                    <div class=\"note-card\">\n                        <h3>{{ note.title }}</h3>\n                        <p>{{ note.content }}</p>\n                        <small>Created on: {{ note.timestamp }}</small>\n                    </div>\n                {% endfor %}\n            {% else %}\n                <p>No notes available. Start by creating a new note!</p>\n            {% endif %}\n        </div>\n    </main>\n    <footer>\n        <p>&copy; 2023 Note-Taking Application</p>\n    </footer>\n</body>\n</html>",
+      "language": "html",
+      "purpose": "HTML template for displaying notes",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T22:50:40.657909"
+    },
+    {
+      "path": "static/styles.css",
+      "content": "/* static/styles.css */\n\n/* General Reset */\n* {\n  margin: 0;\n  padding: 0;\n  box-sizing: border-box;\n}\n\n/* Body Styling */\nbody {\n  font-family: Arial, sans-serif;\n  line-height: 1.6;\n  background-color: #f9f9f9;\n  color: #333;\n  margin: 0;\n  padding: 0;\n}\n\n/* Header Styling */\nheader {\n  background-color: #4CAF50;\n  color: white;\n  padding: 1rem 2rem;\n  text-align: center;\n  font-size: 1.5rem;\n}\n\n/* Main Content Styling */\nmain {\n  max-width: 800px;\n  margin: 2rem auto;\n  padding: 1rem;\n  background: white;\n  border: 1px solid #ddd;\n  border-radius: 5px;\n  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);\n}\n\n/* Note List Styling */\n.note-list {\n  list-style-type: none;\n  padding: 0;\n}\n\n.note-list li {\n  background: #f1f1f1;\n  margin-bottom: 1rem;\n  padding: 1rem;\n  border: 1px solid #ddd;\n  border-radius: 5px;\n  transition: background-color 0.3s ease;\n}\n\n.note-list li:hover {\n  background: #e9ecef;\n}\n\n/* Note Details Styling */\n.note {\n  padding: 1rem;\n  border: 1px solid #ddd;\n  border-radius: 5px;\n  margin-bottom: 1rem;\n  background: #fff;\n}\n\n/* Buttons */\nbutton {\n  display: inline-block;\n  background-color: #4CAF50;\n  color: white;\n  border: none;\n  padding: 0.5rem 1rem;\n  border-radius: 3px;\n  cursor: pointer;\n  transition: background-color 0.3s ease;\n}\n\nbutton:hover {\n  background-color: #45a049;\n}\n\nbutton.delete {\n  background-color: #f44336;\n}\n\nbutton.delete:hover {\n  background-color: #da190b;\n}\n\n/* Form Styling */\nform {\n  margin-bottom: 2rem;\n}\n\nform input[type=\"text\"],\nform textarea {\n  width: 100%;\n  padding: 0.5rem;\n  margin-bottom: 1rem;\n  border: 1px solid #ddd;\n  border-radius: 5px;\n}\n\nform textarea {\n  resize: vertical;\n}\n\nform button {\n  float: right;\n}\n\n/* Clear Fix */\n.clearfix::after {\n  content: \"\";\n  display: table;\n  clear: both;\n}\n\n/* Search Bar */\n.search-bar {\n  margin-bottom: 1.5rem;\n}\n\n.search-bar input[type=\"text\"] {\n  width: calc(100% - 70px);\n  padding: 0.5rem;\n  border: 1px solid #ddd;\n  border-radius: 5px 0 0 5px;\n  outline: none;\n}\n\n.search-bar button {\n  width: 70px;\n  border-radius: 0 5px 5px 0;\n}\n\n/* Footer Styling */\nfooter {\n  text-align: center;\n  padding: 1rem;\n  margin-top: 2rem;\n  background: #f1f1f1;\n  color: #777;\n  font-size: 0.9rem;\n  border-top: 1px solid #ddd;\n}",
+      "language": "css",
+      "purpose": "CSS for styling",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T22:50:45.878210"
+    },
+    {
+      "path": "app/__init__.py",
+      "content": "from flask import Flask, render_template\nfrom app.database import db\nfrom app.routes import register_blueprints\n\ndef create_app():\n    \"\"\"Create and configure the Flask application.\"\"\"\n    app = Flask(__name__, template_folder='../templates', static_folder='../static')\n\n    # Configure database\n    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///app.db'\n    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False\n\n    # Initialize database\n    db.init_app(app)\n\n    # Register blueprints\n    register_blueprints(app)\n\n    # Define home route\n    @app.route('/')\n    def index():\n        return render_template('index.html')\n\n    return app\n",
+      "language": "python",
+      "purpose": "Flask application factory",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T22:50:45.878238"
+    },
+    {
+      "path": "sqlalchemy.ext.declarative.py",
+      "content": "from app.database import db\n\nclass Note(db.Model):\n    __tablename__ = 'notes'\n\n    id = db.Column(db.Integer, primary_key=True)\n    title = db.Column(db.String(255), nullable=False)\n    content = db.Column(db.Text, nullable=True)\n    created_at = db.Column(db.DateTime, nullable=False, server_default=db.func.now())\n    updated_at = db.Column(db.DateTime, nullable=False, server_default=db.func.now(), onupdate=db.func.now())",
+      "language": "python",
+      "purpose": "Generated stub for sqlalchemy.ext.declarative.py",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T22:50:47.334793"
+    },
+    {
+      "path": "sqlalchemy.orm.py",
+      "content": "from app.database import db\n\nclass Note(db.Model):\n    __tablename__ = 'notes'\n\n    id = db.Column(db.Integer, primary_key=True)\n    title = db.Column(db.String(255), nullable=False)\n    content = db.Column(db.Text, nullable=False)\n    created_at = db.Column(db.DateTime, server_default=db.func.now())\n    updated_at = db.Column(db.DateTime, server_default=db.func.now(), onupdate=db.func.now())",
+      "language": "python",
+      "purpose": "Generated stub for sqlalchemy.orm.py",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T22:50:50.269546"
+    },
+    {
+      "path": "app/models.py",
+      "content": "from app.database import db\n\nclass Note(db.Model):\n    __tablename__ = 'notes'\n    id = db.Column(db.Integer, primary_key=True)\n    title = db.Column(db.String(255), nullable=False)\n    content = db.Column(db.Text, nullable=True)\n    created_at = db.Column(db.DateTime, nullable=False, server_default=db.func.now())\n    updated_at = db.Column(db.DateTime, nullable=False, server_default=db.func.now(), onupdate=db.func.now())\n\nclass Tag(db.Model):\n    __tablename__ = 'tags'\n    id = db.Column(db.Integer, primary_key=True)\n    name = db.Column(db.String(100), unique=True, nullable=False)\n\nclass NoteTag(db.Model):\n    __tablename__ = 'note_tags'\n    id = db.Column(db.Integer, primary_key=True)\n    note_id = db.Column(db.Integer, db.ForeignKey('notes.id'), nullable=False)\n    tag_id = db.Column(db.Integer, db.ForeignKey('tags.id'), nullable=False)\n\n    note = db.relationship('Note', backref=db.backref('note_tags', cascade='all, delete-orphan'))\n    tag = db.relationship('Tag', backref=db.backref('note_tags', cascade='all, delete-orphan'))",
+      "language": "python",
+      "purpose": "Generated stub for app/models.py",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T22:50:53.120796"
+    },
+    {
+      "path": "app/notes.py",
+      "content": "from app.database import db\n\nclass Note(db.Model):\n    __tablename__ = 'notes'\n\n    id = db.Column(db.Integer, primary_key=True)\n    title = db.Column(db.String(255), nullable=False)\n    content = db.Column(db.Text, nullable=True)\n    created_at = db.Column(db.DateTime, nullable=False, server_default=db.func.now())\n    updated_at = db.Column(db.DateTime, nullable=False, server_default=db.func.now(), onupdate=db.func.now())\n    is_archived = db.Column(db.Boolean, default=False)\n\n    def __repr__(self):\n        return f\"<Note {self.id} {self.title}>\"",
+      "language": "python",
+      "purpose": "Generated stub for app/notes.py",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T22:50:54.591748"
+    }
+  ],
+  "structure": {
+    "root": "generated",
+    "directories": [
+      "static",
+      "templates",
+      "app",
+      "app\\models"
+    ],
+    "entry_point": "app.py"
+  },
+  "dependencies": [
+    "flask"
+  ],
+  "readme_content": "# Note-Taking Application\n\nAn application for creating, organizing, and managing notes.\n\n## Features\n\n- Create Notes: Allows users to create and save text-based notes.\n- Organize Notes: Provides functionality to categorize or tag notes for better organization.\n- Search Notes: Enables users to search for specific notes using keywords.\n\n## Setup\n\n```bash\npip install -r requirements.txt\npython app.py\n```\n\n## Usage\n\nOpen http://localhost:5000 in your browser.\n",
+  "created_at": "2026-02-15T22:50:54.592224"
+}

@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Problem Details</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+    <header>
+        <h1>ACM Problem-Solving Platform</h1>
+        <nav>
+            <a href="/">Home</a>
+            <a href="/problems">Problems</a>
+            <a href="/leaderboard">Leaderboard</a>
+            <a href="/profile">Profile</a>
+        </nav>
+    </header>
+    <main>
+        <section class="problem-details">
+            <h2>{{ problem.title }}</h2>
+            <p><strong>Difficulty:</strong> {{ problem.difficulty }}</p>
+            <p><strong>Description:</strong></p>
+            <p>{{ problem.description }}</p>
+            <h3>Examples</h3>
+            <ul>
+                {% for example in problem.examples %}
+                    <li>
+                        <strong>Input:</strong> {{ example.input }}<br>
+                        <strong>Output:</strong> {{ example.output }}
+                    </li>
+                {% endfor %}
+            </ul>
+            <h3>Submit Your Solution</h3>
+            <form action="/solutions" method="post">
+                <textarea name="code" rows="10" cols="50" placeholder="Write your code here..."></textarea><br>
+                <label for="language">Language:</label>
+                <select name="language" id="language">
+                    <option value="python">Python</option>
+                    <option value="java">Java</option>
+                    <option value="cpp">C++</option>
+                </select><br>
+                <input type="hidden" name="problem_id" value="{{ problem.id }}">
+                <button type="submit">Submit</button>
+            </form>
+        </section>
+    </main>
+    <footer>
+        <p>ACM Problem-Solving Platform &copy; 2023</p>
+    </footer>
+</body>
+</html>

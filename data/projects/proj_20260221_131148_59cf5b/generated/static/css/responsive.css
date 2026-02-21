@@ -1,0 +1,47 @@
+/* Responsive Design */
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+}
+
+h1, h2, p {
+    margin: 10px;
+}
+
+img.responsive-image {
+    max-width: 100%;
+    height: auto;
+}
+
+#blog-list {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-around;
+}
+
+.blog-item {
+    width: 100%;
+    max-width: 300px;
+    margin: 10px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    border-radius: 5px;
+    overflow: hidden;
+}
+
+.blog-item img.thumbnail {
+    width: 100%;
+    height: auto;
+}
+
+@media (min-width: 600px) {
+    .blog-item {
+        width: 45%;
+    }
+}
+
+@media (min-width: 900px) {
+    .blog-item {
+        width: 30%;
+    }
+}

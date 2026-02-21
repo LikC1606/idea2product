@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>代码提交页</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <header>
+    <nav>
+      <ul>
+        <li><a href="/">主页</a></li>
+        <li><a href="/problems">问题库</a></li>
+        <li><a href="/profile">个人资料</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main>
+    <section id="submit-section">
+      <h1>代码提交页</h1>
+      <form id="submit-form" method="POST" action="/submit">
+        <div class="form-group">
+          <label for="problem-id">选择问题</label>
+          <select id="problem-id" name="problem_id" required>
+            <!-- Problem options will be dynamically populated -->
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="language">选择编程语言</label>
+          <select id="language" name="language" required>
+            <option value="python">Python</option>
+            <option value="cpp">C++</option>
+            <option value="java">Java</option>
+            <option value="javascript">JavaScript</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="code">代码</label>
+          <textarea id="code" name="code" rows="10" required></textarea>
+        </div>
+        <button type="submit">提交代码</button>
+      </form>
+    </section>
+  </main>
+
+  <footer>
+    <p>© 2023 ACM Problem-Solving Platform</p>
+  </footer>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

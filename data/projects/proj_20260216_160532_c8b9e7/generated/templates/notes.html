@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Notes</title>
+    <script>
+        async function fetchNotes(query = '') {
+            const response = await fetch(`/api/notes/search?q=${query}`);
+            const notes = await response.json();
+            const notesContainer = document.getElementById('notes-container');
+            notesContainer.innerHTML = '';
+            notes.forEach(note => {
+                const noteElement = document.createElement('div');
+                noteElement.innerHTML = `<h3>${note.title}</h3><p>${note.content}</p>`;
+                notesContainer.appendChild(noteElement);
+            });
+        }
+
+        document.getElementById('search-input').addEventListener('input', (event) => {
+            fetchNotes(event.target.value);
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchNotes();
+        });
+    </script>
+</head>
+<body>
+    <h1>Notes</h1>
+    <input id="search-input" type="text" placeholder="Search notes...">
+    <div id="notes-container"></div>
+</body>
+</html>

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <title>Problem Details</title>
+</head>
+<body>
+    <header>
+        <h1>ACM Problem-Solving Platform</h1>
+        <nav>
+            <a href="/">Home</a>
+            <a href="/profile">Profile</a>
+            <a href="/submit">Submit Solution</a>
+        </nav>
+    </header>
+    <main>
+        <section id="problem-details">
+            <h2 id="problem-title">{{ problem.title }}</h2>
+            <p id="problem-description">{{ problem.description }}</p>
+            <div id="problem-metadata">
+                <p><strong>Difficulty:</strong> {{ problem.difficulty }}</p>
+                <p><strong>Tags:</strong> {{ ", ".join(problem.tags) }}</p>
+                <p><strong>Created By:</strong> {{ problem.author }}</p>
+            </div>
+        </section>
+        <section id="problem-solution">
+            <h3>Submit Your Solution</h3>
+            <form action="/submit" method="POST">
+                <label for="solution-code">Code:</label>
+                <textarea id="solution-code" name="solution_code" rows="10" cols="50" placeholder="Write your solution here..."></textarea>
+                <button type="submit">Submit</button>
+            </form>
+        </section>
+    </main>
+    <footer>
+        <p>&copy; 2023 ACM Problem-Solving Platform. All rights reserved.</p>
+    </footer>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

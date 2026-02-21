@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task Management</title>
+    <script>
+        const API_BASE = '/api';
+
+        async function fetchTasks(sortBy = 'created_at', filterStatus = '') {
+            let url = `${API_BASE}/tasks`;
+            const response = await fetch(url);
+            let tasks = await response.json();
+
+            if (filterStatus) {
+                tasks = tasks.filter(task => task.status === filterStatus);
+            }
+
+            tasks.sort((a, b) => {
+                if (sortBy === 'status') {
+                    return a.status.localeCompare(b.status);
+                } else {
+                    return new Date(a.created_at) - new Date(b.created_at);
+                }
+            });
+
+            const taskList = document.getElementById('task-list');
+            taskList.innerHTML = '';
+            tasks.forEach(task => {
+                const taskItem = document.createElement('li');
+                taskItem.textContent = `${task.title} - ${task.description} - ${task.status} - ${new Date(task.created_at).toLocaleString()}`;
+                taskList.appendChild(taskItem);
+            });
+        }
+
+        async function createTask(event) {
+            event.preventDefault();
+            const title = document.getElementById('title').value;
+            const description = document.getElementById('description').value;
+            const status = document.getElementById('status').value;
+
+            const response = await fetch(`${API_BASE}/tasks`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ title, description, status })
+            });
+
+            if (response.ok) {
+                fetchTasks();
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchTasks();
+            document.getElementById('task-form').addEventListener('submit', createTask);
+            document.getElementById('sort-by').addEventListener('change', (event) => {
+                fetchTasks(event.target.value, document.getElementById('filter-status').value);
+            });
+            document.getElementById('filter-status').addEventListener('change', (event) => {
+                fetchTasks(document.getElementById('sort-by').value, event.target.value);
+            });
+        });
+    </script>
+</head>
+<body>
+    <h1>Task Management</h1>
+    <form id="task-form">
+        <input type="text" id="title" placeholder="Title" required>
+        <input type="text" id="description" placeholder="Description" required>
+        <input type="text" id="status" placeholder="Status" required>
+        <button type="submit">Create Task</button>
+    </form>
+    <div>
+        <label for="sort-by">Sort by:</label>
+        <select id="sort-by">
+            <option value="created_at">Creation Time</option>
+            <option value="status">Status</option>
+        </select>
+
+        <label for="filter-status">Filter by Status:</label>
+        <select id="filter-status">
+            <option value="">All</option>
+            <option value="Pending">Pending</option>
+            <option value="Completed">Completed</option>
+            <option value="In Progress">In Progress</option>
+        </select>
+    </div>
+    <ul id="task-list"></ul>
+</body>
+</html>

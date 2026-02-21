@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Search Notes</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        .search-box {
+            margin-bottom: 20px;
+        }
+        .search-result {
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+        .search-result h3 {
+            margin: 0;
+        }
+    </style>
+    <script>
+        async function searchNotes() {
+            const query = document.getElementById('search-input').value;
+            const response = await fetch(`/notes/search?query=${encodeURIComponent(query)}`);
+            const results = await response.json();
+            const resultsContainer = document.getElementById('results');
+            resultsContainer.innerHTML = '';
+            results.forEach(note => {
+                const noteElement = document.createElement('div');
+                noteElement.className = 'search-result';
+                noteElement.innerHTML = `
+                    <h3>${note.title}</h3>
+                    <p>${note.content}</p>
+                    <small>Created at: ${new Date(note.created_at).toLocaleString()}</small>
+                `;
+                resultsContainer.appendChild(noteElement);
+            });
+        }
+    </script>
+</head>
+<body>
+    <div class="container">
+        <h1>Search Notes</h1>
+        <div class="search-box">
+            <input type="text" id="search-input" placeholder="Search by title or content" />
+            <button onclick="searchNotes()">Search</button>
+        </div>
+        <div id="results"></div>
+    </div>
+</body>
+</html>

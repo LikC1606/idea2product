@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ACM Problem-Solving Platform</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <header>
+        <h1>Welcome to the ACM Problem-Solving Platform</h1>
+        <nav>
+            <ul>
+                <li><a href="{{ url_for('problem_library') }}">Problem Library</a></li>
+                <li><a href="{{ url_for('leaderboard') }}">Leaderboard</a></li>
+                <li><a href="{{ url_for('user_profile') }}">My Profile</a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        <section>
+            <h2>About This Platform</h2>
+            <p>Improve your coding skills by solving a variety of ACM-style programming problems. 
+               Track your progress, compete with others, and learn from hints and solutions.</p>
+        </section>
+        <section>
+            <h2>Features</h2>
+            <ul>
+                <li>Extensive Problem Library</li>
+                <li>Code Submission and Evaluation</li>
+                <li>User Profiles and Progress Tracking</li>
+                <li>Leaderboard to compete with other users</li>
+                <li>Hints and Solutions for assistance</li>
+            </ul>
+        </section>
+    </main>
+    <footer>
+        <p>&copy; 2023 ACM Problem-Solving Platform. All rights reserved.</p>
+    </footer>
+</body>
+</html>

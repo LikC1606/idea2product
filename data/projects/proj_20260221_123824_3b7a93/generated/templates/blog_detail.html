@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blog Detail</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            margin: 40px;
+            background-color: #f9f9f9;
+            color: #333;
+            line-height: 1.6;
+        }
+        .blog {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            background-color: #fff;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        .blog img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+        }
+        .comments {
+            margin-top: 40px;
+        }
+        .comment {
+            border-top: 1px solid #ddd;
+            padding: 10px 0;
+        }
+        form {
+            margin-top: 20px;
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        label {
+            display: block;
+            margin-top: 10px;
+            font-weight: bold;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 10px;
+            margin-top: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            margin-top: 10px;
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <div class="blog">
+        <h1 id="blog-title"></h1>
+        <p id="blog-description"></p>
+        <img id="blog-image" alt="Blog Image">
+        <p>Created at: <span id="blog-created-at"></span></p>
+    </div>
+
+    <div class="comments">
+        <h2>Comments</h2>
+        <div id="comments-list">
+            <!-- Comments will be dynamically loaded here -->
+        </div>
+
+        <form id="commentForm">
+            <label for="author">Your Name</label>
+            <input type="text" id="author" name="author" required>
+
+            <label for="content">Your Comment</label>
+            <textarea id="content" name="content" required></textarea>
+
+            <button type="submit">Add Comment</button>
+        </form>
+    </div>
+
+    <script>
+        const blogId = window.location.pathname.split('/').pop();
+
+        async function fetchBlog() {
+            const response = await fetch(`/api/blogs/${blogId}`);
+            const blog = await response.json();
+
+            document.getElementById('blog-title').textContent = blog.title;
+            document.getElementById('blog-description').textContent = blog.description;
+            document.getElementById('blog-image').src = blog.image_url;
+            document.getElementById('blog-created-at').textContent = new Date(blog.created_at).toLocaleString();
+        }
+
+        async function fetchComments() {
+            const response = await fetch(`/api/comments/${blogId}`);
+            const comments = await response.json();
+            const commentsList = document.getElementById('comments-list');
+            commentsList.innerHTML = '';
+
+            comments.forEach(comment => {
+                const commentDiv = document.createElement('div');
+                commentDiv.className = 'comment';
+                commentDiv.innerHTML = `
+                    <p><strong>${comment.author}</strong> says:</p>
+                    <p>${comment.content}</p>
+                    <p><small>${new Date(comment.created_at).toLocaleString()}</small></p>
+                `;
+                commentsList.appendChild(commentDiv);
+            });
+        }
+
+        document.getElementById('commentForm').addEventListener('submit', async (event) => {
+            event.preventDefault();
+
+            const author = document.getElementById('author').value;
+            const content = document.getElementById('content').value;
+
+            const response = await fetch('/api/comments', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    blog_id: blogId,
+                    author,
+                    content
+                })
+            });
+
+            if (response.ok) {
+                document.getElementById('author').value = '';
+                document.getElementById('content').value = '';
+                fetchComments();
+            } else {
+                alert('Failed to add comment.');
+            }
+        });
+
+        fetchBlog();
+        fetchComments();
+    </script>
+</body>
+</html>

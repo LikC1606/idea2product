@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blog List</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 40px;
+            background-color: #f9f9f9;
+            color: #333;
+        }
+        h1 {
+            color: #2c3e50;
+        }
+        .blogs {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        .blog {
+            padding: 20px;
+            background-color: #fff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            transition: transform 0.2s;
+        }
+        .blog:hover {
+            transform: scale(1.05);
+        }
+        .blog h2 {
+            margin: 0;
+            color: #3498db;
+        }
+        .blog p {
+            margin: 5px 0;
+        }
+        a {
+            text-decoration: none;
+            color: #3498db;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <h1>Blog List</h1>
+    <div class="blogs" id="blogs"></div>
+
+    <script>
+        async function fetchBlogs() {
+            const response = await fetch('/api/blogs');
+            const blogs = await response.json();
+            const blogsContainer = document.getElementById('blogs');
+
+            blogs.forEach(blog => {
+                const blogDiv = document.createElement('div');
+                blogDiv.className = 'blog';
+                blogDiv.innerHTML = `
+                    <h2>${blog.title}</h2>
+                    <p>${blog.description}</p>
+                    <a href="/blog/${blog.id}">Read More</a>
+                `;
+                blogsContainer.appendChild(blogDiv);
+            });
+        }
+
+        fetchBlogs();
+    </script>
+</body>
+</html>

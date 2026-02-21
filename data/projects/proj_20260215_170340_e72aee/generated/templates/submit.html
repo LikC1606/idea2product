@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Submit Solution</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Submit Your Solution</h1>
+        </header>
+        <main>
+            <form id="submit-form" action="/solution/submit" method="POST">
+                <div class="form-group">
+                    <label for="problem-id">Problem ID</label>
+                    <select id="problem-id" name="problem_id" required>
+                        <!-- Options populated dynamically from backend -->
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="solution-code">Your Code</label>
+                    <textarea id="solution-code" name="solution_code" rows="10" required></textarea>
+                </div>
+                <button type="submit" class="btn-primary">Submit</button>
+            </form>
+        </main>
+    </div>
+    <script src="/static/js/app.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            fetch('/problem/list')
+                .then(response => response.json())
+                .then(data => {
+                    const problemSelect = document.getElementById('problem-id');
+                    data.problems.forEach(problem => {
+                        const option = document.createElement('option');
+                        option.value = problem.id;
+                        option.textContent = `${problem.id} - ${problem.title}`;
+                        problemSelect.appendChild(option);
+                    });
+                })
+                .catch(err => console.error('Error fetching problems:', err));
+        });
+    </script>
+</body>
+</html>

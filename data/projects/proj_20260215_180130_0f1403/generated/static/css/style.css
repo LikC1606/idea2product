@@ -1,0 +1,160 @@
+/* Path: static/css/style.css */
+/* Purpose: Stylesheet */
+/* Layer: frontend */
+
+/* General Styles */
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  padding: 0;
+  background-color: #f8f9fa;
+  color: #212529;
+}
+
+header {
+  background-color: #343a40;
+  color: #ffffff;
+  padding: 10px 20px;
+  text-align: center;
+}
+
+footer {
+  background-color: #343a40;
+  color: #ffffff;
+  text-align: center;
+  padding: 10px 20px;
+  position: fixed;
+  bottom: 0;
+  width: 100%;
+}
+
+/* Navigation Bar */
+.navbar {
+  display: flex;
+  justify-content: space-between;
+  background-color: #495057;
+  padding: 10px 20px;
+}
+
+.navbar a {
+  color: #ffffff;
+  text-decoration: none;
+  padding: 8px 15px;
+}
+
+.navbar a:hover {
+  background-color: #6c757d;
+  border-radius: 4px;
+}
+
+/* Main Content */
+.main-content {
+  margin: 20px;
+  padding: 20px;
+  background-color: #ffffff;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+}
+
+/* Button Styles */
+.btn {
+  display: inline-block;
+  background-color: #007bff;
+  color: #ffffff;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 4px;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.btn:hover {
+  background-color: #0056b3;
+}
+
+/* Form */
+.form-group {
+  margin-bottom: 15px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: bold;
+}
+
+.form-group input,
+.form-group textarea,
+.form-group select {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+}
+
+/* Table Styles */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 20px;
+}
+
+.table th,
+.table td {
+  border: 1px solid #dee2e6;
+  padding: 10px;
+  text-align: left;
+}
+
+.table th {
+  background-color: #e9ecef;
+  font-weight: bold;
+}
+
+.table tr:nth-child(even) {
+  background-color: #f1f3f5;
+}
+
+/* Profile Styles */
+.profile-header {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.profile-header img {
+  border-radius: 50%;
+  width: 150px;
+  height: 150px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.profile-header h1 {
+  font-size: 24px;
+  margin: 10px 0;
+}
+
+/* Leaderboard */
+.leaderboard {
+  margin-top: 20px;
+}
+
+.leaderboard .leaderboard-title {
+  font-size: 20px;
+  margin-bottom: 10px;
+  font-weight: bold;
+}
+
+.leaderboard .leaderboard-list {
+  list-style-type: none;
+  padding: 0;
+}
+
+.leaderboard .leaderboard-item {
+  padding: 10px;
+  border-bottom: 1px solid #dee2e6;
+}
+
+.leaderboard .leaderboard-item:last-child {
+  border-bottom: none;
+}

@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="problem-header">
+        <h1>{{ problem.title }}</h1>
+        <p class="text-muted">Problem ID: {{ problem.id }}</p>
+    </div>
+    <hr>
+    <div class="problem-description">
+        <h3>Description</h3>
+        <p>{{ problem.description }}</p>
+    </div>
+    <div class="problem-input">
+        <h3>Input</h3>
+        <p>{{ problem.input_description }}</p>
+    </div>
+    <div class="problem-output">
+        <h3>Output</h3>
+        <p>{{ problem.output_description }}</p>
+    </div>
+    <div class="problem-sample">
+        <h3>Sample Input</h3>
+        <pre>{{ problem.sample_input }}</pre>
+        <h3>Sample Output</h3>
+        <pre>{{ problem.sample_output }}</pre>
+    </div>
+    <div class="problem-actions mt-4">
+        <a href="{{ url_for('solution_blueprint.submit_solution', problem_id=problem.id) }}" class="btn btn-primary">Solve This Problem</a>
+    </div>
+</div>
+{% endblock %}

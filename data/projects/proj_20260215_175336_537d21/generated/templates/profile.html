@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Profile</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <header>
+        <h1>ACM Problem-Solving Platform</h1>
+        <nav>
+            <ul>
+                <li><a href="/">Home</a></li>
+                <li><a href="/problems">Problems</a></li>
+                <li><a href="/profile">Profile</a></li>
+                <li><a href="/logout">Logout</a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        <section class="profile">
+            <h2>User Profile</h2>
+            <div class="profile-info">
+                <p><strong>Username:</strong> <!-- Username dynamically rendered --></p>
+                <p><strong>Email:</strong> <!-- Email dynamically rendered --></p>
+                <p><strong>Joined:</strong> <!-- Join date dynamically rendered --></p>
+                <p><strong>Problems Solved:</strong> <!-- Problems solved dynamically rendered --></p>
+            </div>
+        </section>
+        <section class="activity">
+            <h2>Recent Activity</h2>
+            <ul class="activity-list">
+                <!-- Recent activity dynamically rendered -->
+            </ul>
+        </section>
+    </main>
+    <footer>
+        <p>&copy; 2023 ACM Problem-Solving Platform</p>
+    </footer>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

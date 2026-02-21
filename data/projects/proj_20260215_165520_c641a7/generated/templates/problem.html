@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Problem Details</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <header>
+        <nav>
+            <ul>
+                <li><a href="/">Home</a></li>
+                <li><a href="/profile">Profile</a></li>
+                <li><a href="/submit">Submit Solution</a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        <section class="problem-details">
+            <h1>{{ problem.title }}</h1>
+            <p>{{ problem.description }}</p>
+            <h2>Constraints</h2>
+            <ul>
+                {% for constraint in problem.constraints %}
+                <li>{{ constraint }}</li>
+                {% endfor %}
+            </ul>
+            <h2>Examples</h2>
+            <div class="examples">
+                {% for example in problem.examples %}
+                <div class="example">
+                    <h3>Input:</h3>
+                    <pre>{{ example.input }}</pre>
+                    <h3>Output:</h3>
+                    <pre>{{ example.output }}</pre>
+                </div>
+                {% endfor %}
+            </div>
+            <a href="/submit?problem_id={{ problem.id }}" class="btn">Submit a Solution</a>
+        </section>
+    </main>
+    <footer>
+        <p>ACM Problem-Solving Platform &copy; 2023</p>
+    </footer>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

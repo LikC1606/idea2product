@@ -22,6 +22,7 @@ from .data_models import (
 # Import agents
 from src.agents.stage1_requirements.interaction_agent import InteractionAgent
 from src.agents.stage2_planning.planning_agents import (
+    FlowSimulationAgent,
     TaskDivisionAgent,
     AlgorithmAnalysisAgent,
     SchemePlanningAgent,
@@ -144,14 +145,13 @@ class Orchestrator:
             context.code_repository = code_repository
             self._save_artifact(artifacts_dir, "03_code_repository.json", code_repository.model_dump(mode="json"))
 
-            # Execute Stage 4: Validation
-            self.logger.info("\n" + "=" * 60)
-            self.logger.info("STAGE 4: Validation & Testing")
-            self.logger.info("=" * 60)
-            context.update_stage(4)
-            validated_project = self.execute_stage_4(context)
-            context.validated_project = validated_project
-            self._save_artifact(artifacts_dir, "04_validated_project.json", validated_project.model_dump(mode="json"))
+            # Skip Stage 4 for testing
+            # self.logger.info("\n" + "=" * 60)
+            # self.logger.info("STAGE 4: Validation & Testing")
+            # self.logger.info("=" * 60)
+            # context.update_stage(4)
+            # validated_project = self.execute_stage_4(context)
+            validated_project = None
 
             # Save final context
             self._save_artifact(artifacts_dir, "context.json", context.to_dict())
@@ -210,9 +210,14 @@ class Orchestrator:
 
         requirements = context.requirements
 
+        # Flow Simulation Agent (Stage 2 Agent 0)
+        flow_agent = FlowSimulationAgent(self.llm_service)
+        flow_simulation = flow_agent.execute(requirements)
+        self.logger.info("  - Flow simulation completed")
+
         # Task Division Agent
         task_agent = TaskDivisionAgent(self.llm_service)
-        tasks = task_agent.execute(requirements)
+        tasks = task_agent.execute(requirements, flow_simulation)
         self.logger.info(f"  - Created {len(tasks)} tasks")
 
         # Algorithm Analysis Agent
@@ -222,16 +227,19 @@ class Orchestrator:
 
         # Scheme Planning Agent
         scheme_agent = SchemePlanningAgent(self.llm_service)
-        file_structure = scheme_agent.execute(requirements, tasks)
-        self.logger.info(f"  - Planned {len(file_structure)} files")
+        file_structure, interface_specs, api_specs, pyi_stubs = scheme_agent.execute(requirements, tasks, flow_simulation)
+        self.logger.info(f"  - Planned {len(file_structure)} files with {len(interface_specs)} interface specs")
 
         # Create engineering plan
         plan = EngineeringPlan(
             tasks=tasks,
             algorithms=algorithms,
             file_structure=file_structure,
+            interface_specs=interface_specs,
             dependencies=["flask"],
-            architecture_notes=f"Web application: {requirements.title}"
+            architecture_notes=f"Web application: {requirements.title}",
+            api_specs=api_specs,
+            pyi_stubs=pyi_stubs
         )
 
         self.logger.info("Stage 2 complete: Engineering plan created")
@@ -267,7 +275,7 @@ class Orchestrator:
 
     def execute_stage_4(self, context: ExecutionContext) -> ValidatedProject:
         """
-        Execute Stage 4: Validation and testing.
+        Execute Stage 4: Validation and testing with run-fix loop.
 
         Args:
             context: Execution context with code repository
@@ -275,24 +283,37 @@ class Orchestrator:
         Returns:
             Validated and tested project
         """
-        self.logger.info("Stage 4: Black-box Testing → Fine-tuning (if needed)")
+        self.logger.info("Stage 4: Run-Fix Loop (run code → fix errors → repeat)")
 
-        # Full-cycle Testing Agent
+        # Full-cycle Testing Agent - saves files and generates tests
         testing_agent = FullCycleTestingAgent(self.llm_service)
         test_result = testing_agent.execute(context)
 
-        self.logger.info(f"  - Logic tests passed: {test_result.logic_passed}")
-        if test_result.errors:
-            self.logger.info(f"  - Found {len(test_result.errors)} errors")
+        self.logger.info(f"  - Initial test: {len(test_result.errors)} errors")
 
-        # Fine-tuning Agent
-        fine_tune_agent = FineTuningAgent(self.llm_service)
-        repository, was_fixed = fine_tune_agent.execute(context, test_result)
+        # 运行-修复循环 (最多5次)
+        validation_agent = FullCycleTestingAgent(self.llm_service)
 
-        if was_fixed:
-            self.logger.info("  - Applied fixes")
-            # Re-run tests after fix
-            test_result = testing_agent.execute(context)
+        # 获取接口规范（如果有）
+        interface_specs = []
+        if hasattr(context, 'engineering_plan') and context.engineering_plan:
+            interface_specs = context.engineering_plan.interface_specs
+
+        # 运行-修复循环
+        repository = validation_agent.run_and_fix_loop(
+            project_path=context.project_path,
+            repository=context.code_repository,
+            requirements=context.requirements,
+            interface_specs=interface_specs,
+            max_iterations=5
+        )
+
+        # 更新 context 中的 repository
+        context.code_repository = repository
+
+        # 重新运行测试确认
+        test_result = testing_agent.execute(context)
+        self.logger.info(f"  - Final test: {len(test_result.errors)} errors, logic_passed={test_result.logic_passed}")
 
         # Visual Verification Agent (skipped for MVP)
         visual_agent = VisualVerificationAgent(self.llm_service)

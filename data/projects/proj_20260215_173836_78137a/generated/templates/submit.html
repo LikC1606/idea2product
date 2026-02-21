@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>代码提交页</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <header>
+        <nav>
+            <ul>
+                <li><a href="/">主页</a></li>
+                <li><a href="/problems">题库</a></li>
+                <li><a href="/profile">用户资料</a></li>
+                <li><a href="/leaderboard">排行榜</a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        <section>
+            <h1>代码提交</h1>
+            <form method="POST" action="/submit">
+                <label for="problem_id">题目选择:</label>
+                <select id="problem_id" name="problem_id">
+                    {% for problem in problems %}
+                        <option value="{{ problem.id }}">{{ problem.title }}</option>
+                    {% endfor %}
+                </select>
+                <br>
+                <label for="code">代码:</label>
+                <textarea id="code" name="code" rows="10" cols="80" placeholder="在此处输入你的代码..."></textarea>
+                <br>
+                <button type="submit">提交代码</button>
+            </form>
+        </section>
+    </main>
+    <footer>
+        <p>ACM Problem-Solving Platform &copy; 2023</p>
+    </footer>
+</body>
+</html>

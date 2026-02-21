@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blog App</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        nav { margin-bottom: 20px; }
+        nav a { margin-right: 15px; text-decoration: none; color: blue; }
+        nav a:hover { text-decoration: underline; }
+        .welcome { margin-top: 20px; }
+        .create-button { margin-top: 20px; display: inline-block; padding: 10px 20px; background-color: blue; color: white; text-decoration: none; border-radius: 5px; }
+        .create-button:hover { background-color: darkblue; }
+    </style>
+</head>
+<body>
+    <h1>Welcome to the Blog App</h1>
+    <nav>
+        <a href="/blogs">Blog List</a>
+        <a href="/blogs/new">Create Blog</a>
+    </nav>
+    <div class="welcome">
+        <p>Start sharing your thoughts and ideas with the world!</p>
+        <a href="/blogs/new" class="create-button">Create Your First Blog</a>
+    </div>
+</body>
+</html>

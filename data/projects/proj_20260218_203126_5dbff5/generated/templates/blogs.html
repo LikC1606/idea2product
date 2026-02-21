@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Blog Management</title>
+    <script>
+        const API_BASE = '/api';
+
+        // Fetch and display blogs
+        async function fetchBlogs() {
+            const response = await fetch(`${API_BASE}/blogs`);
+            const blogs = await response.json();
+            const blogList = document.getElementById('blog-list');
+            blogList.innerHTML = '';
+            blogs.forEach(blog => {
+                const blogItem = document.createElement('div');
+                blogItem.innerHTML = `
+                    <h3>${blog.title}</h3>
+                    <p>${blog.content}</p>
+                    <img src="${blog.image_url}" alt="Blog Image" style="max-width: 200px;" />
+                `;
+                blogList.appendChild(blogItem);
+            });
+        }
+
+        // Handle blog creation
+        async function createBlog(event) {
+            event.preventDefault();
+            const form = document.getElementById('create-blog-form');
+            const formData = new FormData(form);
+
+            const response = await fetch(`${API_BASE}/blogs`, {
+                method: 'POST',
+                body: formData
+            });
+
+            if (response.ok) {
+                form.reset();
+                fetchBlogs();
+            } else {
+                alert('Failed to create blog');
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchBlogs();
+            document.getElementById('create-blog-form').addEventListener('submit', createBlog);
+        });
+    </script>
+</head>
+<body>
+    <h1>Blog Management</h1>
+    <form id="create-blog-form">
+        <input type="text" name="title" placeholder="Title" required />
+        <textarea name="content" placeholder="Content" required></textarea>
+        <input type="file" name="image" accept="image/*" />
+        <button type="submit">Create Blog</button>
+    </form>
+    <div id="blog-list">
+        <!-- Blog posts will be listed here -->
+    </div>
+</body>
+</html>

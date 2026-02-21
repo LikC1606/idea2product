@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ACM Problem-Solving Platform</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <header>
+        <h1>Welcome to the ACM Problem-Solving Platform</h1>
+        <nav>
+            <ul>
+                <li><a href="{{ url_for('problem.library') }}">Problem Library</a></li>
+                <li><a href="{{ url_for('user.profile') }}">User Profile</a></li>
+                <li><a href="{{ url_for('leaderboard.index') }}">Leaderboard</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main>
+        <section id="introduction">
+            <h2>Improve Your Coding Skills</h2>
+            <p>This platform is designed to help you solve ACM-style programming problems, track your progress, and compete with others.</p>
+        </section>
+
+        <section id="features">
+            <h2>Features</h2>
+            <ul>
+                <li>Extensive Problem Library with ACM-style challenges</li>
+                <li>Code Submission and Real-Time Evaluation</li>
+                <li>User Profiles with Progress Tracking</li>
+                <li>Competitive Leaderboard</li>
+                <li>Hints and Detailed Explanations for Selected Problems</li>
+            </ul>
+        </section>
+
+        <section id="cta">
+            <h2>Get Started</h2>
+            <p><a href="{{ url_for('auth.login') }}" class="button">Log In</a> or <a href="{{ url_for('auth.signup') }}" class="button">Sign Up</a> now to start solving problems!</p>
+        </section>
+    </main>
+
+    <footer>
+        <p>&copy; 2023 ACM Problem-Solving Platform. All rights reserved.</p>
+    </footer>
+</body>
+</html>

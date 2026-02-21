@@ -1,0 +1,47 @@
+{% extends 'base.html' %}
+
+{% block title %}
+Organize Notes
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1 class="mb-4">Organize Your Notes</h1>
+
+    <div class="row mb-3">
+        <div class="col-md-6">
+            <form id="searchForm" method="GET" action="/notes/search">
+                <div class="input-group">
+                    <input type="text" name="q" class="form-control" placeholder="Search notes..." required>
+                    <button class="btn btn-primary" type="submit">Search</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="row">
+        {% if notes %}
+            <ul class="list-group">
+                {% for note in notes %}
+                    <li class="list-group-item">
+                        <h5>{{ note.title }}</h5>
+                        <p>{{ note.content }}</p>
+                        <div class="d-flex justify-content-end">
+                            <a href="/notes/{{ note.id }}" class="btn btn-primary btn-sm me-2">View</a>
+                            <form method="POST" action="/notes/{{ note.id }}/delete" style="display: inline;">
+                                <button class="btn btn-danger btn-sm">Delete</button>
+                            </form>
+                        </div>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p>No notes found. Create a new note to get started!</p>
+        {% endif %}
+    </div>
+
+    <div class="mt-4">
+        <a href="/notes/new" class="btn btn-success">Create New Note</a>
+    </div>
+</div>
+{% endblock %}

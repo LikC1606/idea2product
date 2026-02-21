@@ -21,6 +21,14 @@ Copy `.env.example` to `.env` and configure:
 - `GITHUB_TOKEN` - Optional, for code mining features
 - `OPENAI_MODEL` - Default: `gpt-4o`
 - `OPENAI_VLM_MODEL` - For visual verification, default: `gpt-4o`
+- `MAX_TOKENS` - Default: `4096`
+- `TEMPERATURE` - Default: `0.7`
+- `LOG_LEVEL` - Default: `INFO`
+
+**Feature flags** (all default to `true`):
+- `ENABLE_CODE_MINING` - Enable external code retrieval from GitHub
+- `ENABLE_VISUAL_VERIFICATION` - Enable GPT-4o Vision UI verification
+- `ENABLE_BDD_TESTING` - Enable BDD test generation and execution
 
 **Note**: `.env` file takes priority over environment variables. Settings in [config/settings.py](config/settings.py) ensures .env is loaded first.
 
@@ -74,10 +82,20 @@ Located in [src/agents/](src/agents/):
 ### Core Components
 - **Orchestrator** ([src/core/orchestrator.py](src/core/orchestrator.py)): Coordinates the 4-stage workflow, manages ExecutionContext
 - **LLMService** ([src/services/llm_service.py](src/services/llm_service.py)): Manages OpenAI API calls (GPT-4o)
-- **CodeMemoryService** ([src/services/code_memory_service.py](src/services/code_memory_service.py)): SQLite-based code knowledge graph
+- **CodeMemoryService** ([src/services/code_memory_service.py](src/services/code_memory_service.py)): SQLite-based code knowledge graph at `data/code_memory.db`
 - **CodeMiningService** ([src/services/code_mining_service.py](src/services/code_mining_service.py)): External code retrieval via GitHub
 - **ExecutionService** ([src/services/execution_service.py](src/services/execution_service.py)): Runs generated applications in sandbox
 - **Data Models** ([src/core/data_models.py](src/core/data_models.py)): Requirements, EngineeringPlan, CodeRepository, ValidatedProject
+- **Settings** ([config/settings.py](config/settings.py)): Centralized configuration with pydantic, loads from `.env`
+
+### Base Classes
+- **AgentBase** ([src/core/agent_base.py](src/core/agent_base.py)): Abstract base class for all agents, provides LLM access and context management
+- **ExecutionContext** ([src/core/context.py](src/core/context.py)): Carries state through the pipeline, stores requirements, plans, generated code, and validation results
+
+### Key Paths
+- `config/prompts/` - Agent prompt templates (created at runtime if missing)
+- `templates/` - Code generation templates
+- `data/code_memory.db` - SQLite database for code knowledge graph
 
 ### Data Flow
 1. Project created in `data/projects/{project_id}/`

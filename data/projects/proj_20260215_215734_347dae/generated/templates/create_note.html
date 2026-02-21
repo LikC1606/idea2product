@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+
+{% block title %}
+    Create Note
+{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <h1>Create a New Note</h1>
+    <form method="POST" action="{{ url_for('notes_bp.create_note') }}">
+        <div class="form-group">
+            <label for="title">Title</label>
+            <input type="text" class="form-control" id="title" name="title" placeholder="Enter title" required>
+        </div>
+        <div class="form-group mt-3">
+            <label for="content">Content</label>
+            <textarea class="form-control" id="content" name="content" rows="5" placeholder="Enter content" required></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary mt-4">Create Note</button>
+    </form>
+</div>
+{% endblock %}

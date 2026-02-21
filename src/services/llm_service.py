@@ -16,7 +16,7 @@ class LLMService:
         api_key: str,
         model: str = "gpt-4o",
         vlm_model: str = "gpt-4o",
-        max_tokens: int = 4096,
+        max_tokens: int = 8000,
         temperature: float = 0.7,
         max_retries: int = 3,
         base_url: str = "https://api.openai.com/v1",
