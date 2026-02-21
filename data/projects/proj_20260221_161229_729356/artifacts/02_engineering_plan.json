@@ -1,0 +1,403 @@
+{
+  "tasks": [
+    {
+      "id": "T1",
+      "name": "创建博客数据模型",
+      "description": "创建博客的数据模型，包括标题、内容、图片路径、创建时间等字段，保存到数据库。",
+      "type": "database",
+      "dependencies": [],
+      "priority": 5,
+      "estimated_complexity": "medium",
+      "files_to_add": [],
+      "files_to_modify": []
+    },
+    {
+      "id": "T2",
+      "name": "创建博客API接口",
+      "description": "创建博客的后端API接口，包含：获取博客列表、获取单篇博客、创建博客（含图片上传）、更新博客、删除博客。图片上传功能集成在创建/更新API中。",
+      "type": "backend",
+      "dependencies": [],
+      "priority": 5,
+      "estimated_complexity": "medium",
+      "files_to_add": [],
+      "files_to_modify": []
+    },
+    {
+      "id": "T3",
+      "name": "创建首页",
+      "description": "创建首页HTML页面，显示欢迎信息、导航链接，以及创建新博客按钮。如果没有博客内容，显示提示信息。",
+      "type": "frontend",
+      "dependencies": [],
+      "priority": 4,
+      "estimated_complexity": "medium",
+      "files_to_add": [],
+      "files_to_modify": []
+    },
+    {
+      "id": "T4",
+      "name": "创建博客列表页",
+      "description": "创建博客列表HTML页面，展示所有博客的标题、摘要、图片，提供查看详情按钮。如果没有博客内容，显示提示信息和创建新博客按钮。",
+      "type": "frontend",
+      "dependencies": [],
+      "priority": 4,
+      "estimated_complexity": "medium",
+      "files_to_add": [],
+      "files_to_modify": []
+    },
+    {
+      "id": "T5",
+      "name": "创建博客详情页",
+      "description": "创建单篇博客详情HTML页面，显示完整内容、图片，并提供返回按钮。",
+      "type": "frontend",
+      "dependencies": [],
+      "priority": 4,
+      "estimated_complexity": "medium",
+      "files_to_add": [],
+      "files_to_modify": []
+    },
+    {
+      "id": "T6",
+      "name": "创建新建博客页面",
+      "description": "创建新建博客的HTML表单页面，包含标题、内容输入框和图片上传控件。表单支持实时验证，显示错误提示。",
+      "type": "frontend",
+      "dependencies": [],
+      "priority": 4,
+      "estimated_complexity": "medium",
+      "files_to_add": [],
+      "files_to_modify": []
+    },
+    {
+      "id": "T7",
+      "name": "创建404错误页面",
+      "description": "创建404错误页面，显示“页面不存在”提示，并提供返回首页按钮。",
+      "type": "frontend",
+      "dependencies": [],
+      "priority": 3,
+      "estimated_complexity": "medium",
+      "files_to_add": [],
+      "files_to_modify": []
+    },
+    {
+      "id": "T8",
+      "name": "实现图片上传功能",
+      "description": "实现图片上传功能，支持用户上传图片并保存到服务器。确保图片大小和格式验证。",
+      "type": "backend",
+      "dependencies": [],
+      "priority": 5,
+      "estimated_complexity": "medium",
+      "files_to_add": [],
+      "files_to_modify": []
+    },
+    {
+      "id": "T9",
+      "name": "实现图片放大查看功能",
+      "description": "在博客详情页实现图片放大查看功能，用户点击图片可放大，点击外部区域恢复原大小。",
+      "type": "frontend",
+      "dependencies": [],
+      "priority": 3,
+      "estimated_complexity": "medium",
+      "files_to_add": [],
+      "files_to_modify": []
+    }
+  ],
+  "algorithms": {
+    "T1": {
+      "task_id": "T1",
+      "algorithm_type": "standard",
+      "implementation_approach": "Design a database schema with tables for blogs, including fields like title, content, author, created_at, and updated_at.",
+      "libraries": [],
+      "data_structures": [],
+      "notes": "Ensure proper indexing for efficient querying."
+    },
+    "T2": {
+      "task_id": "T2",
+      "algorithm_type": "standard",
+      "implementation_approach": "Develop RESTful API endpoints for CRUD operations on blogs using a framework like Django REST Framework or Express.js.",
+      "libraries": [],
+      "data_structures": [],
+      "notes": "Include authentication and validation for secure access."
+    },
+    "T3": {
+      "task_id": "T3",
+      "algorithm_type": "standard",
+      "implementation_approach": "Create a homepage with a clean layout displaying a welcome message and links to key sections like blog list and new blog creation.",
+      "libraries": [],
+      "data_structures": [],
+      "notes": "Focus on responsive design for better user experience."
+    },
+    "T4": {
+      "task_id": "T4",
+      "algorithm_type": "standard",
+      "implementation_approach": "Develop a page that fetches and displays a paginated list of blogs using the API.",
+      "libraries": [],
+      "data_structures": [],
+      "notes": "Include search and filter options for better usability."
+    },
+    "T5": {
+      "task_id": "T5",
+      "algorithm_type": "standard",
+      "implementation_approach": "Create a detailed view page that fetches and displays a single blog's content using its ID.",
+      "libraries": [],
+      "data_structures": [],
+      "notes": "Add options for comments or related blogs if needed."
+    },
+    "T6": {
+      "task_id": "T6",
+      "algorithm_type": "standard",
+      "implementation_approach": "Design a form page for creating new blogs, with fields for title, content, and optional image upload.",
+      "libraries": [],
+      "data_structures": [],
+      "notes": "Validate inputs and handle errors gracefully."
+    },
+    "T7": {
+      "task_id": "T7",
+      "algorithm_type": "standard",
+      "implementation_approach": "Develop a custom 404 error page with a user-friendly message and navigation links.",
+      "libraries": [],
+      "data_structures": [],
+      "notes": "Ensure it integrates seamlessly with the routing system."
+    },
+    "T8": {
+      "task_id": "T8",
+      "algorithm_type": "standard",
+      "implementation_approach": "Implement an image upload feature using a library like Multer (Node.js) or Django's FileField, storing images in a cloud service or local storage.",
+      "libraries": [],
+      "data_structures": [],
+      "notes": "Add size and format validation for uploads."
+    },
+    "T9": {
+      "task_id": "T9",
+      "algorithm_type": "standard",
+      "implementation_approach": "Use a JavaScript library like Lightbox or a custom modal to enable image zoom functionality on click.",
+      "libraries": [],
+      "data_structures": [],
+      "notes": "Ensure compatibility with mobile devices."
+    }
+  },
+  "file_structure": [
+    {
+      "path": "app/models/blog.py",
+      "purpose": "Defines the Blog model for database interactions.",
+      "dependencies": [],
+      "layer": "backend",
+      "related_tasks": [
+        "T1"
+      ]
+    },
+    {
+      "path": "app/database.py",
+      "purpose": "Database initialization and connection setup.",
+      "dependencies": [],
+      "layer": "backend",
+      "related_tasks": [
+        "T1"
+      ]
+    },
+    {
+      "path": "app/routes/blog_routes.py",
+      "purpose": "Handles API endpoints for blog operations (CRUD).",
+      "dependencies": [],
+      "layer": "backend",
+      "related_tasks": [
+        "T2"
+      ]
+    },
+    {
+      "path": "app/__init__.py",
+      "purpose": "Application factory and blueprint registration.",
+      "dependencies": [],
+      "layer": "backend",
+      "related_tasks": [
+        "T2"
+      ]
+    },
+    {
+      "path": "templates/index.html",
+      "purpose": "Homepage template displaying welcome message and navigation links.",
+      "dependencies": [],
+      "layer": "frontend",
+      "related_tasks": [
+        "T3"
+      ]
+    },
+    {
+      "path": "static/css/style.css",
+      "purpose": "Global CSS styles for the application.",
+      "dependencies": [],
+      "layer": "frontend",
+      "related_tasks": [
+        "T3"
+      ]
+    },
+    {
+      "path": "templates/blog_list.html",
+      "purpose": "Template for displaying a list of blogs with titles, descriptions, and images.",
+      "dependencies": [],
+      "layer": "frontend",
+      "related_tasks": [
+        "T4"
+      ]
+    },
+    {
+      "path": "templates/blog_detail.html",
+      "purpose": "Template for displaying a single blog's full content and image.",
+      "dependencies": [],
+      "layer": "frontend",
+      "related_tasks": [
+        "T5"
+      ]
+    },
+    {
+      "path": "templates/blog_new.html",
+      "purpose": "Template for creating a new blog with a form for title, description, and image upload.",
+      "dependencies": [],
+      "layer": "frontend",
+      "related_tasks": [
+        "T6"
+      ]
+    },
+    {
+      "path": "templates/404.html",
+      "purpose": "Template for displaying a 404 error page with a return to homepage button.",
+      "dependencies": [],
+      "layer": "frontend",
+      "related_tasks": [
+        "T7"
+      ]
+    },
+    {
+      "path": "app/utils/image_upload.py",
+      "purpose": "Utility functions for handling image uploads, validation, and storage.",
+      "dependencies": [],
+      "layer": "backend",
+      "related_tasks": [
+        "T8"
+      ]
+    },
+    {
+      "path": "static/js/image_zoom.js",
+      "purpose": "JavaScript for enabling image zoom functionality on the blog detail page.",
+      "dependencies": [],
+      "layer": "frontend",
+      "related_tasks": [
+        "T9"
+      ]
+    }
+  ],
+  "interface_specs": [
+    {
+      "module_name": "app.models.blog",
+      "file_path": "app/models/blog.py",
+      "purpose": "Defines the Blog model for database interactions.",
+      "layer": "backend",
+      "exports": [],
+      "imports": [],
+      "database_access": "none",
+      "related_files": [],
+      "usage_in_code": []
+    },
+    {
+      "module_name": "app.database",
+      "file_path": "app/database.py",
+      "purpose": "Database initialization and connection setup.",
+      "layer": "backend",
+      "exports": [],
+      "imports": [],
+      "database_access": "none",
+      "related_files": [],
+      "usage_in_code": []
+    },
+    {
+      "module_name": "app.routes.blog_routes",
+      "file_path": "app/routes/blog_routes.py",
+      "purpose": "Handles API endpoints for blog operations (CRUD).",
+      "layer": "backend",
+      "exports": [],
+      "imports": [],
+      "database_access": "none",
+      "related_files": [],
+      "usage_in_code": []
+    },
+    {
+      "module_name": "app.__init__",
+      "file_path": "app/__init__.py",
+      "purpose": "Application factory and blueprint registration.",
+      "layer": "backend",
+      "exports": [],
+      "imports": [],
+      "database_access": "none",
+      "related_files": [],
+      "usage_in_code": []
+    },
+    {
+      "module_name": "app.utils.image_upload",
+      "file_path": "app/utils/image_upload.py",
+      "purpose": "Utility functions for handling image uploads, validation, and storage.",
+      "layer": "backend",
+      "exports": [],
+      "imports": [],
+      "database_access": "none",
+      "related_files": [],
+      "usage_in_code": []
+    }
+  ],
+  "dependencies": [
+    "flask"
+  ],
+  "architecture_notes": "Web application: Simple Blog Webpage with Image Upload",
+  "api_specs": {
+    "description": "Defines the API endpoints for blog operations and their integration with the frontend.",
+    "endpoints": [
+      {
+        "path": "/api/blogs",
+        "method": "GET",
+        "description": "Retrieve a list of all blogs.",
+        "response": "[{\"id\": int, \"title\": str, \"description\": str, \"image_url\": str, \"created_at\": str}]"
+      },
+      {
+        "path": "/api/blogs/<id>",
+        "method": "GET",
+        "description": "Retrieve details of a single blog by its ID.",
+        "response": "{\"id\": int, \"title\": str, \"description\": str, \"image_url\": str, \"created_at\": str}"
+      },
+      {
+        "path": "/api/blogs",
+        "method": "POST",
+        "description": "Create a new blog post with title, description, and optional image upload.",
+        "request": "{\"title\": str, \"description\": str, \"image\": file}",
+        "response": "{\"id\": int, \"title\": str, \"description\": str, \"image_url\": str, \"created_at\": str}"
+      }
+    ],
+    "frontend_routes": {
+      "/": {
+        "template": "index.html",
+        "description": "Homepage displaying welcome message and navigation links."
+      },
+      "/blog": {
+        "template": "blog_list.html",
+        "description": "Page displaying a list of all blogs."
+      },
+      "/blog/new": {
+        "template": "blog_new.html",
+        "description": "Page for creating a new blog post."
+      },
+      "/blog/<id>": {
+        "template": "blog_detail.html",
+        "description": "Page displaying the details of a single blog post."
+      },
+      "/404": {
+        "template": "404.html",
+        "description": "Error page for invalid URLs."
+      }
+    }
+  },
+  "pyi_stubs": {
+    "app/models/blog.py": "from datetime import datetime\nfrom flask_sqlalchemy import SQLAlchemy\n\ndb = SQLAlchemy()\n\nclass Blog(db.Model):\n    __tablename__ = 'blogs'\n    id: int\n    title: str\n    description: str\n    image_url: str\n    created_at: datetime\n\n    def to_dict(self) -> dict: ...",
+    "app/database.py": "from flask_sqlalchemy import SQLAlchemy\n\ndb = SQLAlchemy()\n\ndef init_db(app):\n    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///blog.db'\n    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False\n    db.init_app(app)\n    with app.app_context():\n        db.create_all()",
+    "app/routes/blog_routes.py": "from flask import Blueprint, request, jsonify\nfrom app.models.blog import Blog, db\nfrom app.utils.image_upload import save_image\n\nblog_routes = Blueprint('blog_routes', __name__)\n\n@blog_routes.route('/api/blogs', methods=['GET'])\ndef get_blogs() -> list[dict]: ...\n\n@blog_routes.route('/api/blogs/<int:id>', methods=['GET'])\ndef get_blog(id: int) -> dict: ...\n\n@blog_routes.route('/api/blogs', methods=['POST'])\ndef create_blog() -> dict: ...",
+    "app/__init__.py": "from flask import Flask\nfrom app.database import init_db\nfrom app.routes.blog_routes import blog_routes\n\ndef create_app(config_name=None) -> Flask:\n    app = Flask(__name__)\n    init_db(app)\n    app.register_blueprint(blog_routes)\n    return app",
+    "app/utils/image_upload.py": "from werkzeug.datastructures import FileStorage\n\ndef save_image(image: FileStorage) -> str: ...",
+    "static/js/image_zoom.js": "function enableImageZoom() { ... }"
+  },
+  "created_at": "2026-02-21T16:13:32.176721"
+}

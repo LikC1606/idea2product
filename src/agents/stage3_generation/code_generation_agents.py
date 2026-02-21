@@ -172,7 +172,11 @@ Description: {task.description}
 
 ## Important Requirements
 1. You MUST use tools to explore the project - start by listing files to see what's there
-2. When creating new route files (e.g., app/routes/xxx.py), you MUST also modify app/__init__.py:
+2. Database initialization rule:
+   - CRITICAL: db = SQLAlchemy() MUST be defined ONLY in app/__init__.py
+   - All model files (app/models/*.py) MUST import db from app: from app import db
+   - Do NOT create new SQLAlchemy() instances in model files!
+3. When creating new route files (e.g., app/routes/xxx.py), you MUST also modify app/__init__.py:
    - Add import: from app.routes.xxx import xxx_bp
    - Add registration: app.register_blueprint(xxx_bp, url_prefix='/api')
    - Use: from config import get_config (NOT 'config.get_config' string!)
