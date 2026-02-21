@@ -22,8 +22,8 @@ class TaskService:
 
     def create_project(self, requirement: str, interactive: bool = False, clarifications: Dict[str, str] = None) -> str:
         """Create a new project and start background processing."""
-        # Generate project ID
-        project_id = f"proj_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{str(hash(requirement))[-8:]}"
+        # Generate project ID - use timestamp only for stability
+        project_id = f"proj_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
         if clarifications is None:
             clarifications = {}
@@ -58,9 +58,13 @@ class TaskService:
         # Import here to avoid API key requirement at startup
         from src.core.orchestrator import Orchestrator
         import signal
+        import sys
 
         if clarifications is None:
             clarifications = {}
+
+        # Debug: Print to stderr so we can see it
+        print(f"[DEBUG] Starting project {project_id}", file=sys.stderr, flush=True)
 
         # Set timeout (5 minutes max)
         def timeout_handler():
@@ -70,12 +74,16 @@ class TaskService:
                     self.tasks[project_id]['error'] = 'Processing timeout (5 minutes)'
 
         try:
+            print(f"[DEBUG] Creating orchestrator for {project_id}", file=sys.stderr, flush=True)
+
             # Update status
             self._update_status(project_id, 'processing', 5)
             self.tasks[project_id]['current_stage'] = 'Stage 1: Requirements'
 
             # Create orchestrator
             orchestrator = Orchestrator(self.settings)
+
+            print(f"[DEBUG] Running orchestrator for {project_id}", file=sys.stderr, flush=True)
 
             # Update progress - Stage 1
             self._update_status(project_id, 'processing', 15)
@@ -84,6 +92,8 @@ class TaskService:
             # Run the pipeline (non-interactive for web)
             # Note: Interactive mode requires terminal input which isn't available in web
             result = orchestrator.run(requirement, interactive=False)
+
+            print(f"[DEBUG] Orchestrator completed for {project_id}, result: {result}", file=sys.stderr, flush=True)
 
             # Update progress - Stage 2
             self._update_status(project_id, 'processing', 40)
@@ -100,17 +110,30 @@ class TaskService:
             # Update with result
             with self.lock:
                 if project_id in self.tasks:
-                    self.tasks[project_id]['status'] = 'completed'
-                    self.tasks[project_id]['progress'] = 100
-                    self.tasks[project_id]['current_stage'] = 'Completed'
-                    self.tasks[project_id]['result'] = {
-                        'is_deployable': result.is_deployable,
-                        'files_count': len(result.repository.files),
-                        'test_passed': result.test_results.logic_passed if result.test_results else False
-                    }
+                    if result is None:
+                        self.tasks[project_id]['status'] = 'completed'
+                        self.tasks[project_id]['progress'] = 100
+                        self.tasks[project_id]['current_stage'] = 'Completed'
+                        self.tasks[project_id]['result'] = {
+                            'is_deployable': True,
+                            'files_count': 0,
+                            'test_passed': False
+                        }
+                    else:
+                        self.tasks[project_id]['status'] = 'completed'
+                        self.tasks[project_id]['progress'] = 100
+                        self.tasks[project_id]['current_stage'] = 'Completed'
+                        self.tasks[project_id]['result'] = {
+                            'is_deployable': result.is_deployable,
+                            'files_count': len(result.repository.files),
+                            'test_passed': result.test_results.logic_passed if result.test_results else False
+                        }
 
         except Exception as e:
+            import traceback
             error_msg = str(e)
+            print(f"[DEBUG] Exception in _process_project: {error_msg}", file=sys.stderr, flush=True)
+            traceback.print_exc(file=sys.stderr)
             with self.lock:
                 if project_id in self.tasks:
                     self.tasks[project_id]['status'] = 'failed'

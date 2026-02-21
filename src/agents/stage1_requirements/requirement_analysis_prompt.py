@@ -20,15 +20,15 @@ REQUIREMENT_ANALYSIS_PROMPT = """
 
 请返回JSON：
 ```json
-{
+{{
     "needs_clarification": true/false,
     "questions": [
-        {"question": "问题内容", "reason": "为什么需要问"}
+        {{"question": "问题内容", "reason": "为什么需要问"}}
     ],
     "improvements": [
-        {"content": "改进建议", "priority": "high/medium/low"}
+        {{"content": "改进建议", "priority": "high/medium/low"}}
     ]
-}
+}}
 ```
 
 ## 用户需求

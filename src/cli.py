@@ -79,7 +79,7 @@ def create(requirement: str, output: str = None, interactive: bool = False):
             # Stage 4 was skipped, use default message
             console.print("\n")
             console.print(Panel.fit(
-                "[bold green]✓ Project generated successfully![/bold green]\n\n"
+                "[bold green][OK] Project generated successfully![/bold green]\n\n"
                 "(Stage 4 skipped for testing)",
                 title="Success",
                 border_style="green",

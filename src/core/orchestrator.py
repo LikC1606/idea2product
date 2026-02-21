@@ -145,19 +145,18 @@ class Orchestrator:
             context.code_repository = code_repository
             self._save_artifact(artifacts_dir, "03_code_repository.json", code_repository.model_dump(mode="json"))
 
-            # Skip Stage 4 for testing
-            # self.logger.info("\n" + "=" * 60)
-            # self.logger.info("STAGE 4: Validation & Testing")
-            # self.logger.info("=" * 60)
-            # context.update_stage(4)
-            # validated_project = self.execute_stage_4(context)
-            validated_project = None
+            # Stage 4: Validation & Testing
+            self.logger.info("\n" + "=" * 60)
+            self.logger.info("STAGE 4: Validation & Testing")
+            self.logger.info("=" * 60)
+            context.update_stage(4)
+            validated_project = self.execute_stage_4(context)
 
             # Save final context
             self._save_artifact(artifacts_dir, "context.json", context.to_dict())
 
             self.logger.info("\n" + "=" * 60)
-            self.logger.info("✓ Workflow completed successfully!")
+            self.logger.info("[OK] Workflow completed successfully!")
             self.logger.info("=" * 60)
             self.logger.info(f"Project location: {project_path}")
             self.logger.info(f"Generated code: {generated_dir}")

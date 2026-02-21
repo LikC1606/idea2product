@@ -3,7 +3,7 @@
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any, List
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 import uuid
 
 from .data_models import (
@@ -58,10 +58,7 @@ class ExecutionContext(BaseModel):
     project_path: Optional[Path] = None
     error_log: List[str] = Field(default_factory=list)
 
-    class Config:
-        """Pydantic configuration."""
-
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     def update_stage(self, stage: int) -> None:
         """
@@ -149,7 +146,7 @@ class ExecutionContext(BaseModel):
         """
         stages = []
         for i in range(1, 5):
-            status = "✓" if self.is_stage_complete(i) else "○"
+            status = "[OK]" if self.is_stage_complete(i) else "[ ]"
             current = " (current)" if i == self.current_stage else ""
             stages.append(f"{status} Stage {i}: {self.get_stage_name()}{current}")
         return "\n".join(stages)

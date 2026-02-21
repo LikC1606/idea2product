@@ -27,7 +27,6 @@ class CodeGenerationAgent:
         """Generate code files from the engineering plan using Interface-First strategy."""
         requirements = context.requirements
         plan = context.engineering_plan
-        project_path = context.project_path / "generated"
 
         logger.info(f"Generating code for {len(plan.file_structure)} files")
 
@@ -544,7 +543,6 @@ __all__ = []
                 continue
 
             content = f.content
-            original = content
 
             # Check if routes needs init_routes
             if 'routes.py' in f.path and 'init_routes' in content:
