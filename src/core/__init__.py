@@ -13,7 +13,6 @@ from .data_models import (
     TestResult,
     ValidatedProject,
 )
-from .orchestrator import Orchestrator
 
 __all__ = [
     "AgentBase",
@@ -27,5 +26,4 @@ __all__ = [
     "CodeRepository",
     "TestResult",
     "ValidatedProject",
-    "Orchestrator",
 ]

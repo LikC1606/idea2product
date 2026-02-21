@@ -225,12 +225,19 @@ class Orchestrator:
         file_structure = scheme_agent.execute(requirements, tasks)
         self.logger.info(f"  - Planned {len(file_structure)} files")
 
+        # Extract dependencies from algorithm analysis
+        dependencies = set(["flask"])  # Base dependency
+        for alg in algorithms.values():
+            for lib in alg.libraries:
+                if lib and lib.lower() not in ["dict", "list", "str", "int", "standard"]:
+                    dependencies.add(lib)
+
         # Create engineering plan
         plan = EngineeringPlan(
             tasks=tasks,
             algorithms=algorithms,
             file_structure=file_structure,
-            dependencies=["flask"],
+            dependencies=sorted(list(dependencies)),
             architecture_notes=f"Web application: {requirements.title}"
         )
 

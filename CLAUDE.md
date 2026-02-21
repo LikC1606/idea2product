@@ -24,6 +24,19 @@ Copy `.env.example` to `.env` and configure:
 
 **Note**: `.env` file takes priority over environment variables. Settings in [config/settings.py](config/settings.py) ensures .env is loaded first.
 
+### Additional Dependencies
+For visual verification (Stage 4):
+```bash
+pip install playwright selenium
+playwright install chromium
+```
+
+### Running the Web Backend
+```bash
+python -m src.web.app                    # Start Flask server on port 5000
+python -m src.web.app --port 8080        # Custom port
+```
+
 ### Running the CLI
 ```bash
 python -m src.cli create "Build a todo list app"           # Create new project
@@ -78,6 +91,8 @@ Located in [src/agents/](src/agents/):
 - **CodeMiningService** ([src/services/code_mining_service.py](src/services/code_mining_service.py)): External code retrieval via GitHub
 - **ExecutionService** ([src/services/execution_service.py](src/services/execution_service.py)): Runs generated applications in sandbox
 - **Data Models** ([src/core/data_models.py](src/core/data_models.py)): Requirements, EngineeringPlan, CodeRepository, ValidatedProject
+- **Web Backend** ([src/web/app.py](src/web/app.py)): Flask API server with async project creation via threading
+- **Project API** ([src/web/api/projects.py](src/web/api/projects.py)): REST endpoints for project management
 
 ### Data Flow
 1. Project created in `data/projects/{project_id}/`

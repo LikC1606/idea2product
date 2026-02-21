@@ -7,6 +7,7 @@ from src.core.data_models import Requirements, Feature
 from src.core.context import ExecutionContext
 from src.services.llm_service import LLMService
 from src.utils.logger import get_logger
+from .requirement_analysis_prompt import get_requirement_analysis_prompt
 
 logger = get_logger(__name__)
 
@@ -162,6 +163,44 @@ Respond with valid JSON only.
         )
 
     # =========================================================================
+    # Requirement Analysis Method (New)
+    # =========================================================================
+
+    def analyze_requirement(self, requirement: str) -> dict:
+        """
+        分析需求，判断是否需要继续提问，并提供改进建议。
+
+        Args:
+            requirement: 用户的需求描述
+
+        Returns:
+            分析结果字典：
+            - needs_clarification: 是否需要继续提问
+            - questions: 需要澄清的问题列表
+            - improvements: 改进建议列表
+        """
+        logger.info("Analyzing requirement...")
+
+        prompt = get_requirement_analysis_prompt(requirement)
+
+        try:
+            result = self.llm_service.generate_json(prompt)
+            needs = result.get("needs_clarification", False)
+            logger.info(f"Analysis complete. Needs clarification: {needs}")
+            return result
+
+        except Exception as e:
+            logger.warning(f"Requirement analysis failed: {e}")
+            return {
+                "needs_clarification": True,
+                "questions": [
+                    {"question": "请描述应用的核心功能", "reason": "需要明确功能"},
+                    {"question": "数据如何存储？", "reason": "需要明确存储方案"}
+                ],
+                "improvements": []
+            }
+
+    # =========================================================================
     # Interactive Dialogue Methods
     # =========================================================================
 
@@ -243,10 +282,10 @@ Respond with a valid JSON array only.
         Run interactive dialogue to gather requirements.
 
         This method:
-        1. Analyzes the initial requirement
-        2. Generates clarification questions
-        3. Asks user each question interactively
-        4. Generates final Requirements based on answers
+        1. Analyzes the initial requirement with LLM
+        2. Determines if clarification is needed
+        3. If needed, asks improvement questions
+        4. Generates final Requirements based on all info
 
         Args:
             requirement: Initial user requirement string
@@ -259,11 +298,45 @@ Respond with a valid JSON array only.
         print("=" * 60)
         print(f"\nYour initial requirement: {requirement}\n")
 
-        # Step 1: Generate clarification questions
-        questions = self.generate_clarification_questions(requirement)
+        # Step 1: Analyze requirement with LLM
+        print("Analyzing your requirement...")
+        analysis = self.analyze_requirement(requirement)
 
-        print(f"\nI have {len(questions)} questions to clarify your requirements.")
-        print("Type your answer after each question (or press Enter to skip).\n")
+        # Step 2: Show analysis result to user (simplified)
+        needs_clarification = analysis.get("needs_clarification", False)
+
+        if needs_clarification:
+            print("\n[需要进一步澄清]")
+
+            # Show improvement suggestions
+            improvements = analysis.get("improvements", [])
+            if improvements:
+                print("\n改进建议:")
+                for imp in improvements[:3]:
+                    priority = imp.get("priority", "medium")
+                    symbol = {"high": "●", "medium": "○", "low": "◌"}.get(priority, "○")
+                    print(f"  {symbol} {imp.get('content', '')}")
+        else:
+            print("\n[需求已足够完善]")
+
+        print("-" * 60)
+
+        # Step 3: Generate clarification questions based on analysis
+        questions_from_analysis = analysis.get("questions", [])
+        if questions_from_analysis:
+            questions = []
+            for i, q in enumerate(questions_from_analysis, 1):
+                questions.append(ClarificationQuestion(
+                    id=f"q{i}",
+                    category="functional",
+                    question=q.get("question", "")
+                ))
+            logger.info(f"Using {len(questions)} questions from analysis")
+        else:
+            questions = self.generate_clarification_questions(requirement)
+
+        print(f"\n需要澄清 {len(questions)} 个问题:")
+        print("输入回答后按回车 (直接回车跳过)\n")
 
         # Step 2: Ask each question interactively
         clarifications = {}
