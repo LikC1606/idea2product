@@ -186,6 +186,7 @@ Description: {task.description}
    - For each template (e.g., blog.html, blog_list.html, blog_detail.html), add a route that renders it
    - Example: @app.route('/blogs/<int:id>') def blog_detail(): return render_template('blog_detail.html')
    - MUST match the frontend_routes specified above!
+   - IMPORTANT: Frontend routes ONLY render templates, do NOT pass data! All data should be fetched via JavaScript API calls in the template
 4. Generate ACTUAL working HTML with forms, buttons, and API calls - not placeholder text!
 5. Use list_files() to see available files, read_file() to read them, write_file() to create/modify
 
