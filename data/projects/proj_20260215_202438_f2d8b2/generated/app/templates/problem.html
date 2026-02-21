@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Problem Details</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <header>
+        <h1>ACM Problem-Solving Platform</h1>
+    </header>
+    <main>
+        <section class="problem-details">
+            <h2>Problem Details</h2>
+            <p><strong>Title:</strong> {{ problem.title }}</p>
+            <p><strong>Description:</strong></p>
+            <p>{{ problem.description }}</p>
+        </section>
+        <section class="actions">
+            <h3>Actions</h3>
+            <button onclick="window.location.href='/problems/{{ problem.id }}/edit'">Edit Problem</button>
+            <button onclick="deleteProblem({{ problem.id }})">Delete Problem</button>
+        </section>
+        <section class="back-link">
+            <a href="/problems">Back to Problem List</a>
+        </section>
+    </main>
+    <footer>
+        <p>&copy; 2023 ACM Problem-Solving Platform</p>
+    </footer>
+
+    <script>
+        async function deleteProblem(problemId) {
+            const confirmation = confirm("Are you sure you want to delete this problem?");
+            if (confirmation) {
+                try {
+                    const response = await fetch(`/problems/${problemId}`, {
+                        method: 'DELETE',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                    if (response.ok) {
+                        alert("Problem deleted successfully.");
+                        window.location.href = "/problems";
+                    } else {
+                        alert("Failed to delete the problem. Please try again.");
+                    }
+                } catch (error) {
+                    console.error("Error deleting problem:", error);
+                    alert("An error occurred. Please try again.");
+                }
+            }
+        }
+    </script>
+</body>
+</html>

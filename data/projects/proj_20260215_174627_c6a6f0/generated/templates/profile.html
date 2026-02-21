@@ -1,0 +1,69 @@
+<!-- templates/profile.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Profile</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <header>
+        <h1>ACM Problem-Solving Platform</h1>
+        <nav>
+            <ul>
+                <li><a href="/problems">Problems</a></li>
+                <li><a href="/leaderboard">Leaderboard</a></li>
+                <li><a href="/profile">Profile</a></li>
+                <li><a href="/logout">Logout</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main>
+        <section id="user-profile">
+            <h2>User Profile</h2>
+            <div class="profile-info">
+                <p><strong>Username:</strong> {{ user.username }}</p>
+                <p><strong>Email:</strong> {{ user.email }}</p>
+                <p><strong>Join Date:</strong> {{ user.created_at.strftime('%Y-%m-%d') }}</p>
+            </div>
+
+            <section id="user-stats">
+                <h3>Your Statistics</h3>
+                <ul>
+                    <li><strong>Problems Solved:</strong> {{ stats.problems_solved }}</li>
+                    <li><strong>Total Submissions:</strong> {{ stats.total_submissions }}</li>
+                    <li><strong>Success Rate:</strong> {{ stats.success_rate }}%</li>
+                </ul>
+            </section>
+
+            <section id="recent-solutions">
+                <h3>Recent Solutions</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Problem</th>
+                            <th>Status</th>
+                            <th>Submission Time</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for solution in recent_solutions %}
+                        <tr>
+                            <td><a href="/problems/{{ solution.problem_id }}">{{ solution.problem.title }}</a></td>
+                            <td>{{ solution.status }}</td>
+                            <td>{{ solution.submission_time.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </section>
+        </section>
+    </main>
+
+    <footer>
+        <p>&copy; 2023 ACM Problem-Solving Platform. All rights reserved.</p>
+    </footer>
+</body>
+</html>

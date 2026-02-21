@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Code Submission - ACM Problem-Solving Platform</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+</head>
+<body>
+    <header>
+        <div class="navbar">
+            <a href="/" class="logo">ACM Platform</a>
+            <nav>
+                <ul>
+                    <li><a href="/problems">Problem Library</a></li>
+                    <li><a href="/leaderboard">Leaderboard</a></li>
+                    <li><a href="/profile">Profile</a></li>
+                    <li><a href="/logout">Logout</a></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+    <main class="submission-container">
+        <section class="problem-details">
+            <h1>Problem: <span id="problem-title"></span></h1>
+            <p id="problem-description"></p>
+        </section>
+        <section class="code-submission">
+            <h2>Submit Your Code</h2>
+            <form id="submission-form">
+                <label for="language">Programming Language:</label>
+                <select id="language" name="language" required>
+                    <option value="cpp">C++</option>
+                    <option value="java">Java</option>
+                    <option value="python">Python</option>
+                    <option value="javascript">JavaScript</option>
+                </select>
+                
+                <label for="code">Your Code:</label>
+                <textarea id="code" name="code" rows="15" required></textarea>
+                
+                <button type="submit" class="submit-btn">Submit</button>
+            </form>
+        </section>
+        <section class="submission-result" id="result-section" style="display: none;">
+            <h3>Submission Result</h3>
+            <div id="result-output"></div>
+        </section>
+    </main>
+    <footer>
+        <p>&copy; 2023 ACM Problem-Solving Platform</p>
+    </footer>
+    <script>
+        document.getElementById('submission-form').addEventListener('submit', async function(event) {
+            event.preventDefault();
+            const code = document.getElementById('code').value;
+            const language = document.getElementById('language').value;
+            
+            try {
+                const response = await axios.post('/submit', { code, language });
+                const resultSection = document.getElementById('result-section');
+                const resultOutput = document.getElementById('result-output');
+                
+                resultSection.style.display = 'block';
+                resultOutput.innerHTML = `
+                    <p><strong>Status:</strong> ${response.data.status}</p>
+                    <p><strong>Output:</strong></p>
+                    <pre>${response.data.output}</pre>
+                `;
+            } catch (error) {
+                const resultSection = document.getElementById('result-section');
+                const resultOutput = document.getElementById('result-output');
+                
+                resultSection.style.display = 'block';
+                resultOutput.innerHTML = `
+                    <p><strong>Error:</strong> Submission failed. Please try again.</p>
+                `;
+            }
+        });
+    </script>
+</body>
+</html>

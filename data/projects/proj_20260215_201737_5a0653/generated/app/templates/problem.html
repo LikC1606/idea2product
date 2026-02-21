@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Problem Details - ACM Problem-Solving Platform</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles/main.css') }}">
+</head>
+<body>
+    <header>
+        <h1>ACM Problem-Solving Platform</h1>
+        <nav>
+            <ul>
+                <li><a href="{{ url_for('home.index') }}">Home</a></li>
+                <li><a href="{{ url_for('problem.list_problems') }}">Problem Library</a></li>
+                <li><a href="{{ url_for('user.profile') }}">Profile</a></li>
+                <li><a href="{{ url_for('leaderboard.index') }}">Leaderboard</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main>
+        <section>
+            <h2>{{ problem.title }}</h2>
+            <p><strong>Difficulty:</strong> {{ problem.difficulty }}</p>
+            <p><strong>Category:</strong> {{ problem.category }}</p>
+            <article>
+                <h3>Description</h3>
+                <p>{{ problem.description }}</p>
+            </article>
+            <article>
+                <h3>Input Format</h3>
+                <p>{{ problem.input_format }}</p>
+            </article>
+            <article>
+                <h3>Output Format</h3>
+                <p>{{ problem.output_format }}</p>
+            </article>
+            <article>
+                <h3>Sample Input</h3>
+                <pre>{{ problem.sample_input }}</pre>
+            </article>
+            <article>
+                <h3>Sample Output</h3>
+                <pre>{{ problem.sample_output }}</pre>
+            </article>
+        </section>
+
+        <section>
+            <h2>Submit Your Code</h2>
+            <form action="{{ url_for('problem.submit', problem_id=problem.id) }}" method="POST">
+                <textarea name="code" rows="10" cols="50" placeholder="Write your solution here..." required></textarea>
+                <br>
+                <button type="submit">Submit</button>
+            </form>
+        </section>
+
+        <section>
+            <h2>Hints</h2>
+            {% if problem.hints %}
+                <ul>
+                    {% for hint in problem.hints %}
+                        <li>{{ hint }}</li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p>No hints available for this problem.</p>
+            {% endif %}
+        </section>
+
+        <section>
+            <h2>Solutions</h2>
+            {% if problem.solutions %}
+                <ul>
+                    {% for solution in problem.solutions %}
+                        <li>{{ solution }}</li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p>No solutions available for this problem.</p>
+            {% endif %}
+        </section>
+    </main>
+
+    <footer>
+        <p>&copy; 2023 ACM Problem-Solving Platform. All rights reserved.</p>
+    </footer>
+</body>
+</html>

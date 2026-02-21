@@ -1,0 +1,43 @@
+<!-- templates/problem.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Problem</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <header>
+        <h1>Problem Details</h1>
+        <nav>
+            <ul>
+                <li><a href="{{ url_for('index') }}">Home</a></li>
+                <li><a href="{{ url_for('problem.list_problems') }}">Problems</a></li>
+                <li><a href="{{ url_for('solution.list_solutions') }}">Solutions</a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        <section>
+            <h2>{{ problem.title }}</h2>
+            <p>{{ problem.description }}</p>
+        </section>
+        <section>
+            <h3>Associated Solutions</h3>
+            <ul>
+                {% for solution in problem.solutions %}
+                    <li>
+                        <a href="{{ url_for('solution.view_solution', solution_id=solution.id) }}">
+                            {{ solution.title }}
+                        </a>
+                    </li>
+                {% endfor %}
+            </ul>
+        </section>
+    </main>
+    <footer>
+        <p>&copy; 2023 Note-Taking App</p>
+    </footer>
+</body>
+</html>

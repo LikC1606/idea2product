@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ACM Problem-Solving Platform</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <header>
+        <nav>
+            <ul>
+                <li><a href="{{ url_for('user_routes_bp.list_users') }}">Users</a></li>
+                <li><a href="{{ url_for('problem_routes_bp.list_problems') }}">Problems</a></li>
+                <li><a href="{{ url_for('app.health_check') }}">Health Check</a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        <h1>Welcome to ACM Problem-Solving Platform</h1>
+        <p>Browse through our problem library, improve your skills, and climb the leaderboard!</p>
+        <section id="features">
+            <div>
+                <h2>Problem Library</h2>
+                <p>Explore a wide range of competitive programming problems.</p>
+            </div>
+            <div>
+                <h2>Code Submission</h2>
+                <p>Submit your solutions and get instant feedback.</p>
+            </div>
+            <div>
+                <h2>User Profiles</h2>
+                <p>Track your progress and achievements on your personalized profile.</p>
+            </div>
+            <div>
+                <h2>Leaderboard</h2>
+                <p>Compete with other users and see where you stand.</p>
+            </div>
+            <div>
+                <h2>Hints and Tutorials</h2>
+                <p>Learn new techniques and improve your problem-solving skills.</p>
+            </div>
+        </section>
+    </main>
+    <footer>
+        <p>&copy; 2023 ACM Problem-Solving Platform. All rights reserved.</p>
+    </footer>
+</body>
+</html>

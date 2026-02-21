@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blog List</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            margin: 40px;
+            background-color: #f9f9f9;
+            color: #333;
+            line-height: 1.6;
+        }
+        .blog {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            background-color: #fff;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        .blog img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+        }
+        h1 {
+            text-align: center;
+            color: #4CAF50;
+        }
+    </style>
+</head>
+<body>
+    <h1>Blog List</h1>
+    <div id="blogs">
+        <!-- Blogs will be dynamically loaded here -->
+    </div>
+    <script>
+        async function fetchBlogs() {
+            const response = await fetch('/api/blogs');
+            const blogs = await response.json();
+            const blogsContainer = document.getElementById('blogs');
+
+            blogs.forEach(blog => {
+                const blogDiv = document.createElement('div');
+                blogDiv.className = 'blog';
+                blogDiv.innerHTML = `
+                    <h2>${blog.title}</h2>
+                    <p>${blog.description}</p>
+                    <img src="${blog.image_url}" alt="Blog Image">
+                    <p>Created at: ${new Date(blog.created_at).toLocaleString()}</p>
+                `;
+                blogsContainer.appendChild(blogDiv);
+            });
+        }
+
+        fetchBlogs();
+    </script>
+</body>
+</html>

@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Problem Details</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <header>
+        <nav>
+            <ul>
+                <li><a href="/">Home</a></li>
+                <li><a href="/problems">Problems</a></li>
+                <li><a href="/profile">Profile</a></li>
+                <li><a href="/logout">Logout</a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        <section class="problem-details">
+            <h1>{{ problem.title }}</h1>
+            <p><strong>Difficulty:</strong> {{ problem.difficulty }}</p>
+            <p><strong>Description:</strong></p>
+            <p>{{ problem.description }}</p>
+            <h2>Input Format</h2>
+            <p>{{ problem.input_format }}</p>
+            <h2>Output Format</h2>
+            <p>{{ problem.output_format }}</p>
+            <h2>Constraints</h2>
+            <ul>
+                {% for constraint in problem.constraints %}
+                <li>{{ constraint }}</li>
+                {% endfor %}
+            </ul>
+            <h2>Sample Test Cases</h2>
+            {% for test_case in problem.sample_test_cases %}
+            <div class="test-case">
+                <h3>Input:</h3>
+                <pre>{{ test_case.input }}</pre>
+                <h3>Output:</h3>
+                <pre>{{ test_case.output }}</pre>
+            </div>
+            {% endfor %}
+            <a href="/problems/{{ problem.id }}/submit" class="btn">Submit Solution</a>
+        </section>
+    </main>
+    <footer>
+        <p>&copy; 2023 ACM Problem-Solving Platform. All rights reserved.</p>
+    </footer>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

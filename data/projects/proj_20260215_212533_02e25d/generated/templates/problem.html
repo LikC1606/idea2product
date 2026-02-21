@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Problem Details</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <header>
+        <h1>ACM Problem-Solving Platform</h1>
+        <nav>
+            <ul>
+                <li><a href="{{ url_for('index') }}">Home</a></li>
+                <li><a href="{{ url_for('problem.list_problems') }}">Problems</a></li>
+                <li><a href="{{ url_for('user.profile') }}">Profile</a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        <section class="problem-details">
+            <h2>{{ problem.title }}</h2>
+            <p><strong>Difficulty:</strong> {{ problem.difficulty }}</p>
+            <p><strong>Description:</strong></p>
+            <p>{{ problem.description }}</p>
+        </section>
+        <section class="problem-interaction">
+            <h3>Submit Solution</h3>
+            <form action="{{ url_for('solution.submit', problem_id=problem.id) }}" method="POST">
+                <textarea name="solution_code" rows="10" cols="80" placeholder="Write your solution here..." required></textarea>
+                <button type="submit">Submit</button>
+            </form>
+        </section>
+        <section class="problem-hints">
+            <h3>Hints</h3>
+            <ul>
+                {% for hint in problem.hints %}
+                    <li>{{ hint }}</li>
+                {% endfor %}
+            </ul>
+        </section>
+        <section class="problem-solutions">
+            <h3>Solutions</h3>
+            <ul>
+                {% for solution in problem.solutions %}
+                    <li>
+                        <p><strong>User:</strong> {{ solution.user.username }}</p>
+                        <p><strong>Code:</strong></p>
+                        <pre>{{ solution.code }}</pre>
+                    </li>
+                {% endfor %}
+            </ul>
+        </section>
+    </main>
+    <footer>
+        <p>&copy; 2023 ACM Problem-Solving Platform</p>
+    </footer>
+</body>
+</html>

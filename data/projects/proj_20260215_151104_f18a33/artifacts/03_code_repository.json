@@ -1,0 +1,77 @@
+{
+  "skeleton": null,
+  "files": [
+    {
+      "path": "app.py",
+      "content": "from flask import Flask\nfrom routes import register_routes\n\ndef create_app():\n    app = Flask(__name__)\n    \n    # Register all routes from the routes module\n    register_routes(app)\n    \n    return app\n\nif __name__ == '__main__':\n    app = create_app()\n    app.run(debug=True)",
+      "language": "python",
+      "purpose": "Main application entry point",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T15:11:37.282013"
+    },
+    {
+      "path": "routes.py",
+      "content": "from flask import Blueprint, jsonify\n\nroutes = Blueprint('routes', __name__)\n\n@routes.route('/problems', methods=['GET'])\ndef get_problems():\n    # This would typically fetch data from the database\n    # Since no database is specified, returning a placeholder response\n    return jsonify({\"message\": \"List of problems\"}), 200\n\n@routes.route('/submit', methods=['POST'])\ndef submit_code():\n    # Placeholder for code submission endpoint\n    return jsonify({\"message\": \"Code submission endpoint\"}), 200\n\n@routes.route('/leaderboard', methods=['GET'])\ndef get_leaderboard():\n    # Placeholder for leaderboard data\n    return jsonify({\"message\": \"Leaderboard data\"}), 200",
+      "language": "python",
+      "purpose": "API routes",
+      "dependencies": [
+        "app.py"
+      ],
+      "interface_id": null,
+      "generated_at": "2026-02-15T15:11:39.454311"
+    },
+    {
+      "path": "static/style.css",
+      "content": "/* Path: static/style.css */\n/* Purpose: Stylesheet for ACM Problem-Solving Platform */\n\n/* General Reset */\n* {\n    margin: 0;\n    padding: 0;\n    box-sizing: border-box;\n}\n\n/* Body Styling */\nbody {\n    font-family: Arial, sans-serif;\n    background-color: #f9f9f9;\n    color: #333;\n    line-height: 1.6;\n    padding: 0;\n    margin: 0;\n}\n\n/* Header Styling */\nheader {\n    background: #0078d7;\n    color: #fff;\n    padding: 20px 0;\n    text-align: center;\n}\n\nheader h1 {\n    margin: 0;\n}\n\n/* Navigation Bar */\nnav {\n    display: flex;\n    justify-content: center;\n    background: #005ea6;\n}\n\nnav a {\n    color: white;\n    padding: 15px 20px;\n    text-decoration: none;\n    font-weight: bold;\n}\n\nnav a:hover {\n    background: #004080;\n}\n\n/* Main Content Styling */\nmain {\n    max-width: 1200px;\n    margin: 20px auto;\n    padding: 20px;\n    background: white;\n    border-radius: 5px;\n    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);\n}\n\n/* Footer Styling */\nfooter {\n    background: #0078d7;\n    color: white;\n    text-align: center;\n    padding: 10px 0;\n    position: fixed;\n    bottom: 0;\n    width: 100%;\n}\n\n/* Problem List Styles */\n.problem-list {\n    list-style: none;\n    padding: 0;\n}\n\n.problem-list li {\n    padding: 10px;\n    border-bottom: 1px solid #ddd;\n}\n\n.problem-list li:last-child {\n    border-bottom: none;\n}\n\n.problem-list li a {\n    text-decoration: none;\n    color: #0078d7;\n}\n\n.problem-list li a:hover {\n    text-decoration: underline;\n}\n\n/* Leaderboard Styles */\n.leaderboard {\n    margin-top: 20px;\n    border-collapse: collapse;\n    width: 100%;\n}\n\n.leaderboard th,\n.leaderboard td {\n    border: 1px solid #ddd;\n    padding: 8px;\n    text-align: left;\n}\n\n.leaderboard th {\n    background-color: #0078d7;\n    color: white;\n}\n\n.leaderboard tr:nth-child(even) {\n    background-color: #f2f2f2;\n}\n\n.leaderboard tr:hover {\n    background-color: #ddd;\n}\n\n/* Button Styles */\n.button {\n    display: inline-block;\n    padding: 10px 20px;\n    background: #0078d7;\n    color: white;\n    text-decoration: none;\n    border-radius: 5px;\n    font-weight: bold;\n    text-align: center;\n}\n\n.button:hover {\n    background: #005ea6;\n}\n\n/* Form Styles */\nform {\n    margin-top: 20px;\n}\n\nform input[type=\"text\"],\nform input[type=\"email\"],\nform input[type=\"password\"],\nform textarea {\n    width: 100%;\n    padding: 10px;\n    margin-bottom: 10px;\n    border: 1px solid #ccc;\n    border-radius: 5px;\n}\n\nform input[type=\"submit\"] {\n    background: #0078d7;\n    color: white;\n    padding: 10px 15px;\n    border: none;\n    border-radius: 5px;\n    cursor: pointer;\n}\n\nform input[type=\"submit\"]:hover {\n    background: #005ea6;\n}\n\n/* User Profile Styles */\n.profile {\n    display: flex;\n    align-items: center;\n    gap: 20px;\n    margin-top: 20px;\n}\n\n.profile img {\n    border-radius: 50%;\n    width: 100px;\n    height: 100px;\n    object-fit: cover;\n}\n\n.profile-info {\n    flex: 1;\n}\n\n.profile-info h2 {\n    margin-bottom: 10px;\n}\n\n.profile-info p {\n    margin-bottom: 5px;\n    color: #555;\n}",
+      "language": "css",
+      "purpose": "Stylesheet",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T15:11:45.140404"
+    },
+    {
+      "path": "templates/index.html",
+      "content": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>ACM Problem-Solving Platform</title>\n    <link rel=\"stylesheet\" href=\"/static/styles.css\">\n</head>\n<body>\n    <header>\n        <nav>\n            <ul>\n                <li><a href=\"/\">Home</a></li>\n                <li><a href=\"/problems\">Problems</a></li>\n                <li><a href=\"/leaderboard\">Leaderboard</a></li>\n                <li><a href=\"/tutorials\">Tutorials</a></li>\n                <li><a href=\"/profile\">Profile</a></li>\n            </ul>\n        </nav>\n    </header>\n    <main>\n        <section id=\"intro\">\n            <h1>Welcome to ACM Problem-Solving Platform</h1>\n            <p>Efficiently solve ACM programming problems and compete with others.</p>\n            <a href=\"/problems\" class=\"btn\">Explore Problems</a>\n        </section>\n    </main>\n    <footer>\n        <p>&copy; 2023 ACM Problem-Solving Platform. All rights reserved.</p>\n    </footer>\n</body>\n</html>",
+      "language": "html",
+      "purpose": "Main HTML template",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T15:11:47.524824"
+    }
+  ],
+  "structure": {
+    "root": "generated",
+    "directories": [
+      "templates",
+      "static"
+    ],
+    "entry_point": "app.py"
+  },
+  "dependencies": [
+    "AWS",
+    "Ant Design",
+    "Bootstrap",
+    "Chai",
+    "Chart.js",
+    "Docker",
+    "Express",
+    "Jest",
+    "Material-UI",
+    "Mocha",
+    "MongoDB",
+    "MongoDB Compass",
+    "Mongoose",
+    "MySQL",
+    "Node.js",
+    "PostgreSQL",
+    "React",
+    "React Testing Library",
+    "Sequelize",
+    "TypeORM",
+    "flask",
+    "pgAdmin"
+  ],
+  "readme_content": "# ACM Problem-Solving Platform\n\nA website designed to help users solve ACM programming problems efficiently.\n\n## Features\n\n- Problem Repository: A comprehensive collection of ACM programming problems categorized by difficulty and topic.\n- Code Submission System: Allows users to submit their code and receive instant feedback on correctness and performance.\n- Leaderboard: Tracks user performance and ranks them based on problem-solving efficiency and accuracy.\n- Tutorials and Hints: Provides users with tutorials, hints, and explanations for solving problems.\n- User Profiles: Allows users to create profiles to track their progress and achievements.\n\n## Setup\n\n```bash\npip install -r requirements.txt\npython app.py\n```\n\n## Usage\n\nOpen http://localhost:5000 in your browser.\n",
+  "created_at": "2026-02-15T15:11:47.525177"
+}

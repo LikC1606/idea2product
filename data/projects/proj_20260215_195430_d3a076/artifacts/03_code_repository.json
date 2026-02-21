@@ -1,0 +1,183 @@
+{
+  "skeleton": null,
+  "files": [
+    {
+      "path": "app/database.py",
+      "content": "from flask_sqlalchemy import SQLAlchemy\n\n# Initialize the SQLAlchemy object\ndb = SQLAlchemy()",
+      "language": "python",
+      "purpose": "",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T19:55:04.619272"
+    },
+    {
+      "path": "app/factory.py",
+      "content": "from flask import Flask\nfrom app.database import db\nfrom app.config import Config\nfrom app.blueprints.problem import problem_bp\nfrom app.blueprints.user import user_bp\nfrom app.blueprints.auth import auth_bp\nfrom app.extensions import migrate\nfrom app.errors import handle_404\n\n\ndef create_app():\n    app = Flask(__name__)\n    app.config.from_object(Config)\n\n    # Initialize extensions\n    db.init_app(app)\n    migrate.init_app(app, db)\n\n    # Register blueprints\n    app.register_blueprint(problem_bp)\n    app.register_blueprint(user_bp)\n    app.register_blueprint(auth_bp)\n\n    # Error handlers\n    app.register_error_handler(404, handle_404)\n\n    return app",
+      "language": "python",
+      "purpose": "",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T19:55:05.958652"
+    },
+    {
+      "path": "app/extensions.py",
+      "content": "from flask_migrate import Migrate\n\ndef migrate():\n    \"\"\"\n    Initializes Flask-Migrate with the Flask app and SQLAlchemy database instance.\n    \"\"\"\n    from app.database import db\n    from app import create_app\n\n    app = create_app()\n    Migrate(app, db)",
+      "language": "python",
+      "purpose": "",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T19:55:07.637814"
+    },
+    {
+      "path": "app/errors.py",
+      "content": "from flask import jsonify\n\ndef handle_404(error: Exception):\n    response = {\n        \"error\": \"Not Found\",\n        \"message\": \"The requested resource could not be found.\"\n    }\n    return jsonify(response), 404",
+      "language": "python",
+      "purpose": "",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T19:55:08.821841"
+    },
+    {
+      "path": "app/__init__.py",
+      "content": "from .factory import create_app\n\n__all__ = [\"create_app\"]",
+      "language": "python",
+      "purpose": "",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T19:55:09.554099"
+    },
+    {
+      "path": "app/models/problem.py",
+      "content": "from app.database import db\n\nclass Problem(db.Model):\n    __tablename__ = 'problems'\n\n    id = db.Column(db.Integer, primary_key=True)\n    title = db.Column(db.String(255), nullable=False)\n    description = db.Column(db.Text, nullable=False)\n    difficulty = db.Column(db.String(50), nullable=False)\n    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())\n    updated_at = db.Column(db.DateTime, default=db.func.current_timestamp(), onupdate=db.func.current_timestamp())\n\n    def __init__(self, title, description, difficulty):\n        self.title = title\n        self.description = description\n        self.difficulty = difficulty\n\n    def to_dict(self):\n        return {\n            'id': self.id,\n            'title': self.title,\n            'description': self.description,\n            'difficulty': self.difficulty,\n            'created_at': self.created_at,\n            'updated_at': self.updated_at\n        }",
+      "language": "python",
+      "purpose": "",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T19:55:11.475730"
+    },
+    {
+      "path": "app/models/user.py",
+      "content": "from app.database import db\n\nclass User(db.Model):\n    __tablename__ = 'users'\n\n    id = db.Column(db.Integer, primary_key=True)\n    username = db.Column(db.String(80), unique=True, nullable=False)\n    email = db.Column(db.String(120), unique=True, nullable=False)\n    password_hash = db.Column(db.String(128), nullable=False)\n\n    def __repr__(self):\n        return f'<User {self.username}>'",
+      "language": "python",
+      "purpose": "",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T19:55:12.875396"
+    },
+    {
+      "path": "app/blueprints/problem.py",
+      "content": "from flask import Blueprint\n\nproblem_bp = Blueprint('problem', __name__)",
+      "language": "python",
+      "purpose": "",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T19:55:13.653902"
+    },
+    {
+      "path": "app/blueprints/user.py",
+      "content": "from flask import Blueprint\n\nuser_bp = Blueprint('user', __name__)",
+      "language": "python",
+      "purpose": "",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T19:55:14.428460"
+    },
+    {
+      "path": "app/blueprints/auth.py",
+      "content": "from flask import Blueprint\n\nauth_bp = Blueprint('auth', __name__)",
+      "language": "python",
+      "purpose": "",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T19:55:15.118795"
+    },
+    {
+      "path": "app/services/problem_service.py",
+      "content": "from app.models.problem import Problem\n\ndef get_all_problems():\n    \"\"\"\n    Retrieve all problems from the database.\n    \n    Returns:\n        list: A list of Problem objects.\n    \"\"\"\n    # Assuming Problem.query.all() fetches all problems from the database\n    return Problem.query.all()",
+      "language": "python",
+      "purpose": "",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T19:55:15.990244"
+    },
+    {
+      "path": "app/services/user_service.py",
+      "content": "from app.models.user import User\n\ndef get_user_by_id(user_id: int):\n    \"\"\"\n    Retrieve a user by their ID.\n\n    Args:\n        user_id (int): The ID of the user to retrieve.\n\n    Returns:\n        User: The user object if found, else None.\n    \"\"\"\n    # Placeholder for actual implementation.\n    # Replace the following line with the actual logic to fetch the user.\n    return None",
+      "language": "python",
+      "purpose": "",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T19:55:17.363780"
+    },
+    {
+      "path": "app/utils/validators.py",
+      "content": "def validate_email(email: str) -> bool:\n    \"\"\"\n    Validates an email address.\n\n    Args:\n        email (str): The email address to validate.\n\n    Returns:\n        bool: True if the email is valid, False otherwise.\n    \"\"\"\n    import re\n\n    email_regex = r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\\.[a-zA-Z0-9-.]+$'\n    return re.match(email_regex, email) is not None",
+      "language": "python",
+      "purpose": "",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T19:55:18.487587"
+    },
+    {
+      "path": "app/utils/helpers.py",
+      "content": "from datetime import datetime\n\ndef format_date(date: datetime) -> str:\n    \"\"\"\n    Formats a datetime object into a human-readable string format.\n\n    Args:\n        date (datetime): The datetime object to format.\n\n    Returns:\n        str: The formatted date string in the format 'YYYY-MM-DD'.\n    \"\"\"\n    return date.strftime('%Y-%m-%d')",
+      "language": "python",
+      "purpose": "",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T19:55:19.613548"
+    },
+    {
+      "path": "app/config.py",
+      "content": "class Config:\n    \"\"\"Base configuration class for the ACM Problem-Solving Platform.\"\"\"\n\n    # General Configurations\n    SECRET_KEY = \"your-secret-key\"\n    DEBUG = False\n    TESTING = False\n\n    # Database Configurations\n    SQLALCHEMY_DATABASE_URI = \"sqlite:///app.db\"\n    SQLALCHEMY_TRACK_MODIFICATIONS = False\n\n    # Application Features\n    ENABLE_LEADERBOARD = True\n    ENABLE_HINTS_AND_TUTORIALS = True\n\n    # Other Configurations\n    PER_PAGE = 10\n    MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16 MB limit for submissions\n\n\nclass DevelopmentConfig(Config):\n    \"\"\"Development environment configuration.\"\"\"\n    DEBUG = True\n    SQLALCHEMY_DATABASE_URI = \"sqlite:///dev.db\"\n\n\nclass TestingConfig(Config):\n    \"\"\"Testing environment configuration.\"\"\"\n    TESTING = True\n    SQLALCHEMY_DATABASE_URI = \"sqlite:///test.db\"\n\n\nclass ProductionConfig(Config):\n    \"\"\"Production environment configuration.\"\"\"\n    DEBUG = False\n    SQLALCHEMY_DATABASE_URI = \"postgresql://user:password@localhost/prod_db\"",
+      "language": "python",
+      "purpose": "",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T19:55:21.836508"
+    },
+    {
+      "path": "flask_migrate.py",
+      "content": "from app.extensions import migrate\nfrom app.database import db\nfrom app.factory import create_app\n\napp = create_app()\nmigrate.init_app(app, db)",
+      "language": "python",
+      "purpose": "Generated stub for flask_migrate.py",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T19:55:22.859672"
+    },
+    {
+      "path": "app.py",
+      "content": "from app.factory import create_app\nfrom app.extensions import migrate\nfrom app.database import db\n\napp = create_app()\n\n# Initialize database migration\nmigrate.init_app(app, db)\n\nif __name__ == '__main__':\n    app.run(host='0.0.0.0', port=5000)",
+      "language": "python",
+      "purpose": "Generated stub for app.py",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T19:55:25.259790"
+    },
+    {
+      "path": ".factory.py",
+      "content": "from flask import Flask, render_template\nfrom app.database import db\nfrom app.blueprints.problem import problem_bp\nfrom app.blueprints.user import user_bp\nfrom app.blueprints.auth import auth_bp\nfrom app.errors import handle_404\nfrom app.extensions import migrate\nfrom app.config import Config\n\ndef create_app():\n    app = Flask(__name__, template_folder='../templates', static_folder='../static')\n    app.config.from_object(Config)\n\n    db.init_app(app)\n    migrate.init_app(app, db)\n\n    app.register_blueprint(problem_bp)\n    app.register_blueprint(user_bp)\n    app.register_blueprint(auth_bp)\n\n    app.register_error_handler(404, handle_404)\n\n    @app.route('/')\n    def index():\n        return render_template('index.html')\n\n    return app",
+      "language": "python",
+      "purpose": "Generated stub for .factory.py",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T19:55:27.293485"
+    }
+  ],
+  "structure": {
+    "root": "generated",
+    "directories": [
+      "app",
+      "app\\utils",
+      "app\\models",
+      "app\\services",
+      "app\\blueprints"
+    ],
+    "entry_point": "app.py"
+  },
+  "dependencies": [
+    "flask"
+  ],
+  "readme_content": "# ACM Problem-Solving Platform\n\nA website designed to help users solve ACM-style programming problems and improve their coding skills.\n\n## Features\n\n- Problem Library: A comprehensive library of ACM-style programming problems categorized by difficulty and topic.\n- Code Submission and Evaluation: Allows users to submit code solutions and receive automated feedback on correctness and performance.\n- User Profiles: Enables users to create profiles, track their progress, and view their problem-solving history.\n- Leaderboard: Displays rankings of users based on their problem-solving performance and achievements.\n- Hints and Tutorials: Provides hints and tutorials to help users understand problem-solving techniques and algorithms.\n\n## Setup\n\n```bash\npip install -r requirements.txt\npython app.py\n```\n\n## Usage\n\nOpen http://localhost:5000 in your browser.\n",
+  "created_at": "2026-02-15T19:55:27.293978"
+}

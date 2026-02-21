@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Problem Details</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <header>
+        <h1>ACM Problem-Solving Platform</h1>
+        <nav>
+            <ul>
+                <li><a href="{{ url_for('index') }}">Home</a></li>
+                <li><a href="{{ url_for('problem.list') }}">Problem Library</a></li>
+                <li><a href="{{ url_for('leaderboard') }}">Leaderboard</a></li>
+                <li><a href="{{ url_for('profile') }}">My Profile</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main>
+        <section class="problem-details">
+            <h2>{{ problem.title }}</h2>
+            <p><strong>Difficulty:</strong> {{ problem.difficulty }}</p>
+            <p><strong>Category:</strong> {{ problem.category }}</p>
+            <hr>
+            <h3>Description</h3>
+            <p>{{ problem.description }}</p>
+            <hr>
+            <h3>Input Format</h3>
+            <p>{{ problem.input_format }}</p>
+            <hr>
+            <h3>Output Format</h3>
+            <p>{{ problem.output_format }}</p>
+            <hr>
+            <h3>Sample Test Cases</h3>
+            <div class="test-cases">
+                {% for case in problem.sample_cases %}
+                <div class="test-case">
+                    <p><strong>Input:</strong></p>
+                    <pre>{{ case.input }}</pre>
+                    <p><strong>Output:</strong></p>
+                    <pre>{{ case.output }}</pre>
+                </div>
+                <hr>
+                {% endfor %}
+            </div>
+
+            <h3>Submit Your Code</h3>
+            <form method="POST" action="{{ url_for('problem.submit', problem_id=problem.id) }}">
+                <label for="language">Programming Language:</label>
+                <select name="language" id="language" required>
+                    <option value="python">Python</option>
+                    <option value="cpp">C++</option>
+                    <option value="java">Java</option>
+                </select>
+                <br>
+                <label for="solution">Your Code:</label>
+                <textarea name="solution" id="solution" rows="10" cols="50" required></textarea>
+                <br>
+                <button type="submit">Submit</button>
+            </form>
+        </section>
+    </main>
+
+    <footer>
+        <p>&copy; 2023 ACM Problem-Solving Platform</p>
+    </footer>
+</body>
+</html>

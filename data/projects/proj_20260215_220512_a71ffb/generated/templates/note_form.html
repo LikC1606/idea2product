@@ -1,0 +1,39 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1>{{ 'Create Note' if note is none else 'Edit Note' }}</h1>
+    
+    <form method="POST" action="{{ url_for('routes.create_note') if note is none else url_for('routes.edit_note', note_id=note.id) }}">
+        {{ form.hidden_tag() }}
+        
+        <div class="form-group">
+            <label for="title">Title</label>
+            {{ form.title(class="form-control", id="title") }}
+            {% if form.title.errors %}
+                <div class="text-danger mt-2">
+                    {% for error in form.title.errors %}
+                        <p>{{ error }}</p>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        </div>
+
+        <div class="form-group mt-3">
+            <label for="content">Content</label>
+            {{ form.content(class="form-control", id="content") }}
+            {% if form.content.errors %}
+                <div class="text-danger mt-2">
+                    {% for error in form.content.errors %}
+                        <p>{{ error }}</p>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        </div>
+
+        <button type="submit" class="btn btn-primary mt-4">
+            {{ 'Create Note' if note is none else 'Update Note' }}
+        </button>
+    </form>
+</div>
+{% endblock %}

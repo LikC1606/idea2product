@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blog App</title>
+    <style>
+        body {
+            font-family: 'Comic Sans MS', cursive, sans-serif;
+            background-color: #f9f9f9;
+            color: #333;
+            margin: 0;
+            padding: 0;
+        }
+        header {
+            background-color: #ffcccb;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        header h1 {
+            margin: 0;
+            font-size: 2.5em;
+        }
+        nav {
+            margin: 20px;
+            text-align: center;
+        }
+        nav a {
+            text-decoration: none;
+            color: #ff6f61;
+            font-size: 1.2em;
+            margin: 0 15px;
+        }
+        nav a:hover {
+            text-decoration: underline;
+        }
+        .blog-list {
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .blog-item {
+            margin-bottom: 20px;
+            padding: 15px;
+            border-bottom: 1px solid #ddd;
+        }
+        .blog-item:last-child {
+            border-bottom: none;
+        }
+        .blog-item h2 {
+            margin: 0 0 10px;
+            color: #ff6f61;
+        }
+        .blog-item p {
+            margin: 0;
+        }
+        .blog-item a {
+            text-decoration: none;
+            color: #007BFF;
+        }
+        .blog-item a:hover {
+            text-decoration: underline;
+        }
+    </style>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            fetch('/api/blogs')
+                .then(response => response.json())
+                .then(blogs => {
+                    const blogList = document.querySelector('.blog-list');
+                    blogList.innerHTML = '';
+                    blogs.forEach(blog => {
+                        const blogItem = document.createElement('div');
+                        blogItem.className = 'blog-item';
+                        blogItem.innerHTML = `
+                            <h2>${blog.title}</h2>
+                            <p>${blog.description}</p>
+                            <a href="/blogs/${blog.id}">Read more</a>
+                        `;
+                        blogList.appendChild(blogItem);
+                    });
+                })
+                .catch(error => {
+                    console.error('Error fetching blogs:', error);
+                });
+        });
+    </script>
+</head>
+<body>
+    <header>
+        <h1>Welcome to the Blog App</h1>
+    </header>
+    <nav>
+        <a href="/">Home</a>
+        <a href="/create">Create Blog</a>
+    </nav>
+    <div class="blog-list">
+        Loading blogs...
+    </div>
+</body>
+</html>

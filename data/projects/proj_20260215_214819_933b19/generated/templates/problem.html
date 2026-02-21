@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Problem Management</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <header>
+        <h1>Problem Management</h1>
+    </header>
+
+    <main>
+        <section>
+            <h2>Create a Problem</h2>
+            <form action="{{ url_for('problem.create_problem') }}" method="POST">
+                <label for="title">Title:</label>
+                <input type="text" id="title" name="title" required>
+
+                <label for="description">Description:</label>
+                <textarea id="description" name="description" required></textarea>
+
+                <button type="submit">Create Problem</button>
+            </form>
+        </section>
+
+        <section>
+            <h2>All Problems</h2>
+            <ul>
+                {% for problem in problems %}
+                <li>
+                    <h3>{{ problem.title }}</h3>
+                    <p>{{ problem.description }}</p>
+                    <a href="{{ url_for('problem.view_problem', problem_id=problem.id) }}">View</a>
+                </li>
+                {% endfor %}
+            </ul>
+        </section>
+    </main>
+
+    <footer>
+        <p>&copy; 2023 Note-Taking Application</p>
+    </footer>
+</body>
+</html>

@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Search Results</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <header>
+        <h1>Search Results</h1>
+        <nav>
+            <a href="{{ url_for('index') }}">Back to Notes</a>
+        </nav>
+    </header>
+    <main>
+        <section id="search-results">
+            {% for note in results %}
+                <article class="note">
+                    <p>{{ note.content }}</p>
+                    <small>Created at: {{ note.created_at }}</small>
+                </article>
+            {% endfor %}
+        </section>
+    </main>
+</body>
+</html>

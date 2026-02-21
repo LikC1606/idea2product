@@ -1,0 +1,65 @@
+<!-- templates/problem.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>问题详情页</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <header>
+        <nav>
+            <ul>
+                <li><a href="{{ url_for('problem_blueprint.problem_list') }}">题库</a></li>
+                <li><a href="{{ url_for('user_blueprint.profile', user_id=current_user.id) }}">个人资料</a></li>
+                <li><a href="{{ url_for('solution_blueprint.leaderboard') }}">排行榜</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main>
+        <section class="problem-details">
+            <h1>{{ problem.title }}</h1>
+            <p><strong>难度:</strong> {{ problem.difficulty }}</p>
+            <p><strong>标签:</strong> {% for tag in problem.tags %} {{ tag }} {% endfor %}</p>
+            <article>
+                <h2>描述</h2>
+                <p>{{ problem.description }}</p>
+            </article>
+            <article>
+                <h2>输入说明</h2>
+                <pre>{{ problem.input_description }}</pre>
+            </article>
+            <article>
+                <h2>输出说明</h2>
+                <pre>{{ problem.output_description }}</pre>
+            </article>
+            <article>
+                <h2>样例输入</h2>
+                <pre>{{ problem.sample_input }}</pre>
+            </article>
+            <article>
+                <h2>样例输出</h2>
+                <pre>{{ problem.sample_output }}</pre>
+            </article>
+        </section>
+
+        <section class="solutions">
+            <h2>解决方案</h2>
+            {% for solution in solutions %}
+                <div class="solution">
+                    <p><strong>提交者:</strong> {{ solution.user.username }}</p>
+                    <p><strong>结果:</strong> {{ solution.result }}</p>
+                    <p><strong>提交时间:</strong> {{ solution.submitted_at }}</p>
+                    <a href="{{ url_for('solution_blueprint.solution_detail', solution_id=solution.id) }}">查看详情</a>
+                </div>
+            {% endfor %}
+        </section>
+    </main>
+
+    <footer>
+        <p>© 2023 ACM Problem-Solving Platform</p>
+    </footer>
+</body>
+</html>

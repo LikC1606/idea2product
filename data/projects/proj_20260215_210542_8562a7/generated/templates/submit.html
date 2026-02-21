@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Submit Solution</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+    <header>
+        <nav>
+            <a href="/">Home</a>
+            <a href="/problems">Problems</a>
+            <a href="/leaderboard">Leaderboard</a>
+            <a href="/profile">Profile</a>
+        </nav>
+    </header>
+    <main>
+        <h1>Submit Your Solution</h1>
+        <form method="POST" action="/submit" enctype="multipart/form-data">
+            <div>
+                <label for="problem_id">Problem ID:</label>
+                <select name="problem_id" id="problem_id" required>
+                    {% for problem in problems %}
+                    <option value="{{ problem.id }}">{{ problem.title }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="language">Programming Language:</label>
+                <select name="language" id="language" required>
+                    <option value="python">Python</option>
+                    <option value="java">Java</option>
+                    <option value="cpp">C++</option>
+                    <option value="c">C</option>
+                </select>
+            </div>
+            <div>
+                <label for="code">Upload Code File:</label>
+                <input type="file" name="code" id="code" accept=".py,.java,.cpp,.c" required>
+            </div>
+            <button type="submit">Submit</button>
+        </form>
+        {% if error %}
+        <div class="error">
+            <p>{{ error }}</p>
+        </div>
+        {% endif %}
+    </main>
+    <footer>
+        <p>&copy; 2023 ACM Problem-Solving Platform</p>
+    </footer>
+</body>
+</html>

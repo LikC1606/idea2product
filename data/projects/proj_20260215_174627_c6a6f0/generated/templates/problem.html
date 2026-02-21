@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Problem Detail</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+    <header>
+        <h1>ACM Problem-Solving Platform</h1>
+        <nav>
+            <ul>
+                <li><a href="/">Home</a></li>
+                <li><a href="/problems">Problems</a></li>
+                <li><a href="/profile">Profile</a></li>
+                <li><a href="/leaderboard">Leaderboard</a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        <section class="problem-details">
+            <h2>{{ problem.title }}</h2>
+            <p><strong>Difficulty:</strong> {{ problem.difficulty }}</p>
+            <p>{{ problem.description }}</p>
+        </section>
+        <section class="problem-meta">
+            <h3>Additional Information</h3>
+            <p><strong>Time Limit:</strong> {{ problem.time_limit }} seconds</p>
+            <p><strong>Memory Limit:</strong> {{ problem.memory_limit }} MB</p>
+        </section>
+        <section class="problem-solutions">
+            <h3>Submit Your Solution</h3>
+            <form action="/solutions/submit" method="POST" enctype="multipart/form-data">
+                <label for="language">Programming Language:</label>
+                <select id="language" name="language">
+                    <option value="python">Python</option>
+                    <option value="cpp">C++</option>
+                    <option value="java">Java</option>
+                </select>
+                <label for="code">Your Code:</label>
+                <textarea id="code" name="code" rows="10" cols="50"></textarea>
+                <input type="hidden" name="problem_id" value="{{ problem.id }}">
+                <button type="submit">Submit</button>
+            </form>
+        </section>
+        <section class="hints">
+            <h3>Hints</h3>
+            <ul>
+                {% for hint in problem.hints %}
+                <li>{{ hint }}</li>
+                {% endfor %}
+            </ul>
+        </section>
+        <section class="solutions-list">
+            <h3>Recent Solutions</h3>
+            <ul>
+                {% for solution in recent_solutions %}
+                <li>
+                    <strong>User:</strong> {{ solution.user.username }} |
+                    <strong>Status:</strong> {{ solution.status }} |
+                    <strong>Language:</strong> {{ solution.language }}
+                </li>
+                {% endfor %}
+            </ul>
+        </section>
+    </main>
+    <footer>
+        <p>ACM Problem-Solving Platform &copy; 2023</p>
+    </footer>
+</body>
+</html>

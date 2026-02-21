@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ACM Problem-Solving Platform</title>
+    <link rel="stylesheet" href="static/css/style.css">
+    <script src="static/js/app.js" defer></script>
+</head>
+<body>
+    <header>
+        <h1>Welcome to the ACM Problem-Solving Platform</h1>
+        <nav>
+            <ul>
+                <li><a href="#problem-list">Problem List</a></li>
+                <li><a href="#code-submission">Code Submission</a></li>
+                <li><a href="#leaderboard">Leaderboard</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main>
+        <section id="problem-list">
+            <h2>Problem List</h2>
+            <p>Explore our library of programming challenges to improve your skills.</p>
+            <!-- Problem list content will be dynamically loaded here -->
+            <div id="problems-container">
+                <!-- Placeholder for problems -->
+            </div>
+        </section>
+
+        <section id="code-submission">
+            <h2>Code Submission</h2>
+            <p>Submit your solutions and get instant feedback.</p>
+            <form id="submission-form">
+                <label for="problem-id">Problem ID:</label>
+                <input type="text" id="problem-id" name="problem-id" required>
+                
+                <label for="code">Your Code:</label>
+                <textarea id="code" name="code" rows="10" required></textarea>
+                
+                <button type="submit">Submit Code</button>
+            </form>
+        </section>
+
+        <section id="leaderboard">
+            <h2>Leaderboard</h2>
+            <p>Check out the top solvers on the platform.</p>
+            <!-- Leaderboard content will be dynamically loaded here -->
+            <div id="leaderboard-container">
+                <!-- Placeholder for leaderboard -->
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <p>&copy; 2023 ACM Problem-Solving Platform</p>
+    </footer>
+</body>
+</html>
+
+{% block None %}
+{% endblock %}

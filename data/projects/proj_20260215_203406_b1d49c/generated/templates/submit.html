@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Submit Solution</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <header>
+        <nav>
+            <ul>
+                <li><a href="/">Home</a></li>
+                <li><a href="/problems">Problems</a></li>
+                <li><a href="/leaderboard">Leaderboard</a></li>
+                <li><a href="/profile">Profile</a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        <h1>Submit Your Solution</h1>
+        <form method="POST" action="/solutions">
+            <div class="form-group">
+                <label for="problem_id">Select Problem:</label>
+                <select name="problem_id" id="problem_id">
+                    <!-- Dynamically populated options -->
+                    {% for problem in problems %}
+                        <option value="{{ problem.id }}">{{ problem.title }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="code">Your Solution:</label>
+                <textarea name="code" id="code" rows="10" placeholder="Write your code here..."></textarea>
+            </div>
+            <button type="submit">Submit</button>
+        </form>
+    </main>
+    <footer>
+        <p>&copy; 2023 ACM Problem-Solving Platform</p>
+    </footer>
+</body>
+</html>

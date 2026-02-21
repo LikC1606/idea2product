@@ -1,0 +1,74 @@
+{
+  "skeleton": null,
+  "files": [
+    {
+      "path": "app/database.py",
+      "content": "from flask_sqlalchemy import SQLAlchemy\n\n# Initialize SQLAlchemy\ndb = SQLAlchemy()",
+      "language": "python",
+      "purpose": "database setup",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T23:53:05.093548"
+    },
+    {
+      "path": "app/models/note.py",
+      "content": "from app.database import db\n\nclass Note(db.Model):\n    __tablename__ = 'notes'\n\n    id = db.Column(db.Integer, primary_key=True)\n    content = db.Column(db.Text, nullable=False)\n    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())\n    updated_at = db.Column(db.DateTime, default=db.func.current_timestamp(), onupdate=db.func.current_timestamp())",
+      "language": "python",
+      "purpose": "note model definition",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T23:53:08.256273"
+    },
+    {
+      "path": "app/routes.py",
+      "content": "from flask import Blueprint, render_template, request, redirect, url_for\nfrom app.models.note import Note\nfrom app.database import db\n\nnotes_bp = Blueprint('notes', __name__)\n\n@notes_bp.route('/')\ndef index():\n    notes = Note.query.all()  # Retrieve all notes from the database\n    return render_template('index.html', notes=notes)\n\n@notes_bp.route('/add', methods=['POST'])\ndef add_note():\n    note_content = request.form.get('content')\n    if note_content:\n        new_note = Note(content=note_content)\n        db.session.add(new_note)\n        db.session.commit()\n    return redirect(url_for('notes.index'))\n\n@notes_bp.route('/delete/<int:note_id>', methods=['POST'])\ndef delete_note(note_id):\n    note_to_delete = Note.query.get(note_id)\n    if note_to_delete:\n        db.session.delete(note_to_delete)\n        db.session.commit()\n    return redirect(url_for('notes.index'))",
+      "language": "python",
+      "purpose": "route definitions for note-taking functionality",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T23:53:11.752056"
+    },
+    {
+      "path": "templates/notes.html",
+      "content": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>Notes</title>\n    <style>\n        body {\n            font-family: Arial, sans-serif;\n            margin: 0;\n            padding: 20px;\n            background-color: #f4f4f4;\n        }\n        .container {\n            max-width: 600px;\n            margin: 0 auto;\n            background: #fff;\n            padding: 20px;\n            border-radius: 5px;\n            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);\n        }\n        h1 {\n            margin-bottom: 20px;\n            text-align: center;\n        }\n        form {\n            margin-bottom: 20px;\n        }\n        textarea {\n            width: 100%;\n            height: 100px;\n            margin-bottom: 10px;\n            padding: 10px;\n            border: 1px solid #ccc;\n            border-radius: 5px;\n            resize: none;\n        }\n        button {\n            display: block;\n            width: 100%;\n            padding: 10px;\n            background-color: #007BFF;\n            border: none;\n            color: white;\n            border-radius: 5px;\n            cursor: pointer;\n        }\n        button:hover {\n            background-color: #0056b3;\n        }\n        .note {\n            padding: 10px;\n            margin-bottom: 10px;\n            border: 1px solid #ccc;\n            border-radius: 5px;\n            background: #f9f9f9;\n        }\n    </style>\n</head>\n<body>\n    <div class=\"container\">\n        <h1>Notes</h1>\n        <form method=\"POST\" action=\"{{ url_for('notes_bp.save_note') }}\">\n            <textarea name=\"content\" placeholder=\"Write your note here...\"></textarea>\n            <button type=\"submit\">Save Note</button>\n        </form>\n        <div>\n            {% for note in notes %}\n                <div class=\"note\">\n                    <p>{{ note.content }}</p>\n                </div>\n            {% endfor %}\n        </div>\n    </div>\n</body>\n</html>",
+      "language": "html",
+      "purpose": "HTML template for note-taking interface",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T23:53:21.049895"
+    },
+    {
+      "path": "static/styles.css",
+      "content": "/* static/styles.css */\n/* Styles for the Note-Taking Interface */\n\n/* General Body Styling */\nbody {\n    font-family: Arial, sans-serif;\n    background-color: #f8f9fa;\n    margin: 0;\n    padding: 0;\n}\n\n/* Container for the Note-Taking App */\n.container {\n    max-width: 800px;\n    margin: 50px auto;\n    padding: 20px;\n    background-color: #ffffff;\n    border-radius: 8px;\n    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);\n}\n\n/* Header Styling */\nheader {\n    text-align: center;\n    margin-bottom: 20px;\n}\n\nheader h1 {\n    font-size: 2.5rem;\n    color: #343a40;\n}\n\n/* Form Styling */\nform {\n    display: flex;\n    flex-direction: column;\n    gap: 15px;\n    margin-bottom: 30px;\n}\n\nform input[type=\"text\"] {\n    padding: 10px;\n    font-size: 1.1rem;\n    border: 1px solid #ced4da;\n    border-radius: 4px;\n}\n\nform input[type=\"text\"]:focus {\n    outline: none;\n    border-color: #007bff;\n    box-shadow: 0 0 4px rgba(0, 123, 255, 0.3);\n}\n\nform button {\n    padding: 10px 15px;\n    font-size: 1.1rem;\n    color: #ffffff;\n    background-color: #007bff;\n    border: none;\n    border-radius: 4px;\n    cursor: pointer;\n}\n\nform button:hover {\n    background-color: #0056b3;\n}\n\n/* Notes List Styling */\n.notes {\n    list-style: none;\n    padding: 0;\n}\n\n.notes li {\n    background-color: #e9ecef;\n    margin-bottom: 10px;\n    padding: 10px;\n    border-radius: 4px;\n    font-size: 1rem;\n    color: #495057;\n    display: flex;\n    justify-content: space-between;\n    align-items: center;\n}\n\n.notes li span {\n    flex: 1;\n    word-wrap: break-word;\n}\n\n.notes li button {\n    padding: 5px 10px;\n    font-size: 0.9rem;\n    color: #ffffff;\n    background-color: #dc3545;\n    border: none;\n    border-radius: 4px;\n    cursor: pointer;\n}\n\n.notes li button:hover {\n    background-color: #c82333;\n}",
+      "language": "css",
+      "purpose": "CSS for styling the note-taking interface",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T23:53:25.120994"
+    },
+    {
+      "path": "app.py",
+      "content": "from flask import Flask\nfrom app.database import db\nfrom app.routes import notes_bp\n\ndef create_app():\n    app = Flask(__name__)\n    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///notes.db'\n    app.config['SECRET_KEY'] = 'your_secret_key'\n\n    db.init_app(app)\n    app.register_blueprint(notes_bp)\n\n    @app.before_first_request\n    def create_tables():\n        db.create_all()\n\n    @app.route('/')\n    def home():\n        return \"Welcome to the Note-Taking App!\"\n\n    return app",
+      "language": "python",
+      "purpose": "application entry point",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T23:53:26.826682"
+    }
+  ],
+  "structure": {
+    "root": "generated",
+    "directories": [
+      "app\\models",
+      "app",
+      "static",
+      "templates"
+    ],
+    "entry_point": "app.py"
+  },
+  "dependencies": [
+    "flask"
+  ],
+  "readme_content": "# Simple Note-Taking App\n\nAn application that allows users to enter and save text on a single page.\n\n## Features\n\n- Text Input: A single text input field where users can type their notes.\n- Save Notes: A feature to save the entered text for future reference.\n\n## Setup\n\n```bash\npip install -r requirements.txt\npython app.py\n```\n\n## Usage\n\nOpen http://localhost:5000 in your browser.\n",
+  "created_at": "2026-02-15T23:53:30.388474"
+}

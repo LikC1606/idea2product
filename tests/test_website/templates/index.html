@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>笔记应用</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: white;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+        .card {
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+        .input-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+        }
+        textarea {
+            width: 100%;
+            height: 120px;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            resize: vertical;
+            transition: border-color 0.3s;
+        }
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 16px;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+        .notes-section {
+            margin-top: 30px;
+        }
+        .notes-section h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+        }
+        .notes-list {
+            list-style: none;
+        }
+        .note-item {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 15px;
+            border-left: 4px solid #667eea;
+            transition: transform 0.2s;
+        }
+        .note-item:hover {
+            transform: translateX(5px);
+        }
+        .note-content {
+            color: #333;
+            font-size: 16px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+        }
+        .note-time {
+            color: #999;
+            font-size: 12px;
+            margin-top: 10px;
+        }
+        .note-delete {
+            float: right;
+            background: #ff4757;
+            padding: 5px 12px;
+            font-size: 12px;
+            margin-top: -10px;
+        }
+        .note-delete:hover {
+            background: #ff6b7a;
+        }
+        .empty-state {
+            text-align: center;
+            color: #999;
+            padding: 40px;
+        }
+        .loading {
+            text-align: center;
+            color: #667eea;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📝 笔记应用</h1>
+        <div class="card">
+            <div class="input-group">
+                <label for="noteContent">写下你的笔记：</label>
+                <textarea id="noteContent" placeholder="在这里输入笔记内容..."></textarea>
+            </div>
+            <button onclick="saveNote()">保存笔记</button>
+
+            <div class="notes-section">
+                <h2>我的笔记</h2>
+                <ul class="notes-list" id="notesList">
+                    <li class="loading">加载中...</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:5000/api';
+
+        // 加载笔记列表
+        async function loadNotes() {
+            try {
+                const response = await fetch(`${API_BASE}/notes`);
+                const notes = await response.json();
+                displayNotes(notes);
+            } catch (error) {
+                console.error('加载笔记失败:', error);
+                document.getElementById('notesList').innerHTML =
+                    '<li class="empty-state">无法连接到服务器，请确保后端正在运行</li>';
+            }
+        }
+
+        // 显示笔记列表
+        function displayNotes(notes) {
+            const list = document.getElementById('notesList');
+            if (!notes || notes.length === 0) {
+                list.innerHTML = '<li class="empty-state">还没有笔记，快来添加第一条吧！</li>';
+                return;
+            }
+
+            list.innerHTML = notes.map(note => `
+                <li class="note-item">
+                    <button class="note-delete" onclick="deleteNote(${note.id})">删除</button>
+                    <div class="note-content">${escapeHtml(note.content)}</div>
+                    <div class="note-time">创建时间：${note.created_at || '未知'}</div>
+                </li>
+            `).join('');
+        }
+
+        // 保存笔记
+        async function saveNote() {
+            const content = document.getElementById('noteContent').value.trim();
+            if (!content) {
+                alert('请输入笔记内容');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/notes`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ content })
+                });
+
+                if (response.ok) {
+                    document.getElementById('noteContent').value = '';
+                    loadNotes();
+                } else {
+                    alert('保存失败');
+                }
+            } catch (error) {
+                console.error('保存笔记失败:', error);
+                alert('保存失败，请确保后端正在运行');
+            }
+        }
+
+        // 删除笔记
+        async function deleteNote(id) {
+            if (!confirm('确定要删除这条笔记吗？')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/notes/${id}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    loadNotes();
+                } else {
+                    alert('删除失败');
+                }
+            } catch (error) {
+                console.error('删除笔记失败:', error);
+                alert('删除失败');
+            }
+        }
+
+        // 转义HTML
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // 页面加载时获取笔记
+        loadNotes();
+    </script>
+</body>
+</html>

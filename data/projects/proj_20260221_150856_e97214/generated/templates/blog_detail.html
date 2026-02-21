@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blog Detail</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+    <div class="blog-detail">
+        <h1 id="blog-title">{{ blog.title }}</h1>
+        <img id="blog-image" src="{{ blog.image_path }}" alt="Blog Image" style="max-width: 100%; height: auto;">
+        <p id="blog-content">{{ blog.content }}</p>
+        <p id="blog-date">Created at: {{ blog.created_at }}</p>
+
+        <div class="actions">
+            <a href="/blogs/{{ blog.id }}/edit" class="btn btn-edit">Edit</a>
+            <form action="/api/blogs/{{ blog.id }}" method="POST" style="display: inline;">
+                <input type="hidden" name="_method" value="DELETE">
+                <button type="submit" class="btn btn-delete">Delete</button>
+            </form>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,103 @@
+/* static/styles.css */
+/* Styles for the Note-Taking Interface */
+
+/* General Body Styling */
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f8f9fa;
+    margin: 0;
+    padding: 0;
+}
+
+/* Container for the Note-Taking App */
+.container {
+    max-width: 800px;
+    margin: 50px auto;
+    padding: 20px;
+    background-color: #ffffff;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* Header Styling */
+header {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+header h1 {
+    font-size: 2.5rem;
+    color: #343a40;
+}
+
+/* Form Styling */
+form {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    margin-bottom: 30px;
+}
+
+form input[type="text"] {
+    padding: 10px;
+    font-size: 1.1rem;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+}
+
+form input[type="text"]:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 4px rgba(0, 123, 255, 0.3);
+}
+
+form button {
+    padding: 10px 15px;
+    font-size: 1.1rem;
+    color: #ffffff;
+    background-color: #007bff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+form button:hover {
+    background-color: #0056b3;
+}
+
+/* Notes List Styling */
+.notes {
+    list-style: none;
+    padding: 0;
+}
+
+.notes li {
+    background-color: #e9ecef;
+    margin-bottom: 10px;
+    padding: 10px;
+    border-radius: 4px;
+    font-size: 1rem;
+    color: #495057;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.notes li span {
+    flex: 1;
+    word-wrap: break-word;
+}
+
+.notes li button {
+    padding: 5px 10px;
+    font-size: 0.9rem;
+    color: #ffffff;
+    background-color: #dc3545;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.notes li button:hover {
+    background-color: #c82333;
+}

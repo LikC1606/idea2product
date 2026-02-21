@@ -1,0 +1,145 @@
+/* Path: static/css/style.css */
+/* Purpose: Define styles for the ACM Problem-Solving Platform */
+/* Layer: Frontend */
+
+/* General Reset */
+body, h1, h2, h3, h4, h5, h6, p, ul, ol, li, a, button {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* Base Styles */
+body {
+  font-family: 'Arial', sans-serif;
+  color: #333;
+  background-color: #f9f9f9;
+  line-height: 1.6;
+}
+
+/* Navigation Bar */
+nav {
+  background-color: #007bff;
+  color: #fff;
+  padding: 0.5rem 1rem;
+}
+
+nav a {
+  color: #fff;
+  text-decoration: none;
+  margin-right: 1rem;
+}
+
+nav a:hover {
+  text-decoration: underline;
+}
+
+/* Header */
+header {
+  background-color: #6c757d;
+  color: #fff;
+  text-align: center;
+  padding: 2rem 1rem;
+}
+
+header h1 {
+  font-size: 2.5rem;
+  margin-bottom: 0.5rem;
+}
+
+/* Buttons */
+button {
+  background-color: #007bff;
+  color: #fff;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+button:hover {
+  background-color: #0056b3;
+}
+
+/* Problem List */
+.problem-list {
+  padding: 1rem;
+}
+
+.problem-item {
+  background-color: #fff;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.problem-item h3 {
+  margin-bottom: 0.5rem;
+  font-size: 1.2rem;
+}
+
+.problem-item p {
+  margin-bottom: 1rem;
+}
+
+.problem-item .difficulty {
+  padding: 0.2rem 0.5rem;
+  font-size: 0.9rem;
+  border-radius: 3px;
+}
+
+.problem-item .difficulty.easy {
+  background-color: #d4edda;
+  color: #155724;
+}
+
+.problem-item .difficulty.medium {
+  background-color: #ffeeba;
+  color: #856404;
+}
+
+.problem-item .difficulty.hard {
+  background-color: #f8d7da;
+  color: #721c24;
+}
+
+/* Forms */
+form {
+  max-width: 600px;
+  margin: 2rem auto;
+  background-color: #fff;
+  padding: 1rem;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+}
+
+form label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: bold;
+}
+
+form input, form textarea, form select {
+  width: 100%;
+  padding: 0.5rem;
+  margin-bottom: 1rem;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+}
+
+form button {
+  width: 100%;
+}
+
+/* Footer */
+footer {
+  background-color: #6c757d;
+  color: #fff;
+  text-align: center;
+  padding: 1rem 0;
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+}

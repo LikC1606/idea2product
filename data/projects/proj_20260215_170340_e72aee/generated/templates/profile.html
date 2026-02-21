@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Profile</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>Welcome, {{ user.username }}</h1>
+        </header>
+        <main>
+            <section id="user-details">
+                <h2>Your Details</h2>
+                <p><strong>Username:</strong> {{ user.username }}</p>
+                <p><strong>Email:</strong> {{ user.email }}</p>
+                <p><strong>Joined:</strong> {{ user.created_at.strftime('%B %d, %Y') }}</p>
+            </section>
+
+            <section id="progress-tracking">
+                <h2>Your Progress</h2>
+                <p><strong>Problems Solved:</strong> {{ progress.solved_count }}</p>
+                <p><strong>Solutions Submitted:</strong> {{ progress.submissions_count }}</p>
+
+                <h3>Recent Activity</h3>
+                <ul>
+                    {% for solution in recent_solutions %}
+                    <li>
+                        <strong>{{ solution.problem.title }}</strong> - Submitted on {{ solution.submitted_at.strftime('%B %d, %Y') }}
+                    </li>
+                    {% endfor %}
+                </ul>
+            </section>
+
+            <section id="problem-suggestions">
+                <h2>Suggested Problems</h2>
+                <ul>
+                    {% for problem in suggested_problems %}
+                    <li>
+                        <a href="{{ url_for('problem_blueprint.view_problem', problem_id=problem.id) }}">
+                            {{ problem.title }}
+                        </a>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </section>
+        </main>
+        <footer>
+            <p>&copy; 2023 ACM Problem-Solving Platform</p>
+            <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+        </footer>
+    </div>
+</body>
+
+</html>

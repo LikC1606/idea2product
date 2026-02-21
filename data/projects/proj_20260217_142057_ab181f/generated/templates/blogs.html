@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blogs</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        form { margin-bottom: 20px; }
+        input, textarea { display: block; margin-top: 10px; }
+        .blog { border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; }
+        .blog img { max-width: 100%; height: auto; }
+    </style>
+    <script>
+        async function submitBlog(event) {
+            event.preventDefault();
+            const formData = new FormData(event.target);
+            const response = await fetch('/api/blogs', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    title: formData.get('title'),
+                    content: formData.get('content'),
+                    image_url: formData.get('image_url')
+                })
+            });
+            const result = await response.json();
+            alert('Blog submitted!');
+            fetchBlogs();
+        }
+
+        async function fetchBlogs() {
+            const response = await fetch('/api/blogs');
+            const blogs = await response.json();
+            const blogsContainer = document.getElementById('blogs');
+            blogsContainer.innerHTML = '';
+            blogs.forEach(blog => {
+                const blogDiv = document.createElement('div');
+                blogDiv.className = 'blog';
+                blogDiv.innerHTML = `
+                    <h2>${blog.title}</h2>
+                    <p>${blog.content}</p>
+                    <img src="${blog.image_url}" alt="Blog Image">
+                    <small>Created at: ${new Date(blog.created_at).toLocaleString()}</small>
+                `;
+                blogsContainer.appendChild(blogDiv);
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', fetchBlogs);
+    </script>
+</head>
+<body>
+    <h1>Blogs</h1>
+    <form onsubmit="submitBlog(event)">
+        <label>Title: <input type="text" name="title" required></label>
+        <label>Content: <textarea name="content" required></textarea></label>
+        <label>Image URL: <input type="text" name="image_url" required></label>
+        <button type="submit">Submit Blog</button>
+    </form>
+    <div id="blogs">
+        <!-- Blogs will be listed here -->
+    </div>
+</body>
+</html>

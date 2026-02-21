@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Notes Management</title>
+    <script>
+        const API_BASE = '/api';
+
+        async function fetchNotes() {
+            const response = await fetch(`${API_BASE}/notes`);
+            const notes = await response.json();
+            const notesList = document.getElementById('notes-list');
+            notesList.innerHTML = '';
+            notes.forEach(note => {
+                const noteItem = document.createElement('div');
+                noteItem.innerHTML = `
+                    <h3>${note.title}</h3>
+                    <p>${note.content}</p>
+                    <button onclick="editNote(${note.id})">Edit</button>
+                    <button onclick="deleteNote(${note.id})">Delete</button>
+                `;
+                notesList.appendChild(noteItem);
+            });
+        }
+
+        async function createNote() {
+            const title = document.getElementById('note-title').value;
+            const content = document.getElementById('note-content').value;
+
+            const response = await fetch(`${API_BASE}/notes`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ title, content })
+            });
+
+            if (response.ok) {
+                document.getElementById('note-title').value = '';
+                document.getElementById('note-content').value = '';
+                fetchNotes();
+            } else {
+                alert('Failed to create note');
+            }
+        }
+
+        async function searchNotes() {
+            const query = document.getElementById('search-query').value;
+            const response = await fetch(`${API_BASE}/notes/search?query=${encodeURIComponent(query)}`);
+            const notes = await response.json();
+            const searchResults = document.getElementById('search-results');
+            searchResults.innerHTML = '';
+            notes.forEach(note => {
+                const noteItem = document.createElement('div');
+                noteItem.innerHTML = `
+                    <h3>${note.title}</h3>
+                    <p>${note.content}</p>
+                `;
+                searchResults.appendChild(noteItem);
+            });
+        }
+
+        window.onload = fetchNotes;
+    </script>
+</head>
+<body>
+    <h1>Notes Management</h1>
+
+    <div>
+        <h2>Create Note</h2>
+        <input id="note-title" type="text" placeholder="Title">
+        <textarea id="note-content" placeholder="Content"></textarea>
+        <button onclick="createNote()">Create</button>
+    </div>
+
+    <div>
+        <h2>Search Notes</h2>
+        <input id="search-query" type="text" placeholder="Search by title or content">
+        <button onclick="searchNotes()">Search</button>
+        <div id="search-results"></div>
+    </div>
+
+    <div>
+        <h2>All Notes</h2>
+        <div id="notes-list"></div>
+    </div>
+</body>
+</html>

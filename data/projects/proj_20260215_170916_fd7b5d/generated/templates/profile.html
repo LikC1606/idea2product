@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>用户资料页</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
+</head>
+<body>
+    <header>
+        <nav>
+            <a href="{{ url_for('index') }}">首页</a>
+            <a href="{{ url_for('problem_blueprint.list_problems') }}">题库</a>
+            <a href="{{ url_for('user_blueprint.profile') }}" class="active">个人资料</a>
+            <a href="{{ url_for('user_blueprint.logout') }}">退出</a>
+        </nav>
+    </header>
+    <main class="profile-page">
+        <section class="user-info">
+            <h1>欢迎, {{ user.username }}</h1>
+            <p>邮箱: {{ user.email }}</p>
+            <p>注册日期: {{ user.registration_date }}</p>
+            <p>解决问题数: {{ user.solved_count }}</p>
+        </section>
+        <section class="user-stats">
+            <h2>统计数据</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>题目编号</th>
+                        <th>题目名称</th>
+                        <th>提交次数</th>
+                        <th>通过状态</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for submission in user.submissions %}
+                    <tr>
+                        <td>{{ submission.problem.id }}</td>
+                        <td>{{ submission.problem.title }}</td>
+                        <td>{{ submission.attempt_count }}</td>
+                        <td>{{ '通过' if submission.passed else '未通过' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </section>
+    </main>
+    <footer>
+        <p>ACM Problem-Solving Platform - 版权所有 © 2023</p>
+    </footer>
+</body>
+</html>

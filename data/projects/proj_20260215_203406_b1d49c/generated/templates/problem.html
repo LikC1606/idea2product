@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Problem Details</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+    <header>
+        <h1>ACM Problem-Solving Platform</h1>
+    </header>
+
+    <nav>
+        <ul>
+            <li><a href="/">Home</a></li>
+            <li><a href="/problems">Problems</a></li>
+            <li><a href="/leaderboard">Leaderboard</a></li>
+            <li><a href="/profile">Profile</a></li>
+        </ul>
+    </nav>
+
+    <main>
+        <div class="problem-container">
+            <h2 id="problem-title">{{ problem.title }}</h2>
+            <p id="problem-description">{{ problem.description }}</p>
+            <p><strong>Difficulty:</strong> {{ problem.difficulty }}</p>
+            <p><strong>Tags:</strong> {{ ', '.join(problem.tags) }}</p>
+
+            <section class="submit-solution">
+                <h3>Submit Your Solution</h3>
+                <form action="/solutions" method="POST">
+                    <input type="hidden" name="problem_id" value="{{ problem.id }}">
+                    <textarea name="code" placeholder="Write your solution code here..." required></textarea>
+                    <button type="submit">Submit Solution</button>
+                </form>
+            </section>
+
+            <section class="solutions">
+                <h3>Submitted Solutions</h3>
+                <ul>
+                    {% for solution in solutions %}
+                        <li>
+                            <strong>User:</strong> {{ solution.user.username }}<br>
+                            <pre>{{ solution.code }}</pre>
+                        </li>
+                    {% endfor %}
+                </ul>
+            </section>
+        </div>
+    </main>
+
+    <footer>
+        <p>&copy; 2023 ACM Problem-Solving Platform. All Rights Reserved.</p>
+    </footer>
+</body>
+</html>

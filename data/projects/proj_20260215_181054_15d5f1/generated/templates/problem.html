@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Problem Detail Page</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <header>
+        <h1>ACM Problem-Solving Platform</h1>
+        <nav>
+            <a href="/">Home</a>
+            <a href="/problems">Problems</a>
+            <a href="/profile">Profile</a>
+            <a href="/leaderboard">Leaderboard</a>
+        </nav>
+    </header>
+    <main>
+        <section id="problem-details">
+            <h2>{{ problem.title }}</h2>
+            <p><strong>Difficulty:</strong> {{ problem.difficulty }}</p>
+            <p><strong>Description:</strong></p>
+            <p>{{ problem.description }}</p>
+            <p><strong>Hints:</strong></p>
+            <ul>
+                {% for hint in problem.hints %}
+                    <li>{{ hint }}</li>
+                {% endfor %}
+            </ul>
+        </section>
+        <section id="submit-solution">
+            <h3>Submit Your Solution</h3>
+            <form action="/solutions/submit" method="post">
+                <input type="hidden" name="problem_id" value="{{ problem.id }}">
+                <textarea name="solution_code" rows="10" cols="50" placeholder="Write your solution here..."></textarea>
+                <br>
+                <button type="submit">Submit Solution</button>
+            </form>
+        </section>
+        <section id="solutions">
+            <h3>Solutions</h3>
+            <ul>
+                {% for solution in solutions %}
+                    <li>
+                        <p><strong>User:</strong> {{ solution.user.username }}</p>
+                        <p><strong>Code:</strong></p>
+                        <pre>{{ solution.code }}</pre>
+                        <p><strong>Status:</strong> {{ solution.status }}</p>
+                    </li>
+                {% endfor %}
+            </ul>
+        </section>
+    </main>
+    <footer>
+        <p>&copy; 2023 ACM Problem-Solving Platform</p>
+    </footer>
+</body>
+</html>

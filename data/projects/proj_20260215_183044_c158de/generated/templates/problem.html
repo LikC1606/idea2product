@@ -1,0 +1,58 @@
+<!-- templates/problem.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Problem Details</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <header>
+        <h1>ACM Problem-Solving Platform</h1>
+        <nav>
+            <a href="{{ url_for('problem.list_problems') }}">Problem Repository</a>
+            <a href="{{ url_for('user.profile') }}">My Profile</a>
+            <a href="{{ url_for('solution.leaderboard') }}">Leaderboard</a>
+        </nav>
+    </header>
+    <main>
+        <section class="problem-detail">
+            <h2>{{ problem.title }}</h2>
+            <p><strong>Difficulty:</strong> {{ problem.difficulty }}</p>
+            <p><strong>Tags:</strong> {% for tag in problem.tags %} {{ tag }} {% endfor %}</p>
+            <article>
+                <h3>Description</h3>
+                <p>{{ problem.description }}</p>
+            </article>
+            <article>
+                <h3>Input Format</h3>
+                <p>{{ problem.input_format }}</p>
+            </article>
+            <article>
+                <h3>Output Format</h3>
+                <p>{{ problem.output_format }}</p>
+            </article>
+            <article>
+                <h3>Sample Input</h3>
+                <pre>{{ problem.sample_input }}</pre>
+            </article>
+            <article>
+                <h3>Sample Output</h3>
+                <pre>{{ problem.sample_output }}</pre>
+            </article>
+        </section>
+        <section class="submission-form">
+            <h2>Submit Your Solution</h2>
+            <form action="{{ url_for('solution.submit_solution', problem_id=problem.id) }}" method="POST">
+                <label for="code">Your Code:</label>
+                <textarea id="code" name="code" rows="10" cols="50" required></textarea>
+                <button type="submit">Submit</button>
+            </form>
+        </section>
+    </main>
+    <footer>
+        <p>&copy; 2023 ACM Problem-Solving Platform. All rights reserved.</p>
+    </footer>
+</body>
+</html>

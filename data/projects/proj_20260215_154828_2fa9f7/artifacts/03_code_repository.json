@@ -1,0 +1,154 @@
+{
+  "skeleton": null,
+  "files": [
+    {
+      "path": "app/database.py",
+      "content": "from flask_sqlalchemy import SQLAlchemy\n\ndb = SQLAlchemy()",
+      "language": "python",
+      "purpose": "SQLAlchemy db setup",
+      "dependencies": [
+        "flask_sqlalchemy"
+      ],
+      "interface_id": null,
+      "generated_at": "2026-02-15T15:49:04.383237"
+    },
+    {
+      "path": "app/models/problem.py",
+      "content": "from app.database import db\n\nclass Problem(db.Model):\n    __tablename__ = 'problems'\n\n    id = db.Column(db.Integer, primary_key=True)\n    title = db.Column(db.String(255), nullable=False)\n    description = db.Column(db.Text, nullable=False)\n    difficulty = db.Column(db.String(50), nullable=False)\n    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())\n    updated_at = db.Column(db.DateTime, default=db.func.current_timestamp(), onupdate=db.func.current_timestamp())",
+      "language": "python",
+      "purpose": "Problem model",
+      "dependencies": [
+        "app.database"
+      ],
+      "interface_id": null,
+      "generated_at": "2026-02-15T15:49:05.811499"
+    },
+    {
+      "path": "app/models/user.py",
+      "content": "from app.database import db\n\nclass User(db.Model):\n    __tablename__ = 'users'\n\n    id = db.Column(db.Integer, primary_key=True)\n    username = db.Column(db.String(80), unique=True, nullable=False)\n    email = db.Column(db.String(120), unique=True, nullable=False)\n    password_hash = db.Column(db.String(128), nullable=False)\n\n    def __repr__(self):\n        return f'<User {self.username}>'",
+      "language": "python",
+      "purpose": "User model",
+      "dependencies": [
+        "app.database"
+      ],
+      "interface_id": null,
+      "generated_at": "2026-02-15T15:49:07.126586"
+    },
+    {
+      "path": "app/models/solution.py",
+      "content": "from app.database import db\n\n\nclass Solution(db.Model):\n    __tablename__ = 'solutions'\n\n    id = db.Column(db.Integer, primary_key=True)\n    user_id = db.Column(db.Integer, nullable=False)\n    problem_id = db.Column(db.Integer, nullable=False)\n    code = db.Column(db.Text, nullable=False)\n    language = db.Column(db.String(50), nullable=False)\n    submission_time = db.Column(db.DateTime, nullable=False, default=db.func.current_timestamp())\n    status = db.Column(db.String(50), nullable=False)\n\n    def __init__(self, user_id, problem_id, code, language, status):\n        self.user_id = user_id\n        self.problem_id = problem_id\n        self.code = code\n        self.language = language\n        self.status = status",
+      "language": "python",
+      "purpose": "Solution/Submission model",
+      "dependencies": [
+        "app.database"
+      ],
+      "interface_id": null,
+      "generated_at": "2026-02-15T15:49:08.331089"
+    },
+    {
+      "path": "app/controllers/problem_controller.py",
+      "content": "from flask import Blueprint, request, jsonify\nfrom app.models.problem import Problem\nfrom app.database import db\n\nproblem_controller = Blueprint('problem', __name__)\n    blueprint = Blueprint('problem', __name__)\n\n    @problem_controller.route('/problems', methods=['GET'])\n        try:\n            problems = Problem.query.all()\n            return jsonify([problem.to_dict() for problem in problems]), 200\n        except Exception as e:\n            return jsonify({'error': str(e)}), 500\n\n    @problem_controller.route('/problems/<int:problem_id>', methods=['GET'])\n        try:\n            problem = Problem.query.get(problem_id)\n            if not problem:\n                return jsonify({'error': 'Problem not found'}), 404\n            return jsonify(problem.to_dict()), 200\n        except Exception as e:\n            return jsonify({'error': str(e)}), 500\n\n    @problem_controller.route('/problems', methods=['POST'])\n        try:\n            data = request.json\n            if not data:\n                return jsonify({'error': 'No data provided'}), 400\n\n            new_problem = Problem(**data)\n            db.session.add(new_problem)\n            db.session.commit()\n            return jsonify(new_problem.to_dict()), 201\n        except Exception as e:\n            db.session.rollback()\n            return jsonify({'error': str(e)}), 500\n\n    @problem_controller.route('/problems/<int:problem_id>', methods=['PUT'])\n        try:\n            data = request.json\n            if not data:\n                return jsonify({'error': 'No data provided'}), 400\n\n            problem = Problem.query.get(problem_id)\n            if not problem:\n                return jsonify({'error': 'Problem not found'}), 404\n\n            for key, value in data.items():\n                setattr(problem, key, value)\n\n            db.session.commit()\n            return jsonify(problem.to_dict()), 200\n        except Exception as e:\n            db.session.rollback()\n            return jsonify({'error': str(e)}), 500\n\n    @problem_controller.route('/problems/<int:problem_id>', methods=['DELETE'])\n        try:\n            problem = Problem.query.get(problem_id)\n            if not problem:\n                return jsonify({'error': 'Problem not found'}), 404\n\n            db.session.delete(problem)\n            db.session.commit()\n            return jsonify({'message': 'Problem deleted successfully'}), 200\n        except Exception as e:\n            db.session.rollback()\n            return jsonify({'error': str(e)}), 500\n",
+      "language": "python",
+      "purpose": "Problem CRUD routes",
+      "dependencies": [
+        "app.models.problem"
+      ],
+      "interface_id": null,
+      "generated_at": "2026-02-15T15:49:20.187254"
+    },
+    {
+      "path": "app/controllers/user_controller.py",
+      "content": "from flask import Blueprint, request, jsonify\nfrom app.models.user import User\nfrom app.database import db\n\nuser_controller = Blueprint('user', __name__)\n    user_bp = Blueprint('user', __name__, url_prefix='/user')\n\n    @user_bp.route('/', methods=['GET'])\n        try:\n            users = User.query.all()\n            users_list = [user.to_dict() for user in users]\n            return jsonify(users_list), 200\n        except Exception as e:\n            return jsonify({'error': str(e)}), 500\n\n    @user_bp.route('/<int:user_id>', methods=['GET'])\n        try:\n            user = User.query.get(user_id)\n            if user:\n                return jsonify(user.to_dict()), 200\n            else:\n                return jsonify({'error': 'User not found'}), 404\n        except Exception as e:\n            return jsonify({'error': str(e)}), 500\n\n    @user_bp.route('/', methods=['POST'])\n        try:\n            data = request.get_json()\n            if not data:\n                return jsonify({'error': 'No data provided'}), 400\n\n            new_user = User(**data)\n            db.session.add(new_user)\n            db.session.commit()\n            return jsonify(new_user.to_dict()), 201\n        except Exception as e:\n            return jsonify({'error': str(e)}), 500\n\n    @user_bp.route('/<int:user_id>', methods=['PUT'])\n        try:\n            user = User.query.get(user_id)\n            if not user:\n                return jsonify({'error': 'User not found'}), 404\n\n            data = request.get_json()\n            if not data:\n                return jsonify({'error': 'No data provided'}), 400\n\n            for key, value in data.items():\n                setattr(user, key, value)\n\n            db.session.commit()\n            return jsonify(user.to_dict()), 200\n        except Exception as e:\n            return jsonify({'error': str(e)}), 500\n\n    @user_bp.route('/<int:user_id>', methods=['DELETE'])\n        try:\n            user = User.query.get(user_id)\n            if not user:\n                return jsonify({'error': 'User not found'}), 404\n\n            db.session.delete(user)\n            db.session.commit()\n            return jsonify({'message': 'User deleted successfully'}), 200\n        except Exception as e:\n            return jsonify({'error': str(e)}), 500\n\n    return user_bp",
+      "language": "python",
+      "purpose": "User routes",
+      "dependencies": [
+        "app.models.user"
+      ],
+      "interface_id": null,
+      "generated_at": "2026-02-15T15:49:20.187304"
+    },
+    {
+      "path": "app/controllers/solution_controller.py",
+      "content": "from flask import Blueprint, request, jsonify\nfrom app.models.solution import Solution\nfrom app.database import db\n\nsolution_controller = Blueprint('solution', __name__)\n    blueprint = Blueprint('solution', __name__, url_prefix='/solutions')\n\n    @solution_controller.route('/submit', methods=['POST'])\n        try:\n            data = request.json\n            if not data or 'problem_id' not in data or 'user_id' not in data or 'code' not in data:\n                return jsonify({'error': 'Invalid submission data'}), 400\n\n            solution = Solution(\n                problem_id=data['problem_id'],\n                user_id=data['user_id'],\n                code=data['code']\n            )\n            db.session.add(solution)\n            db.session.commit()\n\n            return jsonify({'message': 'Solution submitted successfully', 'solution_id': solution.id}), 201\n        except Exception as e:\n            db.session.rollback()\n            return jsonify({'error': str(e)}), 500\n\n    @solution_controller.route('/<int:solution_id>', methods=['GET'])\n        try:\n            solution = Solution.query.get(solution_id)\n            if not solution:\n                return jsonify({'error': 'Solution not found'}), 404\n\n            return jsonify({\n                'solution_id': solution.id,\n                'problem_id': solution.problem_id,\n                'user_id': solution.user_id,\n                'code': solution.code\n            }), 200\n        except Exception as e:\n            return jsonify({'error': str(e)}), 500\n\n    @solution_controller.route('/all', methods=['GET'])\n        try:\n            solutions = Solution.query.all()\n            solutions_data = [{\n                'solution_id': solution.id,\n                'problem_id': solution.problem_id,\n                'user_id': solution.user_id,\n                'code': solution.code\n            } for solution in solutions]\n\n            return jsonify(solutions_data), 200\n        except Exception as e:\n            return jsonify({'error': str(e)}), 500\n",
+      "language": "python",
+      "purpose": "Submission routes",
+      "dependencies": [
+        "app.models.solution"
+      ],
+      "interface_id": null,
+      "generated_at": "2026-02-15T15:49:20.187342"
+    },
+    {
+      "path": "app/routes.py",
+      "content": "# app/routes.py\n\nfrom app.controllers.problem_controller import problem_blueprint\nfrom app.controllers.user_controller import user_blueprint\nfrom app.controllers.solution_controller import solution_blueprint\n\ndef register_blueprints(app):\n    \"\"\"\n    Registers all blueprints for the application.\n    :param app: Flask application instance\n    \"\"\"\n    app.register_blueprint(problem_blueprint, url_prefix='/problems')\n    app.register_blueprint(user_blueprint, url_prefix='/users')\n    app.register_blueprint(solution_blueprint, url_prefix='/solutions')",
+      "language": "python",
+      "purpose": "Main routes aggregating all blueprints",
+      "dependencies": [
+        "app.controllers.problem_controller",
+        "app.controllers.user_controller",
+        "app.controllers.solution_controller"
+      ],
+      "interface_id": null,
+      "generated_at": "2026-02-15T15:49:18.208406"
+    },
+    {
+      "path": "app/__init__.py",
+      "content": "from flask import Flask\nfrom app.database import db\nfrom app.routes import problem_blueprint, user_blueprint, solution_blueprint\n\ndef create_app():\n    app = Flask(__name__)\n    \n    # Configuration can be added here\n    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///app.db'\n    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False\n\n    # Initialize database\n    db.init_app(app)\n\n    # Register blueprints\n    app.register_blueprint(problem_blueprint, url_prefix='/problems')\n    app.register_blueprint(user_blueprint, url_prefix='/users')\n    app.register_blueprint(solution_blueprint, url_prefix='/solutions')\n\n    return app",
+      "language": "python",
+      "purpose": "Flask app factory",
+      "dependencies": [
+        "app.routes",
+        "app.database"
+      ],
+      "interface_id": null,
+      "generated_at": "2026-02-15T15:49:19.341228"
+    },
+    {
+      "path": "app.py",
+      "content": "from app import create_app\n\n# Entry point for the ACM Problem-Solving Platform application\nif __name__ == \"__main__\":\n    app = create_app()\n    app.run(debug=True)",
+      "language": "python",
+      "purpose": "Entry point for the application",
+      "dependencies": [
+        "app"
+      ],
+      "interface_id": null,
+      "generated_at": "2026-02-15T15:49:20.186510"
+    }
+  ],
+  "structure": {
+    "root": "generated",
+    "directories": [
+      "app",
+      "app\\models",
+      "app\\controllers"
+    ],
+    "entry_point": "app.py"
+  },
+  "dependencies": [
+    "AWS",
+    "Ace Editor",
+    "Azure",
+    "Bootstrap",
+    "Chart.js",
+    "CodeMirror",
+    "Django",
+    "Docker",
+    "Express.js",
+    "Flask",
+    "Jest",
+    "Judge0",
+    "Kubernetes",
+    "Material-UI",
+    "Mocha",
+    "MySQL",
+    "PostgreSQL",
+    "Pytest",
+    "Python subprocess",
+    "React",
+    "SQLAlchemy",
+    "Sequelize",
+    "flask"
+  ],
+  "readme_content": "# ACM Problem-Solving Platform\n\nA website designed to help users solve ACM-style programming problems and improve their coding skills.\n\n## Features\n\n- Problem Library: A comprehensive library of ACM-style programming problems categorized by difficulty and topic.\n- Code Submission and Evaluation: Allows users to submit code solutions and receive instant feedback on correctness and performance.\n- User Profiles: Enables users to create profiles, track their progress, and view their problem-solving history.\n- Leaderboard: Displays rankings of users based on their problem-solving performance and achievements.\n- Hints and Solutions: Provides optional hints and detailed solutions for problems to aid learning.\n\n## Setup\n\n```bash\npip install -r requirements.txt\npython app.py\n```\n\n## Usage\n\nOpen http://localhost:5000 in your browser.\n",
+  "created_at": "2026-02-15T15:49:20.187897"
+}

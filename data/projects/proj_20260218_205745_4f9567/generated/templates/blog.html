@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blog Management</title>
+    <link rel="stylesheet" href="/static/css/blog.css">
+</head>
+<body>
+    <h1>Blog Management</h1>
+
+    <!-- Blog Creation Form -->
+    <section id="create-blog">
+        <h2>Create a New Blog Post</h2>
+        <!-- <form id="blog-form"> -->
+        <form id="blog-form">
+            <label for="title">Title:</label>
+            <input type="text" id="title" name="title" required><br>
+
+            <label for="description">Description:</label>
+            <textarea id="description" name="description" required></textarea><br>
+
+            <label for="image">Upload Image:</label>
+            <input type="file" id="image" name="image" accept="image/*" required><br>
+
+            <button type="submit">Create Blog Post</button>
+        </form>
+    </section>
+
+    <!-- Blog List Display -->
+    <section id="blog-list">
+        <h2>All Blog Posts</h2>
+        <ul id="blogs">
+            <!-- Blog posts will be dynamically inserted here -->
+        </ul>
+    </section>
+
+    <script>
+        const API_BASE = '/api';
+
+        // Fetch and display blog posts
+        async function fetchBlogPosts() {
+            const response = await fetch(`${API_BASE}/blog_posts`);
+            const blogs = await response.json();
+            const blogList = document.getElementById('blogs');
+            blogList.innerHTML = '';
+            blogs.forEach(blog => {
+                const li = document.createElement('li');
+                li.innerHTML = `
+                    <h3>${blog.title}</h3>
+                    <p>${blog.description}</p>
+                    <img src="${blog.image_url}" alt="Blog Image" style="max-width: 200px;">
+                    <p><small>Created at: ${new Date(blog.created_at).toLocaleString()}</small></p>
+                `;
+                blogList.appendChild(li);
+            });
+        }
+
+        // Handle blog creation form submission
+        document.getElementById('blog-form').addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const formData = new FormData(event.target);
+            const response = await fetch(`${API_BASE}/blog_posts`, {
+                method: 'POST',
+                body: formData
+            });
+            if (response.ok) {
+                alert('Blog post created successfully!');
+                fetchBlogPosts();
+                event.target.reset();
+            } else {
+                alert('Failed to create blog post.');
+            }
+        });
+
+        // Initial fetch of blog posts
+        fetchBlogPosts();
+    </script>
+</body>
+</html>

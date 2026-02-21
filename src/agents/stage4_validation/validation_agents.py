@@ -4,6 +4,7 @@ import re
 import subprocess
 import sys
 import time
+import traceback
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from datetime import datetime
@@ -48,29 +49,25 @@ class FullCycleTestingAgent:
         # Run syntax check
         errors = self._run_syntax_check(repository)
 
-        # Try to run the tests
+        # 真正运行代码测试
         test_output = ""
         test_stderr = ""
         warnings = []
 
-        if len(errors) == 0:
-            try:
-                test_results, test_output, test_stderr = self._run_tests(generated_path, repository)
-                if test_results:
-                    errors.extend(test_results)
-            except Exception as e:
-                warnings.append(f"Test execution failed: {e}")
-                test_output = str(e)
+        # 1. 使用 subprocess 直接运行 app.py 测试
+        run_errors = self._try_run_with_subprocess(generated_path)
+        if run_errors:
+            errors.extend(run_errors)
+            test_stderr = "Run errors found"
         else:
-            warnings.append("Skipping test execution due to syntax errors")
+            logger.info("App runs successfully!")
 
-        # Check if app can run
-        try:
-            can_run, msg = self._check_can_run(repository)
-            if not can_run:
-                warnings.append(msg)
-        except Exception as e:
-            warnings.append(f"Could not verify run: {e}")
+        # 2. 检查未使用的文件
+        if not errors:  # 只在代码能运行的情况下检查
+            unused_warnings = self._check_unused_files(generated_path)
+            if unused_warnings:
+                warnings.extend(unused_warnings)
+                logger.info(f"Found {len(unused_warnings)} unused files")
 
         execution_time = time.time() - start_time
 
@@ -83,6 +80,381 @@ class FullCycleTestingAgent:
             stdout=test_output,
             stderr=test_stderr
         )
+
+    def _try_run_with_subprocess(self, project_path: Path) -> List[TestError]:
+        """使用 subprocess 直接运行 app.py 进行测试"""
+        errors = []
+
+        # 查找入口文件：app.py 或 run.py
+        entry_file = None
+        if (project_path / "app.py").exists():
+            entry_file = "app.py"
+        elif (project_path / "run.py").exists():
+            entry_file = "run.py"
+
+        if not entry_file:
+            errors.append(TestError(
+                error_type=ErrorType.IMPORT,
+                file_path="app.py or run.py",
+                line_number=0,
+                error_message="No entry point found",
+                suggestion="Create app.py or run.py with create_app()"
+            ))
+            return errors
+
+        # 使用 subprocess 启动应用并测试
+        import subprocess
+        import time
+
+        port = 5555  # 使用固定端口避免冲突
+
+        logger.info(f"Starting {entry_file} on port {port}...")
+
+        try:
+            # 启动 Flask 应用
+            proc = subprocess.Popen(
+                ["python", entry_file],
+                cwd=str(project_path),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+
+            # 等待服务器启动
+            time.sleep(3)
+
+            # 检查进程是否还在运行
+            if proc.poll() is not None:
+                stdout, stderr = proc.communicate()
+                errors.append(TestError(
+                    error_type=ErrorType.RUNTIME,
+                    file_path=entry_file,
+                    line_number=0,
+                    error_message=f"Process exited immediately: {stderr[:500] if stderr else stdout[:500]}",
+                    suggestion="Check for errors in the application"
+                ))
+                return errors
+
+            # 尝试用 curl 访问首页
+            try:
+                result = subprocess.run(
+                    ["curl", "-s", "-o", "NUL", "-w", "%{http_code}", f"http://localhost:{port}/"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                status_code = result.stdout.strip()
+                logger.info(f"GET / -> {status_code}")
+
+                if status_code and int(status_code) >= 500:
+                    errors.append(TestError(
+                        error_type=ErrorType.RUNTIME,
+                        file_path=entry_file,
+                        line_number=0,
+                        error_message=f"Home page returned {status_code}",
+                        suggestion="Check server logs for errors"
+                    ))
+            except Exception as e:
+                errors.append(TestError(
+                    error_type=ErrorType.RUNTIME,
+                    file_path=entry_file,
+                    line_number=0,
+                    error_message=f"Could not connect to server: {e}",
+                    suggestion="Check if the app started correctly"
+                ))
+
+        finally:
+            # 终止进程
+            if proc.poll() is None:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+
+        # 另外测试能否作为模块导入
+        import_test = self._test_import_module(project_path)
+        if import_test:
+            errors.extend(import_test)
+
+        return errors
+
+    def _test_import_module(self, project_path: Path) -> List[TestError]:
+        """测试能否作为模块导入"""
+        errors = []
+        import sys
+
+        # 添加到 Python 路径
+        sys.path.insert(0, str(project_path))
+
+        # 清理之前的导入
+        modules_to_remove = [m for m in sys.modules.keys() if m.startswith('app')]
+        for m in modules_to_remove:
+            del sys.modules[m]
+
+        try:
+            # 尝试导入 app 包
+            import importlib.util
+
+            # 尝试 app/__init__.py
+            init_path = project_path / "app" / "__init__.py"
+            if init_path.exists():
+                spec = importlib.util.spec_from_file_location("app", init_path)
+                app_module = importlib.util.module_from_spec(spec)
+                sys.modules['app'] = app_module
+                spec.loader.exec_module(app_module)
+
+                if hasattr(app_module, 'create_app'):
+                    logger.info("App module can be imported successfully!")
+                    return []
+
+            # 如果 app/__init__.py 没有 create_app，尝试 app.py
+            app_py = project_path / "app.py"
+            if app_py.exists():
+                spec = importlib.util.spec_from_file_location("app_module", app_py)
+                test_module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(test_module)
+                if hasattr(test_module, 'create_app'):
+                    logger.info("App from app.py can be imported!")
+                    return []
+
+            errors.append(TestError(
+                error_type=ErrorType.IMPORT,
+                file_path="app/__init__.py",
+                line_number=0,
+                error_message="Cannot import create_app from app module",
+                suggestion="Add create_app() function to app/__init__.py or ensure app.py can be imported"
+            ))
+
+        except Exception as e:
+            errors.append(TestError(
+                error_type=ErrorType.IMPORT,
+                file_path="app/__init__.py",
+                line_number=0,
+                error_message=f"Import error: {str(e)[:200]}",
+                suggestion="Fix the import error"
+            ))
+
+        return errors
+
+    def _try_import_and_create_app(self, project_path: Path) -> List[TestError]:
+        """使用 subprocess 直接运行 app.py 进行测试"""
+        errors = []
+
+        # 查找入口文件：app.py 或 run.py
+        entry_file = None
+        if (project_path / "app.py").exists():
+            entry_file = "app.py"
+        elif (project_path / "run.py").exists():
+            entry_file = "run.py"
+
+        if not entry_file:
+            errors.append(TestError(
+                error_type=ErrorType.IMPORT,
+                file_path="app.py or run.py",
+                line_number=0,
+                error_message="No entry point found",
+                suggestion="Create app.py or run.py with create_app()"
+            ))
+            return errors
+
+        # 使用 subprocess 启动应用并测试
+        import subprocess
+        import requests
+        import time
+        import signal
+
+        port = 5555  # 使用固定端口避免冲突
+
+        logger.info(f"Starting {entry_file} on port {port}...")
+
+        try:
+            # 启动 Flask 应用
+            proc = subprocess.Popen(
+                ["python", entry_file],
+                cwd=str(project_path),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+
+            # 等待服务器启动
+            time.sleep(3)
+
+            # 检查进程是否还在运行
+            if proc.poll() is not None:
+                stdout, stderr = proc.communicate()
+                errors.append(TestError(
+                    error_type=ErrorType.RUNTIME,
+                    file_path=entry_file,
+                    line_number=0,
+                    error_message=f"Process exited immediately: {stderr[:500]}",
+                    suggestion="Check for errors in the application"
+                ))
+                return errors
+
+            # 尝试访问首页
+            try:
+                response = requests.get(f"http://localhost:{port}/", timeout=5)
+                logger.info(f"GET / -> {response.status_code}")
+
+                if response.status_code >= 500:
+                    errors.append(TestError(
+                        error_type=ErrorType.RUNTIME,
+                        file_path=entry_file,
+                        line_number=0,
+                        error_message=f"Home page returned {response.status_code}",
+                        suggestion="Check server logs for errors"
+                    ))
+            except requests.exceptions.RequestException as e:
+                errors.append(TestError(
+                    error_type=ErrorType.RUNTIME,
+                    file_path=entry_file,
+                    line_number=0,
+                    error_message=f"Could not connect to server: {e}",
+                    suggestion="Check if the app started correctly"
+                ))
+
+        finally:
+            # 终止进程
+            if proc.poll() is None:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+
+        return errors
+
+    def _check_unused_files(self, project_path: Path) -> List[TestError]:
+        """检查是否有生成但从未被引用的文件（孤岛文件）"""
+        errors = []
+
+        # 获取所有 Python 文件
+        py_files = list(project_path.rglob("*.py"))
+
+        # 分析每个文件的 import
+        file_imports = {}  # file -> set of imported modules
+
+        for py_file in py_files:
+            try:
+                content = py_file.read_text(encoding='utf-8')
+                imports = set()
+
+                # 简单的 import 解析
+                import re
+                # 匹配 from xxx import 和 import xxx
+                from_imports = re.findall(r'from\s+([\w.]+)\s+import', content)
+                import_stmts = re.findall(r'import\s+([\w.]+)', content)
+
+                imports.update(from_imports)
+                imports.update(import_stmts)
+
+                # 转换为相对路径形式
+                file_imports[str(py_file.relative_to(project_path))] = imports
+            except:
+                pass
+
+        # 检查每个文件是否被其他文件引用
+        for py_file in py_files:
+            rel_path = str(py_file.relative_to(project_path))
+
+            # 跳过入口文件和 __init__.py
+            if rel_path in ["app.py", "run.py", "manage.py"]:
+                continue
+            if rel_path.endswith("__init__.py"):
+                continue
+
+            # 转换为模块名形式
+            module_name = rel_path.replace("/", ".").replace("\\", ".").replace(".py", "")
+
+            # 检查是否被其他文件引用
+            is_referenced = False
+            for file_path, imports in file_imports.items():
+                if file_path == rel_path:
+                    continue
+                # 检查是否引用了这个模块
+                for imp in imports:
+                    if module_name in imp or imp in module_name:
+                        is_referenced = True
+                        break
+                    # 也检查 from app.database import 这种
+                    if "import " + module_name.split(".")[-1] in imp:
+                        is_referenced = True
+                        break
+
+            if not is_referenced:
+                # 对于后端文件，生成警告
+                if rel_path.startswith("app/") and not rel_path.startswith("app/"):
+                    # 排除前端文件
+                    errors.append(TestError(
+                        error_type=ErrorType.RUNTIME,
+                        file_path=rel_path,
+                        line_number=0,
+                        error_message=f"Unused file: {rel_path} - not imported by any other file",
+                        suggestion=f"Either use this file or remove it"
+                    ))
+
+        return errors
+
+        return errors
+
+    def _try_test_routes(self, project_path: Path) -> List[TestError]:
+        """测试 Flask 路由"""
+        warnings = []
+        import sys
+        import importlib.util
+
+        try:
+            # 重新导入
+            init_path = project_path / "app" / "__init__.py"
+            if not init_path.exists():
+                return warnings
+
+            # 清理导入
+            modules_to_remove = [m for m in sys.modules.keys() if m.startswith('app')]
+            for m in modules_to_remove:
+                del sys.modules[m]
+
+            spec = importlib.util.spec_from_file_location("app", init_path)
+            app_module = importlib.util.module_from_spec(spec)
+            sys.modules['app'] = app_module
+            spec.loader.exec_module(app_module)
+
+            if not hasattr(app_module, 'create_app'):
+                return warnings
+
+            app = app_module.create_app()
+            client = app.test_client()
+
+            # 测试首页
+            response = client.get('/')
+            if response.status_code >= 500:
+                warnings.append(f"Route / returned {response.status_code}")
+            elif response.status_code >= 400:
+                logger.info(f"Route / returned {response.status_code}")
+
+            logger.info("Routes tested successfully!")
+
+        except Exception as e:
+            logger.warning(f"Route test failed: {e}")
+
+        return warnings
+
+    def _extract_file_from_error(self, error_msg: str) -> str:
+        """从错误信息中提取文件路径"""
+        if "No module named" in error_msg:
+            parts = error_msg.split("No module named")
+            if len(parts) > 1:
+                module = parts[-1].strip().strip("'\"")
+                return f"import:{module}"
+        if "cannot import name" in error_msg:
+            if "from '" in error_msg:
+                parts = error_msg.split("from '")
+                if len(parts) > 1:
+                    module = parts[-1].split("'")[0]
+                    return module.replace('.', '/') + '.py'
+        return "unknown"
 
     def _generate_init_files(self, project_path: Path):
         """Generate __init__.py files for all Python packages."""
@@ -174,7 +546,7 @@ class FullCycleTestingAgent:
                             match = re.search(r'FAILED (\S+)', line)
                             if match:
                                 errors.append(TestError(
-                                    error_type=ErrorType.TEST_FAILED,
+                                    error_type=ErrorType.RUNTIME,
                                     file_path=match.group(1),
                                     line_number=0,
                                     error_message=line,
@@ -182,7 +554,7 @@ class FullCycleTestingAgent:
                                 ))
                         elif 'ERROR' in line and 'test_' in line:
                             errors.append(TestError(
-                                error_type=ErrorType.TEST_ERROR,
+                                error_type=ErrorType.RUNTIME,
                                 file_path="tests",
                                 line_number=0,
                                 error_message=line,
@@ -206,7 +578,7 @@ class FullCycleTestingAgent:
 
             except subprocess.TimeoutExpired:
                 errors.append(TestError(
-                    error_type=ErrorType.TEST_ERROR,
+                    error_type=ErrorType.RUNTIME,
                     file_path="tests",
                     line_number=0,
                     error_message="Test execution timed out",
@@ -214,7 +586,7 @@ class FullCycleTestingAgent:
                 ))
             except Exception as e:
                 errors.append(TestError(
-                    error_type=ErrorType.TEST_ERROR,
+                    error_type=ErrorType.RUNTIME,
                     file_path="tests",
                     line_number=0,
                     error_message=f"Test execution failed: {e}",
@@ -294,23 +666,211 @@ class FullCycleTestingAgent:
 
         return errors
 
-    def _check_can_run(self, repository: CodeRepository) -> tuple[bool, str]:
-        """Check if the application can run."""
-        # Find app.py, main.py or any entry point
-        app_file = None
-        for f in repository.files:
-            if f.path == 'app.py' or f.path.endswith('/app.py') or f.path.endswith('/main.py'):
-                app_file = f
+    def run_and_fix_loop(self, project_path: Path, repository: CodeRepository, requirements: Requirements, interface_specs: list = None, max_iterations: int = 5) -> CodeRepository:
+        """
+        运行代码 → 捕获错误 → LLM修复 → 循环直到成功或达到最大迭代次数
+        """
+        logger.info("Starting run-and-fix loop...")
+        self.repository = repository  # 保存引用以便后续使用
+
+        for iteration in range(max_iterations):
+            logger.info(f"Iteration {iteration + 1}/{max_iterations}")
+
+            # 尝试导入并运行代码
+            error_info = self._try_run_app(project_path)
+
+            if error_info is None:
+                logger.info("SUCCESS: Code runs without errors!")
                 break
 
-        if not app_file:
-            return False, "No app.py or main.py found"
+            # 有错误，让 LLM 修复
+            file_path, error_msg, line_number = error_info
+            logger.info(f"Error in {file_path}: {error_msg}")
 
-        # Check for Flask import
-        if 'flask' not in app_file.content.lower():
-            return False, "No Flask import found"
+            # 读取当前文件内容
+            full_path = project_path / "generated" / file_path
+            if not full_path.exists():
+                # 尝试其他可能路径
+                for ext in ['', '.py']:
+                    alt_path = project_path / "generated" / file_path
+                    if alt_path.exists():
+                        full_path = alt_path
+                        break
+                if not full_path.exists():
+                    logger.warning(f"File not found: {file_path}")
+                    continue
 
-        return True, "Application appears runnable"
+            original_content = full_path.read_text(encoding='utf-8')
+
+            # 让 LLM 修复错误
+            fixed_content = self._llm_fix_error(
+                file_path=file_path,
+                error_message=error_msg,
+                line_number=line_number,
+                code=original_content,
+                requirements=requirements,
+                interface_specs=interface_specs
+            )
+
+            if fixed_content:
+                # 保存修复后的文件
+                full_path.write_text(fixed_content, encoding='utf-8')
+                logger.info(f"Fixed {file_path}, saving to disk")
+
+                # 更新 repository 中的文件
+                for f in self.repository.files:
+                    if f.path == file_path:
+                        f.content = fixed_content
+                        break
+            else:
+                logger.warning(f"LLM could not fix {file_path}")
+
+        return self.repository
+
+    def _try_run_app(self, project_path: Path) -> Optional[tuple]:
+        """
+        尝试运行应用，捕获错误
+        返回: (file_path, error_message, line_number) 或 None（无错误）
+        """
+        generated_path = project_path / "generated"
+
+        # 添加到 Python 路径
+        import sys
+        sys.path.insert(0, str(generated_path))
+
+        # 尝试导入 app
+        try:
+            # 先尝试导入主要模块
+            import importlib.util
+
+            # 尝试找到并导入应用
+            app_module = None
+
+            # 尝试 app/__init__.py
+            init_path = generated_path / "app" / "__init__.py"
+            if init_path.exists():
+                spec = importlib.util.spec_from_file_location("app", init_path)
+                app_module = importlib.util.module_from_spec(spec)
+                sys.modules['app'] = app_module
+                spec.loader.exec_module(app_module)
+
+            # 尝试创建 app
+            if app_module and hasattr(app_module, 'create_app'):
+                app = app_module.create_app()
+                logger.info("App created successfully!")
+                return None
+            else:
+                # 尝试 app.py
+                app_py = generated_path / "app.py"
+                if app_py.exists():
+                    spec = importlib.util.spec_from_file_location("app_module", app_py)
+                    test_module = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(test_module)
+                    if hasattr(test_module, 'create_app'):
+                        logger.info("App from app.py created successfully!")
+                        return None
+
+                return ("app/__init__.py", "Could not find create_app function", 0)
+
+        except ImportError as e:
+            error_msg = str(e)
+            # 解析导入错误
+            if "No module named" in error_msg:
+                module_name = error_msg.split("No module named")[-1].strip().strip("'\"")
+                return (f"import:{module_name}", error_msg, 0)
+            return (self._extract_file_from_import_error(error_msg), error_msg, 0)
+
+        except Exception as e:
+            error_msg = str(e)
+            # 尝试提取文件名和行号
+            tb = traceback.format_exc()
+            file_path, line = self._extract_location_from_traceback(tb)
+            return (file_path or "unknown", error_msg, line or 0)
+
+        return None
+
+    def _extract_file_from_import_error(self, error_msg: str) -> str:
+        """从导入错误中提取文件路径"""
+        # 常见模式: "cannot import name 'X' from 'Y'"
+        if "cannot import name" in error_msg:
+            # 返回导入源文件
+            if "from 'app." in error_msg:
+                parts = error_msg.split("from 'app.")[1].split("'")
+                return parts[0].replace('.', '/') + '.py' if parts else "app/__init__.py"
+        return "app/__init__.py"
+
+    def _extract_location_from_traceback(self, tb: str) -> tuple:
+        """从 traceback 中提取文件和行号"""
+        lines = tb.split('\n')
+        for line in lines:
+            if 'File' in line and 'generated' in line:
+                # 提取文件路径
+                import re
+                match = re.search(r'File "(.*?)"', line)
+                if match:
+                    file_path = match.group(1)
+                    # 转换为相对路径
+                    if 'generated' in file_path:
+                        file_path = file_path.split('generated')[-1].lstrip('/\\')
+                    # 提取行号
+                    line_match = re.search(r'line (\d+)', line)
+                    line_num = int(line_match.group(1)) if line_match else 0
+                    return file_path, line_num
+        return None, 0
+
+    def _llm_fix_error(self, file_path: str, error_message: str, line_number: int, code: str, requirements: Requirements, interface_specs: list = None) -> Optional[str]:
+        """让 LLM 修复代码错误"""
+        logger.info(f"LLM fixing error in {file_path}")
+
+        # 构建接口规范上下文
+        interface_context = ""
+        if interface_specs:
+            interface_context = "Interface specifications:\n"
+            for spec in interface_specs:
+                if spec.file_path in file_path or file_path in spec.file_path:
+                    interface_context += f"- {spec.file_path}: exports {', '.join([e.name for e in spec.exports])}\n"
+
+        prompt = f"""Fix the Python error in this file.
+
+FILE: {file_path}
+ERROR: {error_message}
+{interface_context}
+
+APPLICATION: {requirements.title}
+FEATURES: {", ".join(f.name for f in requirements.features)}
+
+ORIGINAL CODE:
+{code}
+
+Instructions:
+1. Fix the error so the code can run
+2. If app/__init__.py or app.py: ensure models are imported before db.create_all()
+3. Ensure blueprint registration is correct
+4. Use correct import names based on actual exports
+
+Return ONLY the corrected code, no explanations.
+"""
+        try:
+            fixed = self.llm_service.generate(prompt, max_tokens=2000)
+            fixed = self._clean_code(fixed)
+
+            # 验证语法正确
+            import ast
+            ast.parse(fixed)
+            return fixed
+        except Exception as e:
+            logger.warning(f"LLM fix failed: {e}")
+            return None
+
+    def _clean_code(self, code: str) -> str:
+        """清理代码，移除 markdown 标记"""
+        if code.startswith("```python"):
+            code = code[len("```python"):]
+        if code.startswith("```"):
+            code = code[len("```"):]
+        if code.endswith("```"):
+            code = code[:-3]
+        return code.strip()
 
 
 class FineTuningAgent:
@@ -340,7 +900,7 @@ class FineTuningAgent:
                 # Try to fix import errors
                 repository = self._fix_import_error(repository, error)
                 fixed = True
-            elif error.error_type in [ErrorType.TEST_FAILED, ErrorType.TEST_ERROR]:
+            elif error.error_type in [ErrorType.RUNTIME, ErrorType.RUNTIME]:
                 # Try to fix test failures
                 repository = self._fix_test_error(repository, error)
                 fixed = True
@@ -424,10 +984,136 @@ class Config:
         return repository
 
     def _fix_test_error(self, repository: CodeRepository, error: TestError) -> CodeRepository:
-        """Fix test errors by updating tests or implementations."""
-        # For now, just mark the test as xfail or skip
-        # A full implementation would use LLM to understand and fix the issue
+        """Fix test errors by using LLM to understand and fix the issue."""
         logger.info(f"Test error in {error.file_path}: {error.error_message}")
+
+        # Collect all Python files to provide context to LLM
+        all_files_content = []
+        for f in repository.files:
+            if f.language == 'python' and f.path.endswith('.py'):
+                all_files_content.append(f"=== {f.path} ===\n{f.content}")
+
+        context = "\n\n".join(all_files_content)
+
+        # Check if this is a blueprint-related error
+        is_blueprint_error = "function" in error.error_message and "register" in error.error_message
+        is_db_error = "db" in error.error_message.lower()
+
+        # Use LLM to fix the issue
+        if is_blueprint_error:
+            prompt = f"""Fix the Flask Blueprint registration error.
+
+Error: {error.error_message}
+
+This error happens because:
+1. Controllers are exporting functions instead of Blueprint objects
+2. Or routes/__init__.py is passing a function to register_blueprint() instead of calling it
+
+The fix requires changes to BOTH:
+1. controllers (to export Blueprint directly, not a function)
+2. routes.py or __init__.py (to call the function if needed)
+
+Example CORRECT controller code:
+```python
+# WRONG:
+def problem_blueprint():
+    bp = Blueprint(...)
+    ...
+    return bp
+
+# CORRECT - export Blueprint directly:
+problem_bp = Blueprint('problem', __name__)
+```
+
+Example CORRECT routes/__init__.py code:
+```python
+# If importing function:
+app.register_blueprint(problem_blueprint())  # CALL the function
+
+# If importing Blueprint object:
+app.register_blueprint(problem_bp)  # DON'T call
+```
+
+All Python files in the project:
+{context}
+
+Return the fixed content for ALL files that need changes. Format your response as:
+=== FILENAME1 ===
+<fixed code for filename1>
+=== FILENAME2 ===
+<fixed code for filename2>
+etc.
+
+Only include files that need to be fixed.
+"""
+        else:
+            prompt = f"""Fix the following error in the Flask application:
+
+Error: {error.error_message}
+File: {error.file_path}
+Error Type: {error.error_type}
+
+All Python files in the project:
+{context}
+
+Return ONLY the fixed content for the file that has the error ({error.file_path}), no explanations or markdown.
+If the file doesn't need changes, return the original content unchanged.
+"""
+
+        try:
+            fixed_content = self.llm_service.generate(prompt, max_tokens=5000)
+
+            # Parse the response to find file contents
+            # Format: === FILENAME ===\ncontent
+            import re
+            file_pattern = r'=== ([^\n]+) ===\n(.*?)(?=====|$)'
+            matches = re.findall(file_pattern, fixed_content, re.DOTALL)
+
+            if matches:
+                # Update all files mentioned in the response
+                for filename, content in matches:
+                    filename = filename.strip()
+                    for i, f in enumerate(repository.files):
+                        if f.path == filename:
+                            try:
+                                # Verify it parses
+                                if filename.endswith('.py'):
+                                    import ast
+                                    ast.parse(content)
+                                repository.files[i] = CodeFile(
+                                    path=f.path,
+                                    content=content,
+                                    language=f.language,
+                                    purpose=f.purpose,
+                                    dependencies=f.dependencies
+                                )
+                                logger.info(f"Fixed {filename} using LLM")
+                            except SyntaxError as e:
+                                logger.warning(f"LLM fix resulted in syntax error in {filename}: {e}")
+                            break
+            else:
+                # Single file response
+                for i, f in enumerate(repository.files):
+                    if f.path == error.file_path:
+                        try:
+                            if error.file_path.endswith('.py'):
+                                import ast
+                                ast.parse(fixed_content)
+                            repository.files[i] = CodeFile(
+                                path=f.path,
+                                content=fixed_content,
+                                language=f.language,
+                                purpose=f.purpose,
+                                dependencies=f.dependencies
+                            )
+                            logger.info(f"Fixed error in {f.path} using LLM")
+                        except SyntaxError as e:
+                            logger.warning(f"LLM fix resulted in syntax error: {e}")
+                        break
+
+        except Exception as e:
+            logger.warning(f"Could not fix error using LLM: {e}")
+
         return repository
 
     def _fix_missing_entry_point(self, repository: CodeRepository) -> CodeRepository:

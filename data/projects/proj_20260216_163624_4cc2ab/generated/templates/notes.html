@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notes</title>
+</head>
+<body>
+    <h1>Notes</h1>
+    <form id="search-form">
+        <input type="text" id="search-query" placeholder="Search notes...">
+        <button type="submit">Search</button>
+    </form>
+    <ul id="notes-list"></ul>
+
+    <script>
+        document.getElementById('search-form').addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const query = document.getElementById('search-query').value;
+            const response = await fetch(`/api/notes/search?query=${query}`);
+            const notes = await response.json();
+            const notesList = document.getElementById('notes-list');
+            notesList.innerHTML = '';
+            notes.forEach(note => {
+                const li = document.createElement('li');
+                li.textContent = `${note.title}: ${note.content}`;
+                notesList.appendChild(li);
+            });
+        });
+    </script>
+</body>
+</html>

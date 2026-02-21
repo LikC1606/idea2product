@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}
+    Search Notes
+{% endblock %}
+
+{% block content %}
+    <div class="search-container">
+        <h1>Search Notes</h1>
+        <form action="{{ url_for('notes_bp.search_notes') }}" method="get">
+            <input type="text" name="q" placeholder="Search notes..." required>
+            <button type="submit">Search</button>
+        </form>
+    </div>
+
+    {% if notes %}
+        <div class="notes-list">
+            <h2>Search Results:</h2>
+            <ul>
+                {% for note in notes %}
+                    <li>
+                        <a href="{{ url_for('notes_bp.get_note', note_id=note.id) }}">
+                            {{ note.title }}
+                        </a>
+                        <p>{{ note.content[:100] }}...</p>
+                    </li>
+                {% endfor %}
+            </ul>
+        </div>
+    {% elif request.args.get('q') %}
+        <p>No notes found for your search query.</p>
+    {% endif %}
+{% endblock %}

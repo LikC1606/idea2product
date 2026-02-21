@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notes App</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <script src="{{ url_for('static', filename='js/scripts.js') }}"></script>
+</head>
+<body>
+    <header>
+        <h1>Notes App</h1>
+        <nav>
+            <a href="{{ url_for('create_note') }}">Create Note</a>
+        </nav>
+    </header>
+    <main>
+        <form id="search-form" action="{{ url_for('search_notes') }}" method="GET">
+            <input type="text" name="query" placeholder="Search notes">
+            <button type="submit">Search</button>
+        </form>
+        <section id="notes-list">
+            {% for note in notes %}
+                <article class="note">
+                    <p>{{ note.content }}</p>
+                    <small>Created at: {{ note.created_at }}</small>
+                </article>
+            {% endfor %}
+        </section>
+    </main>
+</body>
+</html>

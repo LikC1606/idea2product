@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}Problem Details{% endblock %}
+
+{% block content %}
+<div class="problem-container">
+    <h1>{{ problem.title }}</h1>
+    <p><strong>Difficulty:</strong> {{ problem.difficulty }}</p>
+    <p><strong>Author:</strong> {{ problem.author.username }}</p>
+    <hr>
+    <div class="problem-description">
+        <h3>Description</h3>
+        <p>{{ problem.description }}</p>
+    </div>
+    <div class="problem-input">
+        <h3>Input</h3>
+        <p>{{ problem.input_description }}</p>
+    </div>
+    <div class="problem-output">
+        <h3>Output</h3>
+        <p>{{ problem.output_description }}</p>
+    </div>
+    <div class="problem-examples">
+        <h3>Examples</h3>
+        {% for example in problem.examples %}
+            <div class="example">
+                <p><strong>Input:</strong></p>
+                <pre>{{ example.input }}</pre>
+                <p><strong>Output:</strong></p>
+                <pre>{{ example.output }}</pre>
+            </div>
+        {% endfor %}
+    </div>
+    <div class="problem-actions">
+        <a href="{{ url_for('solution_bp.submit_solution', problem_id=problem.id) }}" class="btn btn-primary">Submit Solution</a>
+        <a href="{{ url_for('solution_bp.view_solutions', problem_id=problem.id) }}" class="btn btn-secondary">View Solutions</a>
+    </div>
+</div>
+{% endblock %}

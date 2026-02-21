@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blog List</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+    <h1>Blog List</h1>
+    <div id="blog-container">
+        <!-- Blog items will be dynamically loaded here -->
+    </div>
+    <div id="no-blogs" style="display: none;">
+        <p>No blogs available. <a href="/blog/new">Create a new blog</a></p>
+    </div>
+
+    <script>
+        async function loadBlogs() {
+            const response = await fetch('/api/blogs');
+            const blogs = await response.json();
+
+            const blogContainer = document.getElementById('blog-container');
+            const noBlogs = document.getElementById('no-blogs');
+
+            if (blogs.length === 0) {
+                noBlogs.style.display = 'block';
+                return;
+            }
+
+            blogs.forEach(blog => {
+                const blogItem = document.createElement('div');
+                blogItem.className = 'blog-item';
+
+                const title = document.createElement('h2');
+                title.textContent = blog.title;
+
+                const description = document.createElement('p');
+                description.textContent = blog.description;
+
+                if (blog.image_url) {
+                    const image = document.createElement('img');
+                    image.src = blog.image_url;
+                    image.alt = blog.title;
+                    blogItem.appendChild(image);
+                }
+
+                const detailButton = document.createElement('a');
+                detailButton.href = `/blog/${blog.id}`;
+                detailButton.textContent = 'View Details';
+                detailButton.className = 'detail-button';
+
+                blogItem.appendChild(title);
+                blogItem.appendChild(description);
+                blogItem.appendChild(detailButton);
+
+                blogContainer.appendChild(blogItem);
+            });
+        }
+
+        loadBlogs();
+    </script>
+</body>
+</html>

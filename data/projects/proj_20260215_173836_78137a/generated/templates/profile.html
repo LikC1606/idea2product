@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title %}用户资料页{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <h1 class="text-center">用户资料页</h1>
+    <div class="card mt-4">
+        <div class="card-body">
+            <h5 class="card-title">用户名: {{ user.username }}</h5>
+            <p class="card-text">电子邮件: {{ user.email }}</p>
+            <p class="card-text">注册日期: {{ user.created_at.strftime('%Y-%m-%d') }}</p>
+        </div>
+    </div>
+
+    <h2 class="mt-5">解决的题目</h2>
+    <table class="table table-striped mt-3">
+        <thead>
+            <tr>
+                <th scope="col">题目 ID</th>
+                <th scope="col">题目名称</th>
+                <th scope="col">AC 时间</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for solution in solutions %}
+            <tr>
+                <td>{{ solution.problem.id }}</td>
+                <td><a href="{{ url_for('problem_blueprint.problem_detail', problem_id=solution.problem.id) }}">{{ solution.problem.title }}</a></td>
+                <td>{{ solution.submitted_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

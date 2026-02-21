@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Notes</title>
+    <script>
+        async function fetchNotes() {
+            const response = await fetch('/api/notes');
+            const notes = await response.json();
+            const notesList = document.getElementById('notes-list');
+            notesList.innerHTML = '';
+
+            notes.forEach(note => {
+                const listItem = document.createElement('li');
+                listItem.textContent = `${note.id}: ${note.content} (${note.created_at})`;
+                notesList.appendChild(listItem);
+            });
+        }
+
+        async function createNote() {
+            const contentInput = document.getElementById('note-content');
+            const content = contentInput.value;
+
+            if (!content) {
+                alert('Content is required');
+                return;
+            }
+
+            const response = await fetch('/api/notes', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ content })
+            });
+
+            if (response.ok) {
+                contentInput.value = '';
+                fetchNotes();
+            } else {
+                alert('Failed to create note');
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('create-note-btn').addEventListener('click', createNote);
+            fetchNotes();
+        });
+    </script>
+</head>
+<body>
+    <h1>Notes</h1>
+    <input type="text" id="note-content" placeholder="Enter note content" />
+    <button id="create-note-btn">Add Note</button>
+
+    <ul id="notes-list"></ul>
+</body>
+</html>

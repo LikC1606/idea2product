@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blog List</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        .blog {
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+        }
+        .blog img {
+            max-width: 200px;
+            display: block;
+            margin-bottom: 10px;
+        }
+        .blog-actions {
+            margin-top: 10px;
+        }
+        .blog-actions button {
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Blog List</h1>
+    <div id="blogs"></div>
+
+    <script>
+        async function fetchBlogs() {
+            const response = await fetch('/api/blogs');
+            const blogs = await response.json();
+
+            const blogsDiv = document.getElementById('blogs');
+            blogsDiv.innerHTML = ''; // Clear existing content
+
+            blogs.forEach(blog => {
+                const blogElement = document.createElement('div');
+                blogElement.className = 'blog';
+                blogElement.innerHTML = `
+                    <h2>${blog.title}</h2>
+                    <p>${blog.description}</p>
+                    <img src="${blog.image_path}" alt="Blog Image">
+                    <div class="blog-actions">
+                        <a href="/blogs/${blog.id}">Read More</a>
+                        <button onclick="deleteBlog(${blog.id})">Delete</button>
+                    </div>
+                `;
+                blogsDiv.appendChild(blogElement);
+            });
+        }
+
+        async function deleteBlog(id) {
+            if (confirm('Are you sure you want to delete this blog?')) {
+                const response = await fetch(`/api/blogs/${id}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    alert('Blog deleted successfully');
+                    fetchBlogs(); // Refresh the list
+                } else {
+                    alert('Failed to delete blog');
+                }
+            }
+        }
+
+        fetchBlogs();
+    </script>
+</body>
+</html>

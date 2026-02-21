@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block title %}Problem Details{% endblock %}
+
+{% block content %}
+<div class="problem-detail">
+    <h1>{{ problem.title }}</h1>
+    <p><strong>Difficulty:</strong> {{ problem.difficulty }}</p>
+    <p><strong>Tags:</strong> 
+        {% for tag in problem.tags %}
+            <span class="tag">{{ tag }}</span>{% if not loop.last %}, {% endif %}
+        {% endfor %}
+    </p>
+    <hr>
+    <h3>Description</h3>
+    <p>{{ problem.description }}</p>
+    <hr>
+    <h3>Input Format</h3>
+    <p>{{ problem.input_format }}</p>
+    <hr>
+    <h3>Output Format</h3>
+    <p>{{ problem.output_format }}</p>
+    <hr>
+    <h3>Constraints</h3>
+    <ul>
+        {% for constraint in problem.constraints %}
+            <li>{{ constraint }}</li>
+        {% endfor %}
+    </ul>
+    <hr>
+    <h3>Sample Input</h3>
+    <pre>{{ problem.sample_input }}</pre>
+    <hr>
+    <h3>Sample Output</h3>
+    <pre>{{ problem.sample_output }}</pre>
+    <hr>
+    <h3>Solutions</h3>
+    <div class="solutions">
+        {% if solutions %}
+            <ul>
+                {% for solution in solutions %}
+                    <li>
+                        <strong>User:</strong> {{ solution.user.username }}
+                        <p>{{ solution.description }}</p>
+                        <pre>{{ solution.code }}</pre>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p>No solutions available for this problem yet.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Submit Solution</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <header>
+        <nav>
+            <ul>
+                <li><a href="/">Home</a></li>
+                <li><a href="/problems">Problems</a></li>
+                <li><a href="/profile">Profile</a></li>
+                <li><a href="/leaderboard">Leaderboard</a></li>
+                <li><a href="/logout">Logout</a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        <h1>Submit Your Solution</h1>
+        <form action="/submit" method="POST" enctype="multipart/form-data">
+            <label for="problem">Select Problem:</label>
+            <select name="problem_id" id="problem" required>
+                {% for problem in problems %}
+                    <option value="{{ problem.id }}">{{ problem.title }}</option>
+                {% endfor %}
+            </select>
+            <br>
+
+            <label for="language">Select Language:</label>
+            <select name="language" id="language" required>
+                <option value="python">Python</option>
+                <option value="java">Java</option>
+                <option value="cpp">C++</option>
+                <option value="c">C</option>
+            </select>
+            <br>
+
+            <label for="code">Paste Your Code:</label>
+            <textarea name="code" id="code" rows="15" cols="70" required></textarea>
+            <br>
+
+            <button type="submit">Submit</button>
+        </form>
+    </main>
+    <footer>
+        <p>&copy; 2023 ACM Problem-Solving Platform</p>
+    </footer>
+</body>
+</html>

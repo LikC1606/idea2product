@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Profile</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <header>
+        <h1>ACM Problem-Solving Platform</h1>
+        <nav>
+            <ul>
+                <li><a href="{{ url_for('home') }}">Home</a></li>
+                <li><a href="{{ url_for('problem_library') }}">Problem Library</a></li>
+                <li><a href="{{ url_for('leaderboard') }}">Leaderboard</a></li>
+                <li><a href="{{ url_for('user_profile', user_id=current_user.id) }}">My Profile</a></li>
+                <li><a href="{{ url_for('logout') }}">Logout</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main>
+        <section class="user-profile">
+            <h2>User Profile</h2>
+            <p><strong>Username:</strong> {{ user.username }}</p>
+            <p><strong>Email:</strong> {{ user.email }}</p>
+            <p><strong>Member Since:</strong> {{ user.created_at.strftime('%B %d, %Y') }}</p>
+
+            <h3>Progress</h3>
+            <ul>
+                <li><strong>Problems Solved:</strong> {{ user.problems_solved }}</li>
+                <li><strong>Total Submissions:</strong> {{ user.total_submissions }}</li>
+                <li><strong>Accuracy:</strong> {{ user.accuracy }}%</li>
+            </ul>
+
+            <h3>Achievements</h3>
+            <ul>
+                {% for achievement in user.achievements %}
+                <li>{{ achievement }}</li>
+                {% endfor %}
+            </ul>
+
+            <h3>Recent Activity</h3>
+            <ul>
+                {% for activity in user.recent_activity %}
+                <li>{{ activity }}</li>
+                {% endfor %}
+            </ul>
+        </section>
+    </main>
+
+    <footer>
+        <p>&copy; {{ current_year }} ACM Problem-Solving Platform. All rights reserved.</p>
+    </footer>
+</body>
+</html>

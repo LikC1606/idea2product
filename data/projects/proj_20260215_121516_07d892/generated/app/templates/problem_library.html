@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Problem Library - ACM Problem-Solving Platform</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <script src="/static/js/main.js" defer></script>
+</head>
+<body>
+    <header>
+        <nav class="navbar">
+            <div class="container">
+                <a href="/" class="logo">ACM Platform</a>
+                <ul class="nav-links">
+                    <li><a href="/profile">Profile</a></li>
+                    <li><a href="/leaderboard">Leaderboard</a></li>
+                    <li><a href="/problem-library" class="active">Problem Library</a></li>
+                    <li><a href="/hints-tutorials">Hints & Tutorials</a></li>
+                    <li><a href="/logout">Logout</a></li>
+                </ul>
+            </div>
+        </nav>
+    </header>
+
+    <main>
+        <div class="container">
+            <h1>Problem Library</h1>
+            <div class="search-bar">
+                <input type="text" id="search" placeholder="Search problems by name, tags, or difficulty...">
+                <button id="search-btn">Search</button>
+            </div>
+
+            <div class="problem-filters">
+                <label for="difficulty">Difficulty:</label>
+                <select id="difficulty">
+                    <option value="">All</option>
+                    <option value="easy">Easy</option>
+                    <option value="medium">Medium</option>
+                    <option value="hard">Hard</option>
+                </select>
+
+                <label for="tags">Tags:</label>
+                <select id="tags">
+                    <option value="">All</option>
+                    <option value="math">Math</option>
+                    <option value="graphs">Graphs</option>
+                    <option value="dp">Dynamic Programming</option>
+                    <option value="greedy">Greedy</option>
+                </select>
+                
+                <button id="filter-btn">Apply Filters</button>
+            </div>
+
+            <div class="problem-list">
+                <!-- Placeholder for dynamically loaded problems -->
+                <ul id="problems">
+                    <!-- Example Problem -->
+                    <!--
+                    <li class="problem-item">
+                        <h3 class="problem-title"><a href="/problem/1">Example Problem Title</a></h3>
+                        <p class="problem-details">Tags: <span class="tags">Math, Dynamic Programming</span> | Difficulty: <span class="difficulty">Medium</span></p>
+                    </li>
+                    -->
+                </ul>
+            </div>
+        </div>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2023 ACM Problem-Solving Platform. All rights reserved.</p>
+        </div>
+    </footer>
+</body>
+</html>

@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Profile | ACM Problem-Solving Platform</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/user_profile.css">
+    <script src="/static/js/user_profile.js" defer></script>
+</head>
+<body>
+    <header class="navbar">
+        <div class="container">
+            <a href="/" class="logo">ACM Problem-Solving Platform</a>
+            <nav>
+                <ul>
+                    <li><a href="/problems">Problem Library</a></li>
+                    <li><a href="/leaderboard">Leaderboard</a></li>
+                    <li><a href="/profile" class="active">Profile</a></li>
+                    <li><a href="/logout">Logout</a></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <main class="profile-container">
+        <div class="container">
+            <section class="profile-header">
+                <img src="{{ user.avatar_url }}" alt="User Avatar" class="profile-avatar">
+                <h1 class="profile-username">{{ user.username }}</h1>
+                <p class="profile-bio">{{ user.bio }}</p>
+                <button class="btn-edit-profile" onclick="editProfile()">Edit Profile</button>
+            </section>
+
+            <section class="profile-stats">
+                <div class="stat">
+                    <h2>{{ user.solved_count }}</h2>
+                    <p>Problems Solved</p>
+                </div>
+                <div class="stat">
+                    <h2>{{ user.rank }}</h2>
+                    <p>Global Rank</p>
+                </div>
+                <div class="stat">
+                    <h2>{{ user.submissions }}</h2>
+                    <p>Total Submissions</p>
+                </div>
+            </section>
+
+            <section class="profile-activity">
+                <h2>Recent Activity</h2>
+                <ul class="activity-list">
+                    {% for activity in user.activities %}
+                        <li class="activity-item">
+                            <span class="activity-time">{{ activity.timestamp }}</span>
+                            <span class="activity-description">{{ activity.description }}</span>
+                        </li>
+                    {% empty %}
+                        <li class="activity-item">No recent activity found.</li>
+                    {% endfor %}
+                </ul>
+            </section>
+
+            <section class="profile-solved-problems">
+                <h2>Problems Solved</h2>
+                <table class="problems-table">
+                    <thead>
+                        <tr>
+                            <th>Problem ID</th>
+                            <th>Title</th>
+                            <th>Difficulty</th>
+                            <th>Submission Date</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for problem in user.solved_problems %}
+                            <tr>
+                                <td>{{ problem.problem_id }}</td>
+                                <td><a href="/problems/{{ problem.problem_id }}">{{ problem.title }}</a></td>
+                                <td>{{ problem.difficulty }}</td>
+                                <td>{{ problem.submission_date }}</td>
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="4">No problems solved yet.</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </section>
+        </div>
+    </main>
+
+    <footer class="footer">
+        <div class="container">
+            <p>&copy; {{ current_year }} ACM Problem-Solving Platform. All rights reserved.</p>
+        </div>
+    </footer>
+</body>
+</html>

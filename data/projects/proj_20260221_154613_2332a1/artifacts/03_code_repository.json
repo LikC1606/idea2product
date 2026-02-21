@@ -1,0 +1,551 @@
+{
+  "skeleton": {
+    "interfaces": [
+      {
+        "module_name": "app.__init__",
+        "functions": [],
+        "classes": [],
+        "imports": [
+          "from flask import Flask"
+        ],
+        "type_hints": "def create_app() -> Flask: ..."
+      },
+      {
+        "module_name": "app.routes",
+        "functions": [
+          {
+            "name": "index",
+            "params": [],
+            "return_type": "str"
+          },
+          {
+            "name": "create_post",
+            "params": [],
+            "return_type": "str"
+          },
+          {
+            "name": "upload_image",
+            "params": [],
+            "return_type": "str"
+          }
+        ],
+        "classes": [],
+        "imports": [
+          "from flask import Blueprint, request, render_template, redirect, url_for"
+        ],
+        "type_hints": "bp: Blueprint"
+      },
+      {
+        "module_name": "app.forms",
+        "functions": [],
+        "classes": [
+          {
+            "name": "BlogPostForm",
+            "methods": [
+              "validate_on_submit: bool"
+            ]
+          },
+          {
+            "name": "ImageUploadForm",
+            "methods": [
+              "validate_on_submit: bool"
+            ]
+          }
+        ],
+        "imports": [
+          "from flask_wtf import FlaskForm",
+          "from wtforms import StringField, TextAreaField, FileField",
+          "from wtforms.validators import DataRequired"
+        ],
+        "type_hints": "class BlogPostForm(FlaskForm): ...; class ImageUploadForm(FlaskForm): ..."
+      },
+      {
+        "module_name": "app.models",
+        "functions": [],
+        "classes": [
+          {
+            "name": "BlogPost",
+            "methods": [
+              "__init__: None",
+              "save: None"
+            ]
+          },
+          {
+            "name": "Image",
+            "methods": [
+              "__init__: None",
+              "save: None"
+            ]
+          }
+        ],
+        "imports": [
+          "from flask_sqlalchemy import SQLAlchemy"
+        ],
+        "type_hints": "db: SQLAlchemy; class BlogPost(db.Model): ...; class Image(db.Model): ..."
+      },
+      {
+        "module_name": "app.config",
+        "functions": [],
+        "classes": [],
+        "imports": [],
+        "type_hints": "class Config: ..."
+      },
+      {
+        "module_name": "app.__main__",
+        "functions": [
+          {
+            "name": "main",
+            "params": [],
+            "return_type": "None"
+          }
+        ],
+        "classes": [],
+        "imports": [
+          "from app import create_app"
+        ],
+        "type_hints": "if __name__ == '__main__': ..."
+      },
+      {
+        "module_name": "tests.test_blog_post",
+        "functions": [
+          {
+            "name": "test_create_post",
+            "params": [],
+            "return_type": "None"
+          }
+        ],
+        "classes": [],
+        "imports": [
+          "import pytest"
+        ],
+        "type_hints": "def test_create_post() -> None: ..."
+      },
+      {
+        "module_name": "tests.test_image_upload",
+        "functions": [
+          {
+            "name": "test_upload_image",
+            "params": [],
+            "return_type": "None"
+          }
+        ],
+        "classes": [],
+        "imports": [
+          "import pytest"
+        ],
+        "type_hints": "def test_upload_image() -> None: ..."
+      }
+    ],
+    "dependency_graph": {
+      "nodes": [
+        "app/__init__.py",
+        "app/routes.py",
+        "app/forms.py",
+        "app/models.py",
+        "app/templates/base.html",
+        "app/templates/blog_post.html",
+        "app/templates/image_upload.html",
+        "app/static/css/styles.css",
+        "app/static/uploads/",
+        "app/config.py",
+        "app/__main__.py",
+        "tests/test_blog_post.py",
+        "tests/test_image_upload.py",
+        "requirements.txt",
+        "Dockerfile",
+        "README.md"
+      ],
+      "edges": [
+        {
+          "from": "app/routes.py",
+          "to": "app/__init__.py"
+        },
+        {
+          "from": "app/routes.py",
+          "to": "app/forms.py"
+        },
+        {
+          "from": "app/routes.py",
+          "to": "app/models.py"
+        },
+        {
+          "from": "app/forms.py",
+          "to": "flask_wtf"
+        },
+        {
+          "from": "app/forms.py",
+          "to": "wtforms"
+        },
+        {
+          "from": "app/models.py",
+          "to": "flask_sqlalchemy"
+        },
+        {
+          "from": "app/templates/blog_post.html",
+          "to": "app/templates/base.html"
+        },
+        {
+          "from": "app/templates/image_upload.html",
+          "to": "app/templates/base.html"
+        },
+        {
+          "from": "app/__main__.py",
+          "to": "app/__init__.py"
+        },
+        {
+          "from": "app/__main__.py",
+          "to": "app/routes.py"
+        },
+        {
+          "from": "app/__main__.py",
+          "to": "app/config.py"
+        },
+        {
+          "from": "tests/test_blog_post.py",
+          "to": "app/routes.py"
+        },
+        {
+          "from": "tests/test_blog_post.py",
+          "to": "app/models.py"
+        },
+        {
+          "from": "tests/test_image_upload.py",
+          "to": "app/routes.py"
+        },
+        {
+          "from": "tests/test_image_upload.py",
+          "to": "app/static/uploads/"
+        },
+        {
+          "from": "Dockerfile",
+          "to": "requirements.txt"
+        },
+        {
+          "from": "Dockerfile",
+          "to": "app/__main__.py"
+        }
+      ],
+      "entry_point": "app.py"
+    },
+    "symbol_table": [
+      {
+        "symbol_name": "index",
+        "symbol_type": "function",
+        "module": "app.routes",
+        "signature": "index() -> str",
+        "docstring": null,
+        "line_number": 0
+      },
+      {
+        "symbol_name": "create_post",
+        "symbol_type": "function",
+        "module": "app.routes",
+        "signature": "create_post() -> str",
+        "docstring": null,
+        "line_number": 0
+      },
+      {
+        "symbol_name": "upload_image",
+        "symbol_type": "function",
+        "module": "app.routes",
+        "signature": "upload_image() -> str",
+        "docstring": null,
+        "line_number": 0
+      },
+      {
+        "symbol_name": "BlogPostForm",
+        "symbol_type": "class",
+        "module": "app.forms",
+        "signature": null,
+        "docstring": null,
+        "line_number": 0
+      },
+      {
+        "symbol_name": "ImageUploadForm",
+        "symbol_type": "class",
+        "module": "app.forms",
+        "signature": null,
+        "docstring": null,
+        "line_number": 0
+      },
+      {
+        "symbol_name": "BlogPost",
+        "symbol_type": "class",
+        "module": "app.models",
+        "signature": null,
+        "docstring": null,
+        "line_number": 0
+      },
+      {
+        "symbol_name": "Image",
+        "symbol_type": "class",
+        "module": "app.models",
+        "signature": null,
+        "docstring": null,
+        "line_number": 0
+      },
+      {
+        "symbol_name": "main",
+        "symbol_type": "function",
+        "module": "app.__main__",
+        "signature": "main() -> None",
+        "docstring": null,
+        "line_number": 0
+      },
+      {
+        "symbol_name": "test_create_post",
+        "symbol_type": "function",
+        "module": "tests.test_blog_post",
+        "signature": "test_create_post() -> None",
+        "docstring": null,
+        "line_number": 0
+      },
+      {
+        "symbol_name": "test_upload_image",
+        "symbol_type": "function",
+        "module": "tests.test_image_upload",
+        "signature": "test_upload_image() -> None",
+        "docstring": null,
+        "line_number": 0
+      }
+    ],
+    "created_at": "2026-02-21T15:46:45.445744"
+  },
+  "files": [
+    {
+      "path": "app/__init__.py",
+      "content": "from flask import Flask\nfrom app.routes import index, create_post, upload_image\nfrom app.forms import BlogPostForm, ImageUploadForm\nfrom app.models import BlogPost, Image\n\ndef create_app():\n    app = Flask(__name__)\n    \n    # Add configurations here if needed, e.g., app.config['UPLOAD_FOLDER'] = '/path/to/upload/folder'\n\n    # Register routes\n    app.add_url_rule('/', 'index', index)\n    app.add_url_rule('/create-post', 'create_post', create_post, methods=['GET', 'POST'])\n    app.add_url_rule('/upload-image', 'upload_image', upload_image, methods=['GET', 'POST'])\n\n    return app",
+      "language": "python",
+      "purpose": "Initialize the application as a Python package",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-21T15:46:47.202096"
+    },
+    {
+      "path": "app/routes.py",
+      "content": "from flask import render_template, request, redirect, url_for, flash\nfrom app import app, db\nfrom app.forms import BlogPostForm, ImageUploadForm\nfrom app.models import BlogPost, Image\nfrom werkzeug.utils import secure_filename\nimport os\n\n@app.route('/')\ndef index():\n    posts = BlogPost.query.all()\n    return render_template('index.html', posts=posts)\n\n@app.route('/create_post', methods=['GET', 'POST'])\ndef create_post():\n    form = BlogPostForm()\n    if form.validate_on_submit():\n        title = form.title.data\n        content = form.content.data\n        new_post = BlogPost(title=title, content=content)\n        db.session.add(new_post)\n        db.session.commit()\n        flash('Blog post created successfully!', 'success')\n        return redirect(url_for('index'))\n    return render_template('create_post.html', form=form)\n\n@app.route('/upload_image', methods=['GET', 'POST'])\ndef upload_image():\n    form = ImageUploadForm()\n    if form.validate_on_submit():\n        image_file = form.image.data\n        if image_file:\n            filename = secure_filename(image_file.filename)\n            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)\n            image_file.save(filepath)\n            new_image = Image(filename=filename, filepath=filepath)\n            db.session.add(new_image)\n            db.session.commit()\n            flash('Image uploaded successfully!', 'success')\n            return redirect(url_for('index'))\n    return render_template('upload_image.html', form=form)",
+      "language": "python",
+      "purpose": "Define the application routes and handle HTTP requests",
+      "dependencies": [
+        "app/__init__.py",
+        "app/forms.py",
+        "app/models.py"
+      ],
+      "interface_id": null,
+      "generated_at": "2026-02-21T15:46:49.705818"
+    },
+    {
+      "path": "app/forms.py",
+      "content": "from flask_wtf import FlaskForm\nfrom wtforms import StringField, TextAreaField, FileField, SubmitField\nfrom wtforms.validators import DataRequired, Length\n\nclass BlogPostForm(FlaskForm):\n    title = StringField('Title', validators=[DataRequired(), Length(max=100)])\n    content = TextAreaField('Content', validators=[DataRequired()])\n    submit = SubmitField('Create Post')\n\nclass ImageUploadForm(FlaskForm):\n    image = FileField('Upload Image', validators=[DataRequired()])\n    submit = SubmitField('Upload')",
+      "language": "python",
+      "purpose": "Define forms for blog post creation and image upload",
+      "dependencies": [
+        "flask_wtf",
+        "wtforms"
+      ],
+      "interface_id": null,
+      "generated_at": "2026-02-21T15:46:50.996800"
+    },
+    {
+      "path": "app/models.py",
+      "content": "from flask_sqlalchemy import SQLAlchemy\n\ndb = SQLAlchemy()\n\nclass BlogPost(db.Model):\n    __tablename__ = 'blog_posts'\n    \n    id = db.Column(db.Integer, primary_key=True)\n    title = db.Column(db.String(255), nullable=False)\n    content = db.Column(db.Text, nullable=False)\n    created_at = db.Column(db.DateTime, default=db.func.now(), nullable=False)\n\n    def __repr__(self):\n        return f'<BlogPost {self.title}>'\n\nclass Image(db.Model):\n    __tablename__ = 'images'\n    \n    id = db.Column(db.Integer, primary_key=True)\n    filename = db.Column(db.String(255), nullable=False)\n    file_url = db.Column(db.String(255), nullable=False)\n    uploaded_at = db.Column(db.DateTime, default=db.func.now(), nullable=False)\n    blog_post_id = db.Column(db.Integer, db.ForeignKey('blog_posts.id'), nullable=True)\n\n    blog_post = db.relationship('BlogPost', backref=db.backref('images', lazy=True))\n\n    def __repr__(self):\n        return f'<Image {self.filename}>'",
+      "language": "python",
+      "purpose": "Define database models for blog posts and image metadata",
+      "dependencies": [
+        "flask_sqlalchemy"
+      ],
+      "interface_id": null,
+      "generated_at": "2026-02-21T15:46:52.813474"
+    },
+    {
+      "path": "app/templates/base.html",
+      "content": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>Blog Webpage</title>\n    <link rel=\"stylesheet\" href=\"{{ url_for('static', filename='styles.css') }}\">\n</head>\n<body>\n    <header>\n        <nav>\n            <ul>\n                <li><a href=\"{{ url_for('index') }}\">Home</a></li>\n                <li><a href=\"{{ url_for('create_post') }}\">Create Post</a></li>\n                <li><a href=\"{{ url_for('upload_image') }}\">Upload Image</a></li>\n            </ul>\n        </nav>\n    </header>\n    <main>\n        {% block content %}\n        <!-- Content will be injected here -->\n        {% endblock %}\n    </main>\n    <footer>\n        <p>&copy; 2023 Blog Webpage. All rights reserved.</p>\n    </footer>\n</body>\n</html>",
+      "language": "html",
+      "purpose": "Base HTML template for the application",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-21T15:46:55.101469"
+    },
+    {
+      "path": "app/templates/blog_post.html",
+      "content": "{% extends \"base.html\" %}\n\n{% block content %}\n<div class=\"container\">\n    <h1>Create a New Blog Post</h1>\n    <form method=\"post\" action=\"{{ url_for('create_post') }}\" enctype=\"multipart/form-data\">\n        {{ form.hidden_tag() }}\n        <div class=\"form-group\">\n            {{ form.title.label(class=\"form-label\") }}\n            {{ form.title(class=\"form-control\") }}\n        </div>\n        <div class=\"form-group\">\n            {{ form.content.label(class=\"form-label\") }}\n            {{ form.content(class=\"form-control\", rows=5) }}\n        </div>\n        <div class=\"form-group\">\n            {{ image_form.image.label(class=\"form-label\") }}\n            {{ image_form.image(class=\"form-control-file\") }}\n        </div>\n        <button type=\"submit\" class=\"btn btn-primary\">Submit</button>\n    </form>\n\n    <hr>\n\n    <h2>Blog Posts</h2>\n    {% for post in posts %}\n    <div class=\"card my-3\">\n        <div class=\"card-body\">\n            <h3 class=\"card-title\">{{ post.title }}</h3>\n            <p class=\"card-text\">{{ post.content }}</p>\n            {% if post.image_url %}\n            <img src=\"{{ post.image_url }}\" alt=\"Image for {{ post.title }}\" class=\"img-fluid my-2\">\n            {% endif %}\n            <p class=\"text-muted\">Posted on {{ post.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</p>\n        </div>\n    </div>\n    {% else %}\n    <p>No posts yet. Be the first to create one!</p>\n    {% endfor %}\n</div>\n{% endblock %}",
+      "language": "html",
+      "purpose": "HTML template for creating and displaying blog posts",
+      "dependencies": [
+        "app/templates/base.html"
+      ],
+      "interface_id": null,
+      "generated_at": "2026-02-21T15:46:57.619768"
+    },
+    {
+      "path": "app/templates/image_upload.html",
+      "content": "{% extends 'base.html' %}\n\n{% block title %}\n    Upload Image\n{% endblock %}\n\n{% block content %}\n<div class=\"container mt-5\">\n    <h1 class=\"text-center\">Upload an Image</h1>\n    <div class=\"row justify-content-center\">\n        <div class=\"col-md-6\">\n            <form method=\"POST\" action=\"{{ url_for('upload_image') }}\" enctype=\"multipart/form-data\">\n                {{ form.hidden_tag() }}\n                <div class=\"form-group\">\n                    {{ form.image.label(class=\"form-label\") }}\n                    {{ form.image(class=\"form-control\") }}\n                </div>\n                <div class=\"form-group mt-3\">\n                    <button type=\"submit\" class=\"btn btn-primary\">Upload</button>\n                    <a href=\"{{ url_for('index') }}\" class=\"btn btn-secondary\">Cancel</a>\n                </div>\n            </form>\n        </div>\n    </div>\n</div>\n{% endblock %}",
+      "language": "html",
+      "purpose": "HTML template for uploading images",
+      "dependencies": [
+        "app/templates/base.html"
+      ],
+      "interface_id": null,
+      "generated_at": "2026-02-21T15:47:00.372957"
+    },
+    {
+      "path": "app/static/css/styles.css",
+      "content": "/* styles.css */\n/* General styles for the Blog Webpage */\n\nbody {\n    font-family: Arial, sans-serif;\n    margin: 0;\n    padding: 0;\n    background-color: #f9f9f9;\n    color: #333;\n}\n\nheader {\n    background-color: #0078d4;\n    color: white;\n    padding: 20px;\n    text-align: center;\n    font-size: 1.5rem;\n}\n\nnav {\n    background-color: #005a9e;\n    padding: 10px;\n}\n\nnav a {\n    color: white;\n    text-decoration: none;\n    margin: 0 10px;\n    font-weight: bold;\n}\n\nnav a:hover {\n    text-decoration: underline;\n}\n\n.container {\n    max-width: 800px;\n    margin: 20px auto;\n    padding: 15px;\n    background-color: white;\n    border-radius: 5px;\n    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);\n}\n\nform {\n    margin: 20px 0;\n}\n\nform input[type=\"text\"],\nform textarea,\nform input[type=\"file\"] {\n    width: 100%;\n    padding: 10px;\n    margin: 10px 0;\n    border: 1px solid #ddd;\n    border-radius: 4px;\n    font-size: 1rem;\n}\n\nform button {\n    background-color: #0078d4;\n    color: white;\n    border: none;\n    padding: 10px 20px;\n    font-size: 1rem;\n    border-radius: 4px;\n    cursor: pointer;\n}\n\nform button:hover {\n    background-color: #005a9e;\n}\n\n.blog-post {\n    margin-bottom: 20px;\n    padding: 15px;\n    border-bottom: 1px solid #dedede;\n}\n\n.blog-post h2 {\n    margin: 0;\n    font-size: 1.5rem;\n    color: #0078d4;\n}\n\n.blog-post p {\n    margin: 10px 0;\n    line-height: 1.6;\n}\n\n.blog-post img {\n    max-width: 100%;\n    height: auto;\n    border-radius: 5px;\n    margin-top: 10px;\n}\n\n.footer {\n    text-align: center;\n    padding: 10px 0;\n    background-color: #0078d4;\n    color: white;\n    position: fixed;\n    bottom: 0;\n    width: 100%;\n}",
+      "language": "css",
+      "purpose": "CSS file for styling the application",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-21T15:47:05.123140"
+    },
+    {
+      "path": "app/static/uploads/",
+      "content": "# Generated file: app/static/uploads/",
+      "language": "text",
+      "purpose": "Directory to store uploaded images",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-21T15:47:05.123218"
+    },
+    {
+      "path": "app/config.py",
+      "content": "import os\n\nclass Config:\n    # Secret key for signing cookies and CSRF protection\n    SECRET_KEY = os.getenv('SECRET_KEY', 'default_secret_key')\n    \n    # Database configuration\n    SQLALCHEMY_DATABASE_URI = os.getenv('DATABASE_URI', 'sqlite:///blog.db')\n    SQLALCHEMY_TRACK_MODIFICATIONS = False\n\n    # Upload configuration\n    UPLOAD_FOLDER = os.getenv('UPLOAD_FOLDER', 'uploads/')\n    ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}\n\n    # Other configurations\n    MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16 MB max upload size\n\nclass DevelopmentConfig(Config):\n    DEBUG = True\n\nclass ProductionConfig(Config):\n    DEBUG = False\n\ndef get_config(env='development'):\n    if env == 'production':\n        return ProductionConfig\n    return DevelopmentConfig",
+      "language": "python",
+      "purpose": "Configuration file for the application (e.g., database URI, secret keys)",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-21T15:47:07.370897"
+    },
+    {
+      "path": "app/__main__.py",
+      "content": "from flask import Flask\nfrom app.routes import index, create_post, upload_image\nfrom app.config import Config\n\ndef create_app():\n    app = Flask(__name__)\n    app.config.from_object(Config)\n\n    # Register routes\n    app.add_url_rule('/', 'index', index)\n    app.add_url_rule('/create-post', 'create_post', create_post, methods=['GET', 'POST'])\n    app.add_url_rule('/upload-image', 'upload_image', upload_image, methods=['GET', 'POST'])\n\n    return app\n\ndef main():\n    app = create_app()\n    app.run(debug=True)\n\nif __name__ == '__main__':\n    main()",
+      "language": "python",
+      "purpose": "Entry point to run the application",
+      "dependencies": [
+        "app/__init__.py",
+        "app/routes.py",
+        "app/config.py"
+      ],
+      "interface_id": null,
+      "generated_at": "2026-02-21T15:47:08.949279"
+    },
+    {
+      "path": "tests/test_blog_post.py",
+      "content": "import unittest\nfrom app.routes import create_post, upload_image\nfrom app.models import BlogPost, Image\nfrom app.forms import BlogPostForm, ImageUploadForm\nfrom unittest.mock import patch, MagicMock\n\nclass TestBlogPostCreation(unittest.TestCase):\n\n    @patch('app.routes.BlogPostForm')\n    @patch('app.routes.BlogPost')\n    def test_create_post_success(self, MockBlogPost, MockBlogPostForm):\n        # Mock the form validation to return True\n        form = MockBlogPostForm.return_value\n        form.validate_on_submit.return_value = True\n        form.title.data = \"Test Blog Post\"\n        form.content.data = \"This is a test blog post.\"\n\n        # Call the create_post function\n        response = create_post()\n\n        # Assert that a new BlogPost object was created\n        MockBlogPost.assert_called_once_with(title=\"Test Blog Post\", content=\"This is a test blog post.\")\n\n        # Assert the response is a success (mocked response)\n        self.assertEqual(response, \"Post Created\")\n\n    @patch('app.routes.BlogPostForm')\n    def test_create_post_validation_failure(self, MockBlogPostForm):\n        # Mock the form validation to return False\n        form = MockBlogPostForm.return_value\n        form.validate_on_submit.return_value = False\n\n        # Call the create_post function\n        response = create_post()\n\n        # Assert that no BlogPost object was created\n        self.assertEqual(response, \"Validation Failed\")\n\n    @patch('app.routes.ImageUploadForm')\n    @patch('app.routes.Image')\n    def test_upload_image_success(self, MockImage, MockImageUploadForm):\n        # Mock the form validation to return True\n        form = MockImageUploadForm.return_value\n        form.validate_on_submit.return_value = True\n        form.image.data = MagicMock(filename=\"test_image.jpg\")\n\n        # Call the upload_image function\n        response = upload_image()\n\n        # Assert that a new Image object was created\n        MockImage.assert_called_once_with(filename=\"test_image.jpg\")\n\n        # Assert the response is a success (mocked response)\n        self.assertEqual(response, \"Image Uploaded\")\n\n    @patch('app.routes.ImageUploadForm')\n    def test_upload_image_validation_failure(self, MockImageUploadForm):\n        # Mock the form validation to return False\n        form = MockImageUploadForm.return_value\n        form.validate_on_submit.return_value = False\n\n        # Call the upload_image function\n        response = upload_image()\n\n        # Assert that no Image object was created\n        self.assertEqual(response, \"Validation Failed\")\n\nif __name__ == '__main__':\n    unittest.main()",
+      "language": "python",
+      "purpose": "Unit tests for blog post creation functionality",
+      "dependencies": [
+        "app/routes.py",
+        "app/models.py"
+      ],
+      "interface_id": null,
+      "generated_at": "2026-02-21T15:47:13.829729"
+    },
+    {
+      "path": "tests/test_image_upload.py",
+      "content": "import unittest\nimport os\nfrom werkzeug.datastructures import FileStorage\nfrom app.routes import upload_image\nfrom app.static.uploads import UPLOAD_FOLDER\n\nclass TestImageUpload(unittest.TestCase):\n    def setUp(self):\n        \"\"\"Set up test environment.\"\"\"\n        self.test_image_path = 'tests/test_images/test_image.jpg'\n        self.uploaded_image_path = os.path.join(UPLOAD_FOLDER, 'test_image.jpg')\n\n        # Create a dummy image for testing\n        with open(self.test_image_path, 'wb') as f:\n            f.write(b'\\xff\\xd8\\xff\\xe0\\x00\\x10JFIF\\x00\\x01\\x01\\x01\\x00H\\x00H\\x00\\x00')\n\n    def tearDown(self):\n        \"\"\"Clean up after tests.\"\"\"\n        if os.path.exists(self.uploaded_image_path):\n            os.remove(self.uploaded_image_path)\n        if os.path.exists(self.test_image_path):\n            os.remove(self.test_image_path)\n\n    def test_upload_image_success(self):\n        \"\"\"Test successful image upload.\"\"\"\n        with open(self.test_image_path, 'rb') as f:\n            file = FileStorage(f, filename='test_image.jpg', content_type='image/jpeg')\n            response = upload_image(file)\n            self.assertTrue(os.path.exists(self.uploaded_image_path))\n            self.assertEqual(response, 'Image uploaded successfully.')\n\n    def test_upload_image_invalid_format(self):\n        \"\"\"Test image upload with invalid format.\"\"\"\n        invalid_image_path = 'tests/test_images/test_invalid_image.txt'\n        with open(invalid_image_path, 'w') as f:\n            f.write(\"This is not an image file.\")\n        \n        with open(invalid_image_path, 'rb') as f:\n            file = FileStorage(f, filename='test_invalid_image.txt', content_type='text/plain')\n            response = upload_image(file)\n            self.assertFalse(os.path.exists(os.path.join(UPLOAD_FOLDER, 'test_invalid_image.txt')))\n            self.assertEqual(response, 'Invalid file format.')\n\n        if os.path.exists(invalid_image_path):\n            os.remove(invalid_image_path)",
+      "language": "python",
+      "purpose": "Unit tests for image upload functionality",
+      "dependencies": [
+        "app/routes.py",
+        "app/static/uploads/"
+      ],
+      "interface_id": null,
+      "generated_at": "2026-02-21T15:47:17.558179"
+    },
+    {
+      "path": "requirements.txt",
+      "content": "Blog Webpage with Image Upload\n==============================\n\nA simple blog webpage that allows users to create posts and upload images.\n\nFeatures:\n- Create Blog Posts: Users can write and publish blog posts on the webpage.\n- Image Upload: Users can upload images to include in their blog posts.\n",
+      "language": "text",
+      "purpose": "List of Python dependencies for the application",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-21T15:47:17.558244"
+    },
+    {
+      "path": "Dockerfile",
+      "content": "# Generated file: Dockerfile",
+      "language": "text",
+      "purpose": "Docker configuration for containerizing the application",
+      "dependencies": [
+        "requirements.txt",
+        "app/__main__.py"
+      ],
+      "interface_id": null,
+      "generated_at": "2026-02-21T15:47:17.558270"
+    },
+    {
+      "path": "README.md",
+      "content": "# Generated file: README.md",
+      "language": "markdown",
+      "purpose": "Documentation for the application setup and usage",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-21T15:47:17.558293"
+    },
+    {
+      "path": "app.py",
+      "content": "# Auto-generated stub for app.py\n",
+      "language": "python",
+      "purpose": "Stub for app.py",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-21T15:47:17.558543"
+    },
+    {
+      "path": "app/static/uploads.py",
+      "content": "# Auto-generated stub for app/static/uploads.py\n",
+      "language": "python",
+      "purpose": "Stub for app/static/uploads.py",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-21T15:47:17.558559"
+    }
+  ],
+  "structure": {
+    "root": "generated",
+    "directories": [
+      "app\\static",
+      "app\\templates",
+      "app",
+      "app\\static\\css",
+      "tests"
+    ],
+    "entry_point": "app.py"
+  },
+  "dependencies": [
+    "AWS",
+    "AWS S3",
+    "AWS SDK",
+    "Azure Blob Storage",
+    "Azure SDK",
+    "Babel",
+    "Bootstrap",
+    "Django",
+    "Docker",
+    "Dropzone",
+    "Express.js",
+    "Flask",
+    "Git",
+    "Google Cloud SDK",
+    "Google Cloud Storage",
+    "Jest",
+    "Material-UI",
+    "Mocha",
+    "MongoDB",
+    "Mongoose",
+    "Multer",
+    "MySQL",
+    "Netlify",
+    "PostgreSQL",
+    "Postman",
+    "React",
+    "SQLAlchemy",
+    "Sequelize",
+    "Vercel",
+    "Webpack",
+    "flask",
+    "npm"
+  ],
+  "readme_content": "# Blog Webpage with Image Upload\n\nA simple blog webpage that allows users to create posts and upload images.\n\n## Features\n\n- Create Blog Posts: Users can write and publish blog posts on the webpage.\n- Image Upload: Users can upload images to include in their blog posts.\n\n## Setup\n\n```bash\npip install -r requirements.txt\npython app.py\n```\n\n## Usage\n\nOpen http://localhost:5000 in your browser.\n",
+  "created_at": "2026-02-21T15:47:17.558901"
+}

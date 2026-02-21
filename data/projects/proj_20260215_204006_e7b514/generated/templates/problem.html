@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Problem Details</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+    <header>
+        <h1>ACM Problem-Solving Platform</h1>
+        <nav>
+            <a href="/">Home</a>
+            <a href="/problems">Problems</a>
+            <a href="/leaderboard">Leaderboard</a>
+            <a href="/profile">Profile</a>
+        </nav>
+    </header>
+    <main>
+        <section id="problem-details">
+            <h2>{{ problem.title }}</h2>
+            <p><strong>Description:</strong> {{ problem.description }}</p>
+            <p><strong>Difficulty:</strong> {{ problem.difficulty }}</p>
+            <h3>Solutions Submitted</h3>
+            <ul>
+                {% for solution in solutions %}
+                    <li>
+                        <strong>User:</strong> {{ solution.user.name }}<br>
+                        <strong>Code:</strong>
+                        <pre>{{ solution.code }}</pre>
+                    </li>
+                {% endfor %}
+            </ul>
+        </section>
+        <section id="submit-solution">
+            <h3>Submit Solution</h3>
+            <form action="/solutions" method="POST">
+                <input type="hidden" name="problem_id" value="{{ problem.id }}">
+                <label for="code">Code:</label><br>
+                <textarea name="code" id="code" rows="10" cols="50" required></textarea><br>
+                <button type="submit">Submit</button>
+            </form>
+        </section>
+    </main>
+    <footer>
+        <p>ACM Problem-Solving Platform &copy; 2023</p>
+    </footer>
+</body>
+</html>

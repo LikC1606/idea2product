@@ -1,0 +1,839 @@
+{
+  "tasks": [
+    {
+      "id": "T1",
+      "name": "Design Problem Library UI",
+      "description": "Create the frontend interface for browsing and searching problems in the library.",
+      "type": "frontend",
+      "dependencies": [],
+      "priority": 4,
+      "estimated_complexity": "medium"
+    },
+    {
+      "id": "T2",
+      "name": "Implement Problem Library Backend",
+      "description": "Develop the backend API to fetch and manage problem data.",
+      "type": "backend",
+      "dependencies": [],
+      "priority": 5,
+      "estimated_complexity": "high"
+    },
+    {
+      "id": "T3",
+      "name": "Set Up Problem Database",
+      "description": "Design and implement the database schema for storing problem details.",
+      "type": "database",
+      "dependencies": [],
+      "priority": 5,
+      "estimated_complexity": "high"
+    },
+    {
+      "id": "T4",
+      "name": "Develop Code Submission UI",
+      "description": "Create the frontend interface for users to submit their code.",
+      "type": "frontend",
+      "dependencies": [],
+      "priority": 4,
+      "estimated_complexity": "medium"
+    },
+    {
+      "id": "T5",
+      "name": "Implement Code Evaluation System",
+      "description": "Develop the backend system to compile and evaluate submitted code.",
+      "type": "backend",
+      "dependencies": [
+        "T3"
+      ],
+      "priority": 5,
+      "estimated_complexity": "high"
+    },
+    {
+      "id": "T6",
+      "name": "Design User Profile UI",
+      "description": "Create the frontend interface for user profiles, including statistics and achievements.",
+      "type": "frontend",
+      "dependencies": [],
+      "priority": 3,
+      "estimated_complexity": "medium"
+    },
+    {
+      "id": "T7",
+      "name": "Implement User Profile Backend",
+      "description": "Develop the backend API to manage user profile data.",
+      "type": "backend",
+      "dependencies": [
+        "T3"
+      ],
+      "priority": 4,
+      "estimated_complexity": "medium"
+    },
+    {
+      "id": "T8",
+      "name": "Create Leaderboard UI",
+      "description": "Design the frontend interface for displaying user rankings.",
+      "type": "frontend",
+      "dependencies": [],
+      "priority": 3,
+      "estimated_complexity": "low"
+    },
+    {
+      "id": "T9",
+      "name": "Implement Leaderboard Backend",
+      "description": "Develop the backend API to calculate and fetch leaderboard data.",
+      "type": "backend",
+      "dependencies": [
+        "T3"
+      ],
+      "priority": 4,
+      "estimated_complexity": "medium"
+    },
+    {
+      "id": "T10",
+      "name": "Add Hints and Tutorials UI",
+      "description": "Create the frontend interface for displaying hints and tutorials for problems.",
+      "type": "frontend",
+      "dependencies": [],
+      "priority": 2,
+      "estimated_complexity": "low"
+    },
+    {
+      "id": "T11",
+      "name": "Implement Hints and Tutorials Backend",
+      "description": "Develop the backend API to manage hints and tutorials content.",
+      "type": "backend",
+      "dependencies": [
+        "T3"
+      ],
+      "priority": 3,
+      "estimated_complexity": "medium"
+    },
+    {
+      "id": "T12",
+      "name": "Test Problem Library Functionality",
+      "description": "Perform testing to ensure the problem library works as expected.",
+      "type": "testing",
+      "dependencies": [
+        "T1",
+        "T2",
+        "T3"
+      ],
+      "priority": 5,
+      "estimated_complexity": "medium"
+    },
+    {
+      "id": "T13",
+      "name": "Test Code Submission and Evaluation",
+      "description": "Perform testing to ensure code submission and evaluation works correctly.",
+      "type": "testing",
+      "dependencies": [
+        "T4",
+        "T5"
+      ],
+      "priority": 5,
+      "estimated_complexity": "high"
+    },
+    {
+      "id": "T14",
+      "name": "Test User Profile Functionality",
+      "description": "Perform testing to ensure user profiles are displayed and updated correctly.",
+      "type": "testing",
+      "dependencies": [
+        "T6",
+        "T7"
+      ],
+      "priority": 4,
+      "estimated_complexity": "medium"
+    },
+    {
+      "id": "T15",
+      "name": "Test Leaderboard Functionality",
+      "description": "Perform testing to ensure the leaderboard displays accurate rankings.",
+      "type": "testing",
+      "dependencies": [
+        "T8",
+        "T9"
+      ],
+      "priority": 3,
+      "estimated_complexity": "low"
+    },
+    {
+      "id": "T16",
+      "name": "Test Hints and Tutorials",
+      "description": "Perform testing to ensure hints and tutorials are displayed correctly.",
+      "type": "testing",
+      "dependencies": [
+        "T10",
+        "T11"
+      ],
+      "priority": 2,
+      "estimated_complexity": "low"
+    },
+    {
+      "id": "T17",
+      "name": "Deploy Platform to Production",
+      "description": "Deploy the ACM Problem-Solving Platform to the production environment.",
+      "type": "deployment",
+      "dependencies": [
+        "T12",
+        "T13",
+        "T14",
+        "T15",
+        "T16"
+      ],
+      "priority": 5,
+      "estimated_complexity": "high"
+    }
+  ],
+  "algorithms": {
+    "T1": {
+      "task_id": "T1",
+      "algorithm_type": "UI Design",
+      "implementation_approach": "Use a component-based design approach with a frontend framework like React or Angular. Create reusable components for problem cards, filters, and search functionality.",
+      "libraries": [
+        "React",
+        "Material-UI",
+        "Bootstrap"
+      ],
+      "data_structures": [
+        "JSON for problem data",
+        "Arrays for lists of problems"
+      ],
+      "notes": "Focus on user-friendly navigation and responsive design."
+    },
+    "T2": {
+      "task_id": "T2",
+      "algorithm_type": "CRUD",
+      "implementation_approach": "Develop RESTful APIs for creating, reading, updating, and deleting problems. Use a backend framework like Node.js or Django.",
+      "libraries": [
+        "Express.js",
+        "Django",
+        "Flask"
+      ],
+      "data_structures": [
+        "Database tables",
+        "JSON for API responses"
+      ],
+      "notes": "Ensure proper validation and error handling."
+    },
+    "T3": {
+      "task_id": "T3",
+      "algorithm_type": "Database Design",
+      "implementation_approach": "Design a relational database schema with tables for problems, categories, and tags. Use an ORM for database interactions.",
+      "libraries": [
+        "PostgreSQL",
+        "MySQL",
+        "SQLAlchemy"
+      ],
+      "data_structures": [
+        "Relational tables",
+        "Indexes for optimization"
+      ],
+      "notes": "Optimize schema for search and filtering."
+    },
+    "T4": {
+      "task_id": "T4",
+      "algorithm_type": "UI Design",
+      "implementation_approach": "Create a form-based interface for code submission with syntax highlighting and file upload support.",
+      "libraries": [
+        "CodeMirror",
+        "Monaco Editor",
+        "React"
+      ],
+      "data_structures": [
+        "JSON for submission data"
+      ],
+      "notes": "Include real-time validation and feedback."
+    },
+    "T5": {
+      "task_id": "T5",
+      "algorithm_type": "Evaluation System",
+      "implementation_approach": "Implement a sandboxed environment to execute user code securely. Compare outputs with expected results.",
+      "libraries": [
+        "Docker",
+        "Judge0",
+        "Python subprocess"
+      ],
+      "data_structures": [
+        "Queues for job processing",
+        "JSON for test cases"
+      ],
+      "notes": "Ensure security and scalability."
+    },
+    "T6": {
+      "task_id": "T6",
+      "algorithm_type": "UI Design",
+      "implementation_approach": "Design a profile page with sections for user details, activity history, and achievements.",
+      "libraries": [
+        "React",
+        "Material-UI",
+        "Chart.js"
+      ],
+      "data_structures": [
+        "JSON for user data"
+      ],
+      "notes": "Focus on personalization and visual appeal."
+    },
+    "T7": {
+      "task_id": "T7",
+      "algorithm_type": "CRUD",
+      "implementation_approach": "Develop APIs for managing user profiles, including updating details and fetching activity data.",
+      "libraries": [
+        "Express.js",
+        "Django",
+        "Flask"
+      ],
+      "data_structures": [
+        "Database tables",
+        "JSON for API responses"
+      ],
+      "notes": "Ensure secure handling of user data."
+    },
+    "T8": {
+      "task_id": "T8",
+      "algorithm_type": "UI Design",
+      "implementation_approach": "Create a leaderboard interface with sorting and filtering options.",
+      "libraries": [
+        "React",
+        "Material-UI",
+        "Chart.js"
+      ],
+      "data_structures": [
+        "Arrays for leaderboard data"
+      ],
+      "notes": "Optimize for real-time updates."
+    },
+    "T9": {
+      "task_id": "T9",
+      "algorithm_type": "CRUD",
+      "implementation_approach": "Develop APIs to fetch and update leaderboard data based on user performance.",
+      "libraries": [
+        "Express.js",
+        "Django",
+        "Redis"
+      ],
+      "data_structures": [
+        "Database tables",
+        "Caches for performance"
+      ],
+      "notes": "Use caching for faster leaderboard updates."
+    },
+    "T10": {
+      "task_id": "T10",
+      "algorithm_type": "UI Design",
+      "implementation_approach": "Design an interface for displaying hints and tutorials with a collapsible view.",
+      "libraries": [
+        "React",
+        "Material-UI"
+      ],
+      "data_structures": [
+        "JSON for hints and tutorials"
+      ],
+      "notes": "Ensure accessibility and ease of navigation."
+    },
+    "T11": {
+      "task_id": "T11",
+      "algorithm_type": "CRUD",
+      "implementation_approach": "Develop APIs to manage hints and tutorials, including fetching and updating content.",
+      "libraries": [
+        "Express.js",
+        "Django"
+      ],
+      "data_structures": [
+        "Database tables",
+        "JSON for API responses"
+      ],
+      "notes": "Support markdown or rich text for content."
+    },
+    "T12": {
+      "task_id": "T12",
+      "algorithm_type": "Testing",
+      "implementation_approach": "Write unit and integration tests for the problem library functionality using a testing framework.",
+      "libraries": [
+        "Jest",
+        "Mocha",
+        "Pytest"
+      ],
+      "data_structures": [
+        "Mock data for testing"
+      ],
+      "notes": "Test edge cases and performance."
+    },
+    "T13": {
+      "task_id": "T13",
+      "algorithm_type": "Testing",
+      "implementation_approach": "Simulate code submissions and evaluate the correctness of the evaluation system.",
+      "libraries": [
+        "Jest",
+        "Mocha",
+        "Pytest"
+      ],
+      "data_structures": [
+        "Mock data for test cases"
+      ],
+      "notes": "Ensure security and accuracy."
+    },
+    "T14": {
+      "task_id": "T14",
+      "algorithm_type": "Testing",
+      "implementation_approach": "Test user profile functionalities like updating details and viewing activity history.",
+      "libraries": [
+        "Jest",
+        "Mocha",
+        "Selenium"
+      ],
+      "data_structures": [
+        "Mock user data"
+      ],
+      "notes": "Focus on data integrity and UI responsiveness."
+    },
+    "T15": {
+      "task_id": "T15",
+      "algorithm_type": "Testing",
+      "implementation_approach": "Test leaderboard functionalities like sorting, filtering, and real-time updates.",
+      "libraries": [
+        "Jest",
+        "Mocha",
+        "Selenium"
+      ],
+      "data_structures": [
+        "Mock leaderboard data"
+      ],
+      "notes": "Test for performance under high load."
+    },
+    "T16": {
+      "task_id": "T16",
+      "algorithm_type": "Testing",
+      "implementation_approach": "Test the functionality and accessibility of hints and tutorials.",
+      "libraries": [
+        "Jest",
+        "Mocha",
+        "Selenium"
+      ],
+      "data_structures": [
+        "Mock hints and tutorials data"
+      ],
+      "notes": "Ensure content is displayed correctly."
+    },
+    "T17": {
+      "task_id": "T17",
+      "algorithm_type": "Deployment",
+      "implementation_approach": "Set up a CI/CD pipeline for deploying the platform to a cloud provider. Use containerization for scalability.",
+      "libraries": [
+        "Docker",
+        "Kubernetes",
+        "AWS"
+      ],
+      "data_structures": [
+        "Configuration files"
+      ],
+      "notes": "Ensure zero-downtime deployment."
+    }
+  },
+  "file_structure": [
+    {
+      "path": "app/database.py",
+      "purpose": "数据库连接和初始化",
+      "dependencies": [],
+      "layer": "base",
+      "related_tasks": []
+    },
+    {
+      "path": "app/models/problem.py",
+      "purpose": "定义Problem模型",
+      "dependencies": [
+        "app/database.py"
+      ],
+      "layer": "base",
+      "related_tasks": []
+    },
+    {
+      "path": "app/models/user.py",
+      "purpose": "定义User模型",
+      "dependencies": [
+        "app/database.py"
+      ],
+      "layer": "base",
+      "related_tasks": []
+    },
+    {
+      "path": "app/models/solution.py",
+      "purpose": "定义Solution模型",
+      "dependencies": [
+        "app/database.py"
+      ],
+      "layer": "base",
+      "related_tasks": []
+    },
+    {
+      "path": "app/controllers/problem_controller.py",
+      "purpose": "处理Problem相关的API路由",
+      "dependencies": [
+        "app/models/problem.py"
+      ],
+      "layer": "business",
+      "related_tasks": []
+    },
+    {
+      "path": "app/controllers/user_controller.py",
+      "purpose": "处理User相关的API路由",
+      "dependencies": [
+        "app/models/user.py"
+      ],
+      "layer": "business",
+      "related_tasks": []
+    },
+    {
+      "path": "app/controllers/solution_controller.py",
+      "purpose": "处理Solution相关的API路由",
+      "dependencies": [
+        "app/models/solution.py"
+      ],
+      "layer": "business",
+      "related_tasks": []
+    },
+    {
+      "path": "app/routes.py",
+      "purpose": "聚合所有blueprints",
+      "dependencies": [
+        "app/controllers/*"
+      ],
+      "layer": "assembly",
+      "related_tasks": []
+    },
+    {
+      "path": "app/__init__.py",
+      "purpose": "Flask应用工厂",
+      "dependencies": [
+        "app/routes.py"
+      ],
+      "layer": "assembly",
+      "related_tasks": []
+    },
+    {
+      "path": "app.py",
+      "purpose": "应用入口点",
+      "dependencies": [
+        "app/__init__.py"
+      ],
+      "layer": "assembly",
+      "related_tasks": []
+    },
+    {
+      "path": "templates/index.html",
+      "purpose": "主页面，显示问题列表、排行榜等",
+      "dependencies": [],
+      "layer": "frontend",
+      "related_tasks": []
+    },
+    {
+      "path": "templates/problem.html",
+      "purpose": "问题详情页",
+      "dependencies": [],
+      "layer": "frontend",
+      "related_tasks": []
+    },
+    {
+      "path": "templates/submit.html",
+      "purpose": "代码提交页",
+      "dependencies": [],
+      "layer": "frontend",
+      "related_tasks": []
+    },
+    {
+      "path": "templates/profile.html",
+      "purpose": "用户资料页",
+      "dependencies": [],
+      "layer": "frontend",
+      "related_tasks": []
+    },
+    {
+      "path": "static/css/style.css",
+      "purpose": "前端样式文件",
+      "dependencies": [],
+      "layer": "frontend",
+      "related_tasks": []
+    },
+    {
+      "path": "static/js/app.js",
+      "purpose": "前端JavaScript逻辑",
+      "dependencies": [],
+      "layer": "frontend",
+      "related_tasks": []
+    }
+  ],
+  "interface_specs": [
+    {
+      "module_name": "database",
+      "file_path": "app/database.py",
+      "purpose": "初始化SQLAlchemy数据库连接",
+      "layer": "base",
+      "exports": [
+        {
+          "type": "object",
+          "name": "db",
+          "extends": null,
+          "params": [],
+          "returns": null,
+          "docstring": null
+        }
+      ],
+      "imports": [
+        "from flask_sqlalchemy import SQLAlchemy"
+      ],
+      "database_access": "sqlalchemy",
+      "related_files": []
+    },
+    {
+      "module_name": "problem_model",
+      "file_path": "app/models/problem.py",
+      "purpose": "定义Problem模型",
+      "layer": "base",
+      "exports": [
+        {
+          "type": "class",
+          "name": "Problem",
+          "extends": null,
+          "params": [],
+          "returns": null,
+          "docstring": null
+        }
+      ],
+      "imports": [
+        "from app.database import db"
+      ],
+      "database_access": "sqlalchemy",
+      "related_files": []
+    },
+    {
+      "module_name": "user_model",
+      "file_path": "app/models/user.py",
+      "purpose": "定义User模型",
+      "layer": "base",
+      "exports": [
+        {
+          "type": "class",
+          "name": "User",
+          "extends": null,
+          "params": [],
+          "returns": null,
+          "docstring": null
+        }
+      ],
+      "imports": [
+        "from app.database import db"
+      ],
+      "database_access": "sqlalchemy",
+      "related_files": []
+    },
+    {
+      "module_name": "solution_model",
+      "file_path": "app/models/solution.py",
+      "purpose": "定义Solution模型",
+      "layer": "base",
+      "exports": [
+        {
+          "type": "class",
+          "name": "Solution",
+          "extends": null,
+          "params": [],
+          "returns": null,
+          "docstring": null
+        }
+      ],
+      "imports": [
+        "from app.database import db"
+      ],
+      "database_access": "sqlalchemy",
+      "related_files": []
+    },
+    {
+      "module_name": "problem_controller",
+      "file_path": "app/controllers/problem_controller.py",
+      "purpose": "处理与Problem相关的API路由",
+      "layer": "business",
+      "exports": [
+        {
+          "type": "object",
+          "name": "problem_blueprint",
+          "extends": null,
+          "params": [],
+          "returns": null,
+          "docstring": null
+        }
+      ],
+      "imports": [
+        "from app.models.problem import Problem",
+        "from flask import Blueprint, jsonify, request"
+      ],
+      "database_access": "sqlalchemy",
+      "related_files": []
+    },
+    {
+      "module_name": "user_controller",
+      "file_path": "app/controllers/user_controller.py",
+      "purpose": "处理与User相关的API路由",
+      "layer": "business",
+      "exports": [
+        {
+          "type": "object",
+          "name": "user_blueprint",
+          "extends": null,
+          "params": [],
+          "returns": null,
+          "docstring": null
+        }
+      ],
+      "imports": [
+        "from app.models.user import User",
+        "from flask import Blueprint, jsonify, request"
+      ],
+      "database_access": "sqlalchemy",
+      "related_files": []
+    },
+    {
+      "module_name": "solution_controller",
+      "file_path": "app/controllers/solution_controller.py",
+      "purpose": "处理与Solution相关的API路由",
+      "layer": "business",
+      "exports": [
+        {
+          "type": "object",
+          "name": "solution_blueprint",
+          "extends": null,
+          "params": [],
+          "returns": null,
+          "docstring": null
+        }
+      ],
+      "imports": [
+        "from app.models.solution import Solution",
+        "from flask import Blueprint, jsonify, request"
+      ],
+      "database_access": "sqlalchemy",
+      "related_files": []
+    },
+    {
+      "module_name": "routes",
+      "file_path": "app/routes.py",
+      "purpose": "聚合所有API路由",
+      "layer": "assembly",
+      "exports": [
+        {
+          "type": "function",
+          "name": "register_blueprints",
+          "extends": null,
+          "params": [],
+          "returns": null,
+          "docstring": null
+        }
+      ],
+      "imports": [
+        "from app.controllers.problem_controller import problem_blueprint",
+        "from app.controllers.user_controller import user_blueprint",
+        "from app.controllers.solution_controller import solution_blueprint"
+      ],
+      "database_access": "none",
+      "related_files": []
+    },
+    {
+      "module_name": "app_init",
+      "file_path": "app/__init__.py",
+      "purpose": "创建Flask应用实例",
+      "layer": "assembly",
+      "exports": [
+        {
+          "type": "function",
+          "name": "create_app",
+          "extends": null,
+          "params": [],
+          "returns": null,
+          "docstring": null
+        }
+      ],
+      "imports": [
+        "from flask import Flask",
+        "from app.routes import register_blueprints",
+        "from app.database import db"
+      ],
+      "database_access": "sqlalchemy",
+      "related_files": []
+    },
+    {
+      "module_name": "app_entry",
+      "file_path": "app.py",
+      "purpose": "应用入口点，运行Flask应用",
+      "layer": "assembly",
+      "exports": [],
+      "imports": [
+        "from app import create_app"
+      ],
+      "database_access": "none",
+      "related_files": []
+    },
+    {
+      "module_name": "index_template",
+      "file_path": "templates/index.html",
+      "purpose": "主页面模板，显示问题列表和排行榜",
+      "layer": "frontend",
+      "exports": [],
+      "imports": [],
+      "database_access": "none",
+      "related_files": []
+    },
+    {
+      "module_name": "problem_template",
+      "file_path": "templates/problem.html",
+      "purpose": "问题详情页模板",
+      "layer": "frontend",
+      "exports": [],
+      "imports": [],
+      "database_access": "none",
+      "related_files": []
+    },
+    {
+      "module_name": "submit_template",
+      "file_path": "templates/submit.html",
+      "purpose": "代码提交页模板",
+      "layer": "frontend",
+      "exports": [],
+      "imports": [],
+      "database_access": "none",
+      "related_files": []
+    },
+    {
+      "module_name": "profile_template",
+      "file_path": "templates/profile.html",
+      "purpose": "用户资料页模板",
+      "layer": "frontend",
+      "exports": [],
+      "imports": [],
+      "database_access": "none",
+      "related_files": []
+    },
+    {
+      "module_name": "style",
+      "file_path": "static/css/style.css",
+      "purpose": "前端样式文件",
+      "layer": "frontend",
+      "exports": [],
+      "imports": [],
+      "database_access": "none",
+      "related_files": []
+    },
+    {
+      "module_name": "app_js",
+      "file_path": "static/js/app.js",
+      "purpose": "前端JavaScript逻辑",
+      "layer": "frontend",
+      "exports": [],
+      "imports": [],
+      "database_access": "none",
+      "related_files": []
+    }
+  ],
+  "dependencies": [
+    "flask"
+  ],
+  "architecture_notes": "Web application: ACM Problem-Solving Platform",
+  "created_at": "2026-02-15T17:09:52.628650"
+}

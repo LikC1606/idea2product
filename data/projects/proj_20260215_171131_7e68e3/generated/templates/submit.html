@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Code Submission</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="/static/js/app.js" defer></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Submit Your Code</h1>
+        </header>
+        <main>
+            <form id="codeSubmissionForm">
+                <div class="form-group">
+                    <label for="problemId">Select Problem:</label>
+                    <select id="problemId" name="problemId" required>
+                        <option value="" disabled selected>Select a problem...</option>
+                        <!-- Options will be dynamically populated -->
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="language">Programming Language:</label>
+                    <select id="language" name="language" required>
+                        <option value="" disabled selected>Select a language...</option>
+                        <option value="python">Python</option>
+                        <option value="java">Java</option>
+                        <option value="cpp">C++</option>
+                        <option value="javascript">JavaScript</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="sourceCode">Your Code:</label>
+                    <textarea id="sourceCode" name="sourceCode" rows="10" required></textarea>
+                </div>
+                <div class="form-group">
+                    <button type="submit" id="submitCodeBtn">Submit Code</button>
+                </div>
+            </form>
+        </main>
+    </div>
+    <footer>
+        <p>ACM Problem-Solving Platform &copy; 2023</p>
+    </footer>
+</body>
+</html>
+
+<script>
+    // JavaScript logic for dynamic form interactions, form validation, etc.
+    document.getElementById('codeSubmissionForm').addEventListener('submit', function(event) {
+        event.preventDefault();
+        const problemId = document.getElementById('problemId').value;
+        const language = document.getElementById('language').value;
+        const sourceCode = document.getElementById('sourceCode').value;
+
+        if (problemId && language && sourceCode) {
+            // Send the code submission data to the backend
+            fetch('/submit', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ problemId, language, sourceCode }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert(data.message || 'Code submitted successfully!');
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred while submitting your code.');
+            });
+        } else {
+            alert('Please fill out all fields before submitting.');
+        }
+    });
+</script>
+
+{% macro None() -%}
+{%- endmacro %}

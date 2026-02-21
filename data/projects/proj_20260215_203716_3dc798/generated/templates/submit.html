@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Submit Solution</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <header>
+        <h1>ACM Problem-Solving Platform</h1>
+        <nav>
+            <ul>
+                <li><a href="{{ url_for('index') }}">Home</a></li>
+                <li><a href="{{ url_for('problem_bp.get_problems') }}">Problems</a></li>
+                <li><a href="{{ url_for('solution_bp.get_solutions') }}">Solutions</a></li>
+                <li><a href="{{ url_for('user_bp.get_users') }}">Users</a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        <h2>Submit Your Solution</h2>
+        <form action="{{ url_for('solution_bp.create_solution') }}" method="POST">
+            <label for="user_id">User ID:</label>
+            <input type="number" id="user_id" name="user_id" required>
+
+            <label for="problem_id">Problem ID:</label>
+            <input type="number" id="problem_id" name="problem_id" required>
+
+            <label for="code">Code:</label>
+            <textarea id="code" name="code" rows="10" cols="50" required></textarea>
+
+            <button type="submit">Submit</button>
+        </form>
+    </main>
+    <footer>
+        <p>&copy; 2023 ACM Problem-Solving Platform</p>
+    </footer>
+</body>
+</html>

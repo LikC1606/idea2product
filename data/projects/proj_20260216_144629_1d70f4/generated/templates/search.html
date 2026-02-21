@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Search Notes</title>
+    <script>
+        async function searchNotes() {
+            const query = document.getElementById('search-query').value;
+            const response = await fetch(`/api/notes/search?query=${encodeURIComponent(query)}`);
+            const results = await response.json();
+            const resultsContainer = document.getElementById('search-results');
+            resultsContainer.innerHTML = '';
+
+            if (results.length > 0) {
+                results.forEach(note => {
+                    const noteDiv = document.createElement('div');
+                    noteDiv.className = 'note';
+                    noteDiv.innerHTML = `
+                        <h3>${note.title}</h3>
+                        <p>${note.content}</p>
+                        <small>Created at: ${new Date(note.created_at).toLocaleString()}</small>
+                    `;
+                    resultsContainer.appendChild(noteDiv);
+                });
+            } else {
+                resultsContainer.innerHTML = '<p>No notes found.</p>';
+            }
+        }
+    </script>
+</head>
+<body>
+    <h1>Search Notes</h1>
+    <input type="text" id="search-query" placeholder="Enter search term">
+    <button onclick="searchNotes()">Search</button>
+    <div id="search-results"></div>
+</body>
+</html>

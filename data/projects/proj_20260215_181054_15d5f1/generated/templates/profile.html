@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block title %}
+Profile - {{ user.username }}
+{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <h1 class="mb-4">User Profile</h1>
+    <div class="card">
+        <div class="card-body">
+            <h2 class="card-title">{{ user.username }}</h2>
+            <p class="card-text">Email: {{ user.email }}</p>
+            <p class="card-text">Joined: {{ user.date_joined.strftime('%B %d, %Y') }}</p>
+        </div>
+    </div>
+    
+    <h3 class="mt-5 mb-3">Solved Problems</h3>
+    <ul class="list-group">
+        {% for problem in solved_problems %}
+        <li class="list-group-item">
+            <a href="{{ url_for('problem_blueprint.view_problem', problem_id=problem.id) }}">{{ problem.title }}</a>
+        </li>
+        {% endfor %}
+    </ul>
+
+    {% if not solved_problems %}
+    <p class="mt-3">No problems solved yet.</p>
+    {% endif %}
+
+    <h3 class="mt-5 mb-3">Solutions</h3>
+    <ul class="list-group">
+        {% for solution in solutions %}
+        <li class="list-group-item">
+            <a href="{{ url_for('solution_blueprint.view_solution', solution_id=solution.id) }}">Solution to "{{ solution.problem.title }}"</a>
+            <span class="badge bg-success ms-2">{{ solution.status }}</span>
+        </li>
+        {% endfor %}
+    </ul>
+
+    {% if not solutions %}
+    <p class="mt-3">No solutions submitted yet.</p>
+    {% endif %}
+</div>
+{% endblock %}

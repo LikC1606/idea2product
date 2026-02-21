@@ -1,12 +1,18 @@
 """Command-line interface for Idea2Product."""
 
 import sys
+import io
 import click
 from pathlib import Path
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 from rich import print as rprint
+
+# Fix Windows console encoding
+if sys.platform == 'win32':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 from config.settings import get_settings
 from src.core.orchestrator import Orchestrator
@@ -66,7 +72,21 @@ def create(requirement: str, output: str = None, interactive: bool = False):
         orchestrator = Orchestrator(settings)
 
         # Run workflow
-        validated_project = orchestrator.run(requirement, interactive=interactive)
+        result = orchestrator.run(requirement, interactive=interactive)
+
+        # Handle result (could be ValidatedProject or None if Stage 4 skipped)
+        if result is None:
+            # Stage 4 was skipped, use default message
+            console.print("\n")
+            console.print(Panel.fit(
+                "[bold green]✓ Project generated successfully![/bold green]\n\n"
+                "(Stage 4 skipped for testing)",
+                title="Success",
+                border_style="green",
+            ))
+            return
+
+        validated_project = result
 
         # Success message
         console.print("\n")

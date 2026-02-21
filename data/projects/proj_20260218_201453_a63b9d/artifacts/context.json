@@ -1,0 +1,44 @@
+{
+  "project_id": "proj_20260218_201453_a63b9d",
+  "created_at": "2026-02-18T20:14:53.835775",
+  "updated_at": "2026-02-18T20:14:58.738073",
+  "user_requirement": "Help me create a blog webpage that can upload images",
+  "requirements": {
+    "title": "Generated Application",
+    "description": "Help me create a blog webpage that can upload images",
+    "features": [
+      {
+        "id": "f1",
+        "name": "Create new items",
+        "description": "Allow users to create new items",
+        "priority": 1,
+        "user_story": null
+      },
+      {
+        "id": "f2",
+        "name": "Load data",
+        "description": "Allow users to load data",
+        "priority": 1,
+        "user_story": null
+      }
+    ],
+    "constraints": [],
+    "target_users": null,
+    "data_requirements": null,
+    "user_clarifications": {},
+    "created_at": "2026-02-18T20:14:56.354850"
+  },
+  "tasks": null,
+  "algorithms": null,
+  "engineering_plan": null,
+  "code_repository": null,
+  "test_results": null,
+  "validation_status": "not_started",
+  "fix_attempts": 0,
+  "validated_project": null,
+  "current_stage": 2,
+  "project_path": "d:\\tem\\idea2project\\idea2product\\data\\projects\\proj_20260218_201453_a63b9d",
+  "error_log": [
+    "[2026-02-18T20:14:58.738064] Error code: 404 - {'error': {'code': 'InvalidEndpointOrModel.NotFound', 'message': 'The model or endpoint Doubao-Seed-1.8 does not exist or you do not have access to it. Request id: 021771416898974b060a07fba38d5479db0751ac158bec5a4944d', 'param': '', 'type': 'Not Found'}}"
+  ]
+}

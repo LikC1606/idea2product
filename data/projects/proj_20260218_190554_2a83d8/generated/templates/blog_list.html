@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Blog List</title>
+    <script>
+        async function fetchBlogs() {
+            const response = await fetch('/api/blogs');
+            const blogs = await response.json();
+
+            const blogList = document.getElementById('blog-list');
+            blogList.innerHTML = '';
+
+            blogs.forEach(blog => {
+                const blogItem = document.createElement('div');
+                blogItem.innerHTML = `
+                    <h2>${blog.title}</h2>
+                    <p>${blog.content}</p>
+                    <a href="/blogs/${blog.id}">View Details</a>
+                `;
+                blogList.appendChild(blogItem);
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', fetchBlogs);
+    </script>
+</head>
+<body>
+    <h1>Blog List</h1>
+    <div id="blog-list">
+        <!-- Blogs will be loaded here -->
+    </div>
+</body>
+</html>

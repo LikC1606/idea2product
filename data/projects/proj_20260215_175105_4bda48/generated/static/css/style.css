@@ -1,0 +1,157 @@
+/* Path: static/css/style.css */
+/* Purpose: Stylesheet */
+/* Layer: frontend */
+
+/* General Styles */
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  padding: 0;
+  background-color: #f9f9f9;
+  color: #333;
+}
+
+header {
+  background-color: #4CAF50;
+  color: white;
+  padding: 10px 20px;
+  text-align: center;
+}
+
+nav {
+  display: flex;
+  justify-content: space-between;
+  background-color: #333;
+  padding: 10px 20px;
+}
+
+nav a {
+  color: white;
+  text-decoration: none;
+  padding: 10px 15px;
+}
+
+nav a:hover {
+  background-color: #575757;
+  border-radius: 5px;
+}
+
+main {
+  padding: 20px;
+}
+
+footer {
+  background-color: #333;
+  color: white;
+  text-align: center;
+  padding: 10px 0;
+  position: fixed;
+  bottom: 0;
+  width: 100%;
+}
+
+/* Problem Library */
+.problem-library {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+.problem-card {
+  background-color: white;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  padding: 15px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.problem-card h3 {
+  margin: 0 0 10px;
+}
+
+.problem-card p {
+  font-size: 14px;
+  color: #666;
+}
+
+/* Code Editor */
+.code-editor {
+  background-color: #1e1e1e;
+  color: #dcdcdc;
+  border-radius: 5px;
+  padding: 20px;
+  font-family: monospace;
+  overflow: auto;
+}
+
+/* Online Judge System */
+.judge-system {
+  padding: 20px;
+  background-color: #f0f0f0;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+}
+
+.judge-system h2 {
+  margin: 0 0 10px;
+}
+
+/* User Profiles */
+.user-profile {
+  display: flex;
+  align-items: center;
+  padding: 20px;
+  background-color: #fff;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+}
+
+.user-profile img {
+  border-radius: 50%;
+  margin-right: 15px;
+}
+
+.user-profile h3 {
+  margin: 0;
+}
+
+/* Leaderboard */
+.leaderboard {
+  margin: 20px 0;
+  background-color: white;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  padding: 15px;
+}
+
+.leaderboard table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.leaderboard th, .leaderboard td {
+  text-align: left;
+  padding: 10px;
+  border-bottom: 1px solid #ddd;
+}
+
+.leaderboard th {
+  background-color: #f4f4f4;
+}
+
+/* Hints and Explanations */
+.hints {
+  background-color: #fffbdd;
+  border-left: 5px solid #ffdd57;
+  padding: 15px;
+  margin: 20px 0;
+  border-radius: 5px;
+}
+
+.explanations {
+  background-color: #ddf4ff;
+  border-left: 5px solid #57baff;
+  padding: 15px;
+  margin: 20px 0;
+  border-radius: 5px;
+}

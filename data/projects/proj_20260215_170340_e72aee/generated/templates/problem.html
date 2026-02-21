@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block title %}Problem Details{% endblock %}
+
+{% block content %}
+<div class="problem-container">
+    <h1 class="problem-title">{{ problem.title }}</h1>
+    <div class="problem-description">
+        <h3>Description:</h3>
+        <p>{{ problem.description }}</p>
+    </div>
+    <div class="problem-hints">
+        <h3>Hints:</h3>
+        {% if problem.hints %}
+            <ul>
+                {% for hint in problem.hints %}
+                    <li>{{ hint }}</li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p>No hints available for this problem.</p>
+        {% endif %}
+    </div>
+</div>
+
+<div class="solution-section">
+    <h3>Your Solution:</h3>
+    <form method="POST" action="/solutions/submit">
+        <textarea name="solution_code" rows="10" cols="80" placeholder="Write your solution here..."></textarea>
+        <input type="hidden" name="problem_id" value="{{ problem.id }}">
+        <button type="submit" class="btn-submit">Submit Solution</button>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+{% endblock %}

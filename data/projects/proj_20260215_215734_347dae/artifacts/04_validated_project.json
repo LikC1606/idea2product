@@ -1,0 +1,177 @@
+{
+  "repository": {
+    "skeleton": null,
+    "files": [
+      {
+        "path": "app/__init__.py",
+        "content": "from flask import Flask, render_template\nfrom flask_sqlalchemy import SQLAlchemy\nfrom app.database import db\nfrom app.routes import register_routes  # Assuming you have a function to register routes\n\ndef create_app():\n    # Initialize Flask application\n    app = Flask(__name__, template_folder='../templates', static_folder='../static', static_url_path='/static')\n\n    # Configure application settings\n    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///notes.db'  # Update as per your database configuration\n    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False\n    app.secret_key = 'secret-key'\n\n    # Initialize database\n    db.init_app(app)\n    with app.app_context():\n        db.create_all()\n\n    # Register routes\n    register_routes(app)\n\n    # Home route\n    @app.route('/')\n    def home():\n        return render_template('index.html')\n\n    return app",
+        "language": "python",
+        "purpose": "Initialize the Flask app and configure settings.",
+        "dependencies": [],
+        "interface_id": null,
+        "generated_at": "2026-02-15T21:57:55.347377"
+      },
+      {
+        "path": "app/routes.py",
+        "content": "from flask import Blueprint, request, jsonify\nfrom app.models.note import Note  # Assuming Note model is defined in app/models/note.py\nfrom app.database import db\n\nnotes_bp = Blueprint('notes', __name__)\n\n@notes_bp.route('/notes', methods=['POST'])\ndef create_note():\n    \"\"\"Route to create a new note.\"\"\"\n    data = request.get_json()\n    if not data or 'title' not in data or 'content' not in data:\n        return jsonify({'error': 'Invalid input'}), 400\n\n    title = data['title']\n    content = data['content']\n\n    note = Note(title=title, content=content)\n    db.session.add(note)\n    db.session.commit()\n\n    return jsonify({'message': 'Note created successfully', 'note': note.to_dict()}), 201\n\n@notes_bp.route('/notes', methods=['GET'])\ndef list_notes():\n    \"\"\"Route to list all notes.\"\"\"\n    notes = Note.query.all()\n    notes_list = [note.to_dict() for note in notes]\n    return jsonify({'notes': notes_list}), 200\n\n@notes_bp.route('/notes/<int:note_id>', methods=['GET'])\ndef get_note(note_id):\n    \"\"\"Route to retrieve a specific note by ID.\"\"\"\n    note = Note.query.get(note_id)\n    if not note:\n        return jsonify({'error': 'Note not found'}), 404\n\n    return jsonify({'note': note.to_dict()}), 200\n\n@notes_bp.route('/notes/search', methods=['GET'])\ndef search_notes():\n    \"\"\"Route to search notes by a query string.\"\"\"\n    query = request.args.get('q', '')\n    if not query:\n        return jsonify({'error': 'No search query provided'}), 400\n\n    results = Note.query.filter(Note.title.ilike(f'%{query}%') | Note.content.ilike(f'%{query}%')).all()\n    results_list = [note.to_dict() for note in results]\n\n    return jsonify({'results': results_list}), 200",
+        "language": "python",
+        "purpose": "Define routes for creating, organizing, and searching notes.",
+        "dependencies": [],
+        "interface_id": null,
+        "generated_at": "2026-02-15T21:58:00.791544"
+      },
+      {
+        "path": "app/models.py",
+        "content": "from app.database import db\n\nclass Note(db.Model):\n    __tablename__ = 'notes'\n\n    id = db.Column(db.Integer, primary_key=True)\n    title = db.Column(db.String(255), nullable=False)\n    content = db.Column(db.Text, nullable=False)\n    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())\n\n    def __init__(self, title, content):\n        self.title = title\n        self.content = content\n\n    def save(self):\n        \"\"\"\n        Save the current note instance to the database.\n        \"\"\"\n        db.session.add(self)\n        db.session.commit()\n\n    def delete(self):\n        \"\"\"\n        Delete the current note instance from the database.\n        \"\"\"\n        db.session.delete(self)\n        db.session.commit()\n\n    @staticmethod\n    def get_all_notes():\n        \"\"\"\n        Retrieve all notes from the database.\n        \"\"\"\n        return Note.query.all()\n\n    @staticmethod\n    def get_note_by_id(note_id):\n        \"\"\"\n        Retrieve a single note by its ID.\n        \"\"\"\n        return Note.query.get(note_id)\n\n    @staticmethod\n    def search_notes(query):\n        \"\"\"\n        Search notes by title or content that contains the query string.\n        \"\"\"\n        return Note.query.filter(\n            db.or_(\n                Note.title.ilike(f'%{query}%'),\n                Note.content.ilike(f'%{query}%')\n            )\n        ).all()",
+        "language": "python",
+        "purpose": "Define the Note model and handle database interactions.",
+        "dependencies": [],
+        "interface_id": null,
+        "generated_at": "2026-02-15T21:58:06.736585"
+      },
+      {
+        "path": "app/database.py",
+        "content": "from flask_sqlalchemy import SQLAlchemy\n\n# Initialize the SQLAlchemy instance\ndb = SQLAlchemy()",
+        "language": "python",
+        "purpose": "Set up the database connection and initialization.",
+        "dependencies": [],
+        "interface_id": null,
+        "generated_at": "2026-02-15T21:58:11.900321"
+      },
+      {
+        "path": "templates/base.html",
+        "content": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>{% block title %}Note-Taking App{% endblock %}</title>\n    <link rel=\"stylesheet\" href=\"{{ url_for('static', filename='styles.css') }}\">\n</head>\n<body>\n    <header>\n        <nav>\n            <ul>\n                <li><a href=\"{{ url_for('home') }}\">Home</a></li>\n                <li><a href=\"{{ url_for('notes_bp.list_notes') }}\">Notes</a></li>\n                <li><a href=\"{{ url_for('notes_bp.search_notes') }}\">Search</a></li>\n            </ul>\n        </nav>\n    </header>\n\n    <main>\n        {% block content %}\n        {% endblock %}\n    </main>\n\n    <footer>\n        <p>&copy; 2023 Note-Taking App</p>\n    </footer>\n</body>\n</html>",
+        "language": "html",
+        "purpose": "Base template for consistent layout across pages.",
+        "dependencies": [],
+        "interface_id": null,
+        "generated_at": "2026-02-15T21:58:15.506187"
+      },
+      {
+        "path": "templates/create_note.html",
+        "content": "{% extends \"base.html\" %}\n\n{% block title %}\n    Create Note\n{% endblock %}\n\n{% block content %}\n<div class=\"container mt-5\">\n    <h1>Create a New Note</h1>\n    <form method=\"POST\" action=\"{{ url_for('notes_bp.create_note') }}\">\n        <div class=\"form-group\">\n            <label for=\"title\">Title</label>\n            <input type=\"text\" class=\"form-control\" id=\"title\" name=\"title\" placeholder=\"Enter title\" required>\n        </div>\n        <div class=\"form-group mt-3\">\n            <label for=\"content\">Content</label>\n            <textarea class=\"form-control\" id=\"content\" name=\"content\" rows=\"5\" placeholder=\"Enter content\" required></textarea>\n        </div>\n        <button type=\"submit\" class=\"btn btn-primary mt-4\">Create Note</button>\n    </form>\n</div>\n{% endblock %}",
+        "language": "html",
+        "purpose": "Template for creating a new note.",
+        "dependencies": [],
+        "interface_id": null,
+        "generated_at": "2026-02-15T21:58:17.341701"
+      },
+      {
+        "path": "templates/organize_notes.html",
+        "content": "{% extends 'base.html' %}\n\n{% block title %}\nOrganize Notes\n{% endblock %}\n\n{% block content %}\n<div class=\"container mt-4\">\n    <h1 class=\"mb-4\">Organize Your Notes</h1>\n\n    <div class=\"row mb-3\">\n        <div class=\"col-md-6\">\n            <form id=\"searchForm\" method=\"GET\" action=\"/notes/search\">\n                <div class=\"input-group\">\n                    <input type=\"text\" name=\"q\" class=\"form-control\" placeholder=\"Search notes...\" required>\n                    <button class=\"btn btn-primary\" type=\"submit\">Search</button>\n                </div>\n            </form>\n        </div>\n    </div>\n\n    <div class=\"row\">\n        {% if notes %}\n            <ul class=\"list-group\">\n                {% for note in notes %}\n                    <li class=\"list-group-item\">\n                        <h5>{{ note.title }}</h5>\n                        <p>{{ note.content }}</p>\n                        <div class=\"d-flex justify-content-end\">\n                            <a href=\"/notes/{{ note.id }}\" class=\"btn btn-primary btn-sm me-2\">View</a>\n                            <form method=\"POST\" action=\"/notes/{{ note.id }}/delete\" style=\"display: inline;\">\n                                <button class=\"btn btn-danger btn-sm\">Delete</button>\n                            </form>\n                        </div>\n                    </li>\n                {% endfor %}\n            </ul>\n        {% else %}\n            <p>No notes found. Create a new note to get started!</p>\n        {% endif %}\n    </div>\n\n    <div class=\"mt-4\">\n        <a href=\"/notes/new\" class=\"btn btn-success\">Create New Note</a>\n    </div>\n</div>\n{% endblock %}",
+        "language": "html",
+        "purpose": "Template for organizing notes.",
+        "dependencies": [],
+        "interface_id": null,
+        "generated_at": "2026-02-15T21:58:20.729642"
+      },
+      {
+        "path": "templates/search_notes.html",
+        "content": "{% extends \"base.html\" %}\n\n{% block title %}\n    Search Notes\n{% endblock %}\n\n{% block content %}\n    <div class=\"search-container\">\n        <h1>Search Notes</h1>\n        <form action=\"{{ url_for('notes_bp.search_notes') }}\" method=\"get\">\n            <input type=\"text\" name=\"q\" placeholder=\"Search notes...\" required>\n            <button type=\"submit\">Search</button>\n        </form>\n    </div>\n\n    {% if notes %}\n        <div class=\"notes-list\">\n            <h2>Search Results:</h2>\n            <ul>\n                {% for note in notes %}\n                    <li>\n                        <a href=\"{{ url_for('notes_bp.get_note', note_id=note.id) }}\">\n                            {{ note.title }}\n                        </a>\n                        <p>{{ note.content[:100] }}...</p>\n                    </li>\n                {% endfor %}\n            </ul>\n        </div>\n    {% elif request.args.get('q') %}\n        <p>No notes found for your search query.</p>\n    {% endif %}\n{% endblock %}",
+        "language": "html",
+        "purpose": "Template for searching notes.",
+        "dependencies": [],
+        "interface_id": null,
+        "generated_at": "2026-02-15T21:58:22.810795"
+      },
+      {
+        "path": "static/css/styles.css",
+        "content": "/* Path: static/css/styles.css */\n/* Purpose: CSS file for styling the application */\n\n/* General styling for the application */\nbody {\n    font-family: Arial, sans-serif;\n    margin: 0;\n    padding: 0;\n    background-color: #f8f9fa;\n    color: #343a40;\n}\n\nheader {\n    background-color: #007bff;\n    color: white;\n    padding: 1rem;\n    text-align: center;\n}\n\nheader h1 {\n    margin: 0;\n    font-size: 2rem;\n}\n\nmain {\n    padding: 2rem;\n}\n\nfooter {\n    background-color: #343a40;\n    color: white;\n    text-align: center;\n    padding: 1rem;\n    position: fixed;\n    bottom: 0;\n    width: 100%;\n}\n\n/* Styling for forms */\nform {\n    max-width: 600px;\n    margin: 0 auto;\n    background: white;\n    padding: 1.5rem;\n    border-radius: 8px;\n    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);\n}\n\nform input[type=\"text\"],\nform textarea {\n    width: 100%;\n    padding: 0.5rem;\n    margin-bottom: 1rem;\n    border-radius: 4px;\n    border: 1px solid #ced4da;\n}\n\nform button {\n    background-color: #007bff;\n    color: white;\n    border: none;\n    padding: 0.75rem 1.5rem;\n    border-radius: 4px;\n    cursor: pointer;\n    font-size: 1rem;\n}\n\nform button:hover {\n    background-color: #0056b3;\n}\n\n/* Styling for notes list */\n.notes-list {\n    display: flex;\n    flex-wrap: wrap;\n    gap: 1rem;\n    justify-content: center;\n}\n\n.note-card {\n    background: white;\n    padding: 1rem;\n    border-radius: 8px;\n    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);\n    max-width: 300px;\n    transition: transform 0.2s, box-shadow 0.2s;\n}\n\n.note-card:hover {\n    transform: translateY(-5px);\n    box-shadow: 0 6px 10px rgba(0, 0, 0, 0.15);\n}\n\n.note-card h3 {\n    margin-top: 0;\n    font-size: 1.5rem;\n    color: #007bff;\n}\n\n.note-card p {\n    font-size: 1rem;\n    margin-bottom: 0.5rem;\n}\n\n/* Search bar styling */\n.search-bar {\n    max-width: 600px;\n    margin: 1rem auto;\n    display: flex;\n    gap: 0.5rem;\n}\n\n.search-bar input[type=\"text\"] {\n    flex-grow: 1;\n    padding: 0.5rem;\n    border-radius: 4px;\n    border: 1px solid #ced4da;\n}\n\n.search-bar button {\n    background-color: #007bff;\n    color: white;\n    border: none;\n    padding: 0.5rem 1rem;\n    border-radius: 4px;\n    cursor: pointer;\n    font-size: 1rem;\n}\n\n.search-bar button:hover {\n    background-color: #0056b3;\n}\n\n/* Utility classes */\n.text-center {\n    text-align: center;\n}\n\n.mt-1 {\n    margin-top: 1rem;\n}\n\n.mt-2 {\n    margin-top: 2rem;\n}\n\n.mb-1 {\n    margin-bottom: 1rem;\n}\n\n.mb-2 {\n    margin-bottom: 2rem;\n}\n\n.p-1 {\n    padding: 1rem;\n}\n\n.p-2 {\n    padding: 2rem;\n}\n\n/* Responsive Design */\n@media (max-width: 768px) {\n    form {\n        width: 90%;\n    }\n\n    .notes-list {\n        flex-direction: column;\n        align-items: center;\n    }\n\n    .note-card {\n        width: 90%;\n    }\n}",
+        "language": "css",
+        "purpose": "CSS file for styling the application.",
+        "dependencies": [],
+        "interface_id": null,
+        "generated_at": "2026-02-15T21:58:27.178415"
+      },
+      {
+        "path": "static/js/scripts.js",
+        "content": "// static/js/scripts.js\n\n// Function to fetch all notes and display them\nasync function fetchNotes() {\n    try {\n        const response = await fetch('/notes');\n        const notes = await response.json();\n\n        const notesContainer = document.getElementById('notes-container');\n        notesContainer.innerHTML = '';\n\n        notes.forEach(note => {\n            const noteElement = document.createElement('div');\n            noteElement.classList.add('note');\n            noteElement.innerHTML = `\n                <h3>${note.title}</h3>\n                <p>${note.content}</p>\n                <button class=\"delete-btn\" data-note-id=\"${note.id}\">Delete</button>\n            `;\n            notesContainer.appendChild(noteElement);\n        });\n\n        attachDeleteEvent();\n    } catch (error) {\n        console.error('Error fetching notes:', error);\n    }\n}\n\n// Function to create a new note\nasync function createNote() {\n    const title = document.getElementById('note-title').value;\n    const content = document.getElementById('note-content').value;\n\n    if (title.trim() === '' || content.trim() === '') {\n        alert('Title and content cannot be empty.');\n        return;\n    }\n\n    try {\n        const response = await fetch('/notes', {\n            method: 'POST',\n            headers: {\n                'Content-Type': 'application/json'\n            },\n            body: JSON.stringify({ title, content })\n        });\n\n        if (response.ok) {\n            document.getElementById('note-title').value = '';\n            document.getElementById('note-content').value = '';\n            fetchNotes();\n        } else {\n            console.error('Error creating note:', await response.text());\n        }\n    } catch (error) {\n        console.error('Error creating note:', error);\n    }\n}\n\n// Function to delete a note\nasync function deleteNote(noteId) {\n    try {\n        const response = await fetch(`/notes/${noteId}`, {\n            method: 'DELETE'\n        });\n\n        if (response.ok) {\n            fetchNotes();\n        } else {\n            console.error('Error deleting note:', await response.text());\n        }\n    } catch (error) {\n        console.error('Error deleting note:', error);\n    }\n}\n\n// Attach delete event to buttons\nfunction attachDeleteEvent() {\n    const deleteButtons = document.querySelectorAll('.delete-btn');\n    deleteButtons.forEach(button => {\n        button.addEventListener('click', () => {\n            const noteId = button.getAttribute('data-note-id');\n            deleteNote(noteId);\n        });\n    });\n}\n\n// Event listener for creating a new note\ndocument.getElementById('create-note-btn').addEventListener('click', createNote);\n\n// Initial fetch of notes\ndocument.addEventListener('DOMContentLoaded', fetchNotes);",
+        "language": "javascript",
+        "purpose": "JavaScript file for client-side interactivity.",
+        "dependencies": [],
+        "interface_id": null,
+        "generated_at": "2026-02-15T21:58:30.039618"
+      },
+      {
+        "path": "app.py",
+        "content": "from app import create_app\n\n# Entry point for running the Flask application\nif __name__ == \"__main__\":\n    app = create_app()\n    app.run(debug=True)",
+        "language": "python",
+        "purpose": "Entry point to run the Flask application.",
+        "dependencies": [],
+        "interface_id": null,
+        "generated_at": "2026-02-15T21:58:31.673416"
+      },
+      {
+        "path": "app/models/note.py",
+        "content": "from app.database import db\n\nclass Note(db.Model):\n    __tablename__ = 'notes'\n\n    id = db.Column(db.Integer, primary_key=True)\n    title = db.Column(db.String(255), nullable=False)\n    content = db.Column(db.Text, nullable=True)\n    created_at = db.Column(db.DateTime, nullable=False, server_default=db.func.now())\n    updated_at = db.Column(db.DateTime, nullable=False, server_default=db.func.now(), onupdate=db.func.now())\n    is_archived = db.Column(db.Boolean, default=False)\n\n    def __repr__(self):\n        return f'<Note id={self.id} title={self.title}>'",
+        "language": "python",
+        "purpose": "Generated stub for app/models/note.py",
+        "dependencies": [],
+        "interface_id": null,
+        "generated_at": "2026-02-15T21:58:34.440122"
+      }
+    ],
+    "structure": {
+      "root": "generated",
+      "directories": [
+        "app\\models",
+        "app",
+        "templates",
+        "static\\css",
+        "static\\js"
+      ],
+      "entry_point": "app.py"
+    },
+    "dependencies": [
+      "flask"
+    ],
+    "readme_content": "# Note-Taking App\n\nAn application for creating, organizing, and managing notes.\n\n## Features\n\n- Create Notes: Allows users to create and save text-based notes.\n- Organize Notes: Enables users to categorize or tag notes for better organization.\n- Search Notes: Provides a search functionality to quickly find specific notes.\n\n## Setup\n\n```bash\npip install -r requirements.txt\npython app.py\n```\n\n## Usage\n\nOpen http://localhost:5000 in your browser.\n",
+    "created_at": "2026-02-15T21:58:34.440511"
+  },
+  "test_results": {
+    "logic_passed": true,
+    "bdd_test_cases": [
+      {
+        "test_id": "test_1",
+        "feature": "Create Notes",
+        "scenario": "User can create notes",
+        "given": "User is on the application page",
+        "when": "User performs create notes",
+        "then": "The application should respond correctly",
+        "test_code": "def test_create_notes():\n    # TODO: Implement test for Create Notes",
+        "status": "pending"
+      },
+      {
+        "test_id": "test_2",
+        "feature": "Organize Notes",
+        "scenario": "User can organize notes",
+        "given": "User is on the application page",
+        "when": "User performs organize notes",
+        "then": "The application should respond correctly",
+        "test_code": "def test_organize_notes():\n    # TODO: Implement test for Organize Notes",
+        "status": "pending"
+      },
+      {
+        "test_id": "test_3",
+        "feature": "Search Notes",
+        "scenario": "User can search notes",
+        "given": "User is on the application page",
+        "when": "User performs search notes",
+        "then": "The application should respond correctly",
+        "test_code": "def test_search_notes():\n    # TODO: Implement test for Search Notes",
+        "status": "pending"
+      }
+    ],
+    "errors": [],
+    "warnings": [],
+    "visual_verification": null,
+    "execution_time": 0.005578756332397461,
+    "stdout": "",
+    "stderr": "",
+    "timestamp": "2026-02-15T21:58:34.449239"
+  },
+  "is_deployable": true,
+  "deployment_instructions": "To run the application:\n\n1. Navigate to the generated directory:\n   cd generated\n\n2. Install dependencies:\n   pip install -r requirements.txt\n\n3. Run the application:\n   python app.py\n\n4. Open http://localhost:5000 in your browser\n",
+  "fix_attempts": 0,
+  "validated_at": "2026-02-15T21:58:34.449967"
+}

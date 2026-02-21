@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Problem</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <header>
+        <h1>Problem Details</h1>
+    </header>
+    <main>
+        <section>
+            <h2>{{ problem.title }}</h2>
+            <p>{{ problem.description }}</p>
+        </section>
+        <section>
+            <h3>Solutions</h3>
+            {% if solutions %}
+                <ul>
+                    {% for solution in solutions %}
+                        <li>
+                            <h4>{{ solution.title }}</h4>
+                            <p>{{ solution.description }}</p>
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p>No solutions available for this problem.</p>
+            {% endif %}
+        </section>
+        <section>
+            <h3>Add a Solution</h3>
+            <form action="{{ url_for('problem.add_solution', problem_id=problem.id) }}" method="post">
+                <label for="solution-title">Title:</label>
+                <input type="text" id="solution-title" name="title" required>
+                <label for="solution-description">Description:</label>
+                <textarea id="solution-description" name="description" required></textarea>
+                <button type="submit">Submit Solution</button>
+            </form>
+        </section>
+    </main>
+    <footer>
+        <p>&copy; 2023 Note-Taking Application</p>
+        <a href="{{ url_for('index') }}">Back to Home</a>
+    </footer>
+</body>
+</html>

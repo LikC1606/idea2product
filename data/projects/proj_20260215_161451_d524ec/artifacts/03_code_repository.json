@@ -1,0 +1,77 @@
+{
+  "skeleton": null,
+  "files": [
+    {
+      "path": "app.py",
+      "content": "from flask import Flask\nfrom routes import register_routes\n\n# Initialize the Flask application\napp = Flask(__name__)\n\n# Register routes from the routes module\nregister_routes(app)\n\n# Entry point for the application\nif __name__ == '__main__':\n    app.run(debug=True)",
+      "language": "python",
+      "purpose": "Main application entry point",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T16:15:31.329965"
+    },
+    {
+      "path": "routes.py",
+      "content": "from flask import Blueprint, jsonify\n\n# Blueprint for API routes\nroutes = Blueprint('routes', __name__)\n\n@routes.route('/api/status', methods=['GET'])\ndef api_status():\n    \"\"\"\n    API endpoint to check the status of the application.\n    \"\"\"\n    return jsonify({\"status\": \"OK\", \"message\": \"ACM Problem-Solving Platform is running successfully.\"})\n\n# Export the blueprint\n__all__ = ['routes']",
+      "language": "python",
+      "purpose": "API routes",
+      "dependencies": [
+        "app.py"
+      ],
+      "interface_id": null,
+      "generated_at": "2026-02-15T16:15:32.760474"
+    },
+    {
+      "path": "static/style.css",
+      "content": "/* Path: static/style.css */\n/* Purpose: Stylesheet for ACM Problem-Solving Platform */\n\n/* General Reset */\nbody, h1, h2, h3, p, ul, ol, li, a, button {\n    margin: 0;\n    padding: 0;\n    box-sizing: border-box;\n}\n\n/* Body Styling */\nbody {\n    font-family: Arial, sans-serif;\n    line-height: 1.6;\n    background-color: #f4f4f9;\n    color: #333;\n}\n\n/* Header */\nheader {\n    background: #007bff;\n    color: #fff;\n    padding: 10px 20px;\n    text-align: center;\n    font-size: 1.5em;\n}\n\n/* Navigation Bar */\n.navbar {\n    display: flex;\n    justify-content: space-between;\n    background: #0056b3;\n    padding: 10px 20px;\n}\n\n.navbar a {\n    color: #fff;\n    text-decoration: none;\n    margin: 0 10px;\n    font-weight: bold;\n}\n\n.navbar a:hover {\n    text-decoration: underline;\n}\n\n/* Main Content */\nmain {\n    padding: 20px;\n    background: #fff;\n    margin: 20px auto;\n    max-width: 1200px;\n    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);\n    border-radius: 5px;\n}\n\n/* Problem Cards */\n.problem-card {\n    border: 1px solid #ddd;\n    margin: 10px 0;\n    padding: 15px;\n    border-radius: 5px;\n    background: #f9f9f9;\n    transition: 0.3s ease;\n}\n\n.problem-card:hover {\n    background: #eef;\n    transform: translateY(-2px);\n}\n\n.problem-card h2 {\n    color: #007bff;\n    font-size: 1.2em;\n    margin-bottom: 10px;\n}\n\n.problem-card p {\n    font-size: 0.9em;\n    color: #555;\n}\n\n/* Buttons */\n.button {\n    display: inline-block;\n    padding: 10px 15px;\n    color: #fff;\n    background: #007bff;\n    border: none;\n    border-radius: 5px;\n    text-decoration: none;\n    font-size: 0.9em;\n    transition: 0.3s ease;\n    cursor: pointer;\n}\n\n.button:hover {\n    background: #0056b3;\n}\n\n/* Forms */\nform {\n    margin: 20px 0;\n    display: flex;\n    flex-direction: column;\n}\n\nform label {\n    font-size: 0.9em;\n    margin-bottom: 5px;\n    color: #333;\n}\n\nform input, form textarea, form select {\n    padding: 10px;\n    margin-bottom: 15px;\n    border: 1px solid #ddd;\n    border-radius: 5px;\n    font-size: 0.9em;\n}\n\nform input:focus, form textarea:focus, form select:focus {\n    border-color: #007bff;\n    outline: none;\n}\n\n/* Footer */\nfooter {\n    background: #0056b3;\n    color: #fff;\n    text-align: center;\n    padding: 10px 20px;\n    margin-top: 20px;\n    font-size: 0.8em;\n}\n\n/* Leaderboard */\n.leaderboard {\n    margin: 20px 0;\n    border-collapse: collapse;\n    width: 100%;\n}\n\n.leaderboard th, .leaderboard td {\n    border: 1px solid #ddd;\n    padding: 10px;\n    text-align: left;\n}\n\n.leaderboard th {\n    background: #007bff;\n    color: #fff;\n}\n\n.leaderboard tr:nth-child(even) {\n    background: #f4f4f9;\n}\n\n.leaderboard tr:hover {\n    background: #eef;\n}",
+      "language": "css",
+      "purpose": "Stylesheet",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T16:15:40.768664"
+    },
+    {
+      "path": "templates/index.html",
+      "content": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>ACM Problem-Solving Platform</title>\n    <link rel=\"stylesheet\" href=\"/static/styles.css\">\n</head>\n<body>\n    <header>\n        <h1>ACM Problem-Solving Platform</h1>\n        <nav>\n            <ul>\n                <li><a href=\"/\">Home</a></li>\n                <li><a href=\"/problems\">Problem Repository</a></li>\n                <li><a href=\"/leaderboard\">Leaderboard</a></li>\n                <li><a href=\"/profile\">User Profile</a></li>\n            </ul>\n        </nav>\n    </header>\n    <main>\n        <h2>Welcome to the ACM Problem-Solving Platform!</h2>\n        <p>Choose a feature from the navigation menu to get started.</p>\n    </main>\n    <footer>\n        <p>&copy; 2023 ACM Problem-Solving Platform. All Rights Reserved.</p>\n    </footer>\n</body>\n</html>",
+      "language": "html",
+      "purpose": "Main HTML template",
+      "dependencies": [],
+      "interface_id": null,
+      "generated_at": "2026-02-15T16:15:43.254588"
+    }
+  ],
+  "structure": {
+    "root": "generated",
+    "directories": [
+      "static",
+      "templates"
+    ],
+    "entry_point": "app.py"
+  },
+  "dependencies": [
+    "AWS",
+    "Ace Editor",
+    "Bootstrap",
+    "Celery",
+    "Chart.js",
+    "CodeMirror",
+    "Django",
+    "Docker",
+    "Express.js",
+    "Flask",
+    "Jest",
+    "Kubernetes",
+    "Material-UI",
+    "Mocha",
+    "MongoDB",
+    "MySQL",
+    "Node.js",
+    "PostgreSQL",
+    "Postman",
+    "RabbitMQ",
+    "React",
+    "flask"
+  ],
+  "readme_content": "# ACM Problem-Solving Platform\n\nA website designed to help users solve ACM-style programming problems.\n\n## Features\n\n- Problem Repository: A comprehensive collection of ACM-style programming problems categorized by difficulty and topic.\n- Code Submission and Evaluation: Allows users to submit code solutions and receive automated feedback on correctness and performance.\n- User Profiles: Enables users to create profiles, track their progress, and view their problem-solving history.\n- Leaderboard: Displays rankings of users based on their problem-solving performance and achievements.\n- Hints and Solutions: Provides optional hints and detailed solutions for problems to aid learning.\n\n## Setup\n\n```bash\npip install -r requirements.txt\npython app.py\n```\n\n## Usage\n\nOpen http://localhost:5000 in your browser.\n",
+  "created_at": "2026-02-15T16:15:43.254965"
+}

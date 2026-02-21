@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ACM Problem-Solving Platform - Problem</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <header>
+        <h1>ACM Problem-Solving Platform</h1>
+        <nav>
+            <a href="/">Home</a>
+            <a href="/problems">Problems</a>
+            <a href="/leaderboard">Leaderboard</a>
+            <a href="/profile">Profile</a>
+        </nav>
+    </header>
+    <main>
+        <section id="problem-details">
+            <h2>{{ problem.title }}</h2>
+            <p><strong>Description:</strong> {{ problem.description }}</p>
+            <p><strong>Difficulty:</strong> {{ problem.difficulty }}</p>
+        </section>
+        <section id="submission-form">
+            <h3>Submit Your Solution</h3>
+            <form method="POST" action="/solutions">
+                <input type="hidden" name="problem_id" value="{{ problem.id }}">
+                <textarea name="code" placeholder="Write your solution code here..." rows="10" required></textarea>
+                <button type="submit">Submit</button>
+            </form>
+        </section>
+        <section id="hints">
+            <h3>Hints</h3>
+            <ul>
+                {% for hint in problem.hints %}
+                    <li>{{ hint }}</li>
+                {% endfor %}
+            </ul>
+        </section>
+    </main>
+    <footer>
+        <p>&copy; 2023 ACM Problem-Solving Platform</p>
+    </footer>
+</body>
+</html>

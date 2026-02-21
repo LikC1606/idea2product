@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Submit Solution</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <header>
+        <h1>ACM Problem-Solving Platform</h1>
+        <nav>
+            <ul>
+                <li><a href="{{ url_for('index') }}">Home</a></li>
+                <li><a href="{{ url_for('problem_blueprint.problem_list') }}">Problems</a></li>
+                <li><a href="{{ url_for('user_blueprint.profile') }}">Profile</a></li>
+                <li><a href="{{ url_for('solution_blueprint.submissions') }}">Submissions</a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        <h2>Submit Your Solution</h2>
+        <form action="{{ url_for('solution_blueprint.submit') }}" method="POST" enctype="multipart/form-data">
+            <label for="problem_id">Problem:</label>
+            <select name="problem_id" id="problem_id" required>
+                {% for problem in problems %}
+                    <option value="{{ problem.id }}">{{ problem.title }}</option>
+                {% endfor %}
+            </select>
+            <br>
+            <label for="language">Programming Language:</label>
+            <select name="language" id="language" required>
+                <option value="python">Python</option>
+                <option value="cpp">C++</option>
+                <option value="java">Java</option>
+            </select>
+            <br>
+            <label for="code">Your Code:</label>
+            <textarea name="code" id="code" rows="15" cols="80" required></textarea>
+            <br>
+            <button type="submit">Submit</button>
+        </form>
+    </main>
+    <footer>
+        <p>&copy; 2023 ACM Problem-Solving Platform. All rights reserved.</p>
+    </footer>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

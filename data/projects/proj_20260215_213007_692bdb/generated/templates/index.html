@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Note-Taking App</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Simple Note-Taking App</h1>
+        <form id="noteForm" method="POST" action="/save">
+            <textarea name="note" id="note" placeholder="Write your note here..." required></textarea>
+            <button type="submit">Save Note</button>
+        </form>
+        <div id="notes">
+            <h2>Saved Notes</h2>
+            <ul>
+                {% for note in notes %}
+                    <li>{{ note.content }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+    <script src="{{ url_for('static', filename='scripts.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Submit Code</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <header>
+        <h1>ACM Problem-Solving Platform</h1>
+        <nav>
+            <ul>
+                <li><a href="{{ url_for('problem_blueprint.problem_library') }}">Problem Library</a></li>
+                <li><a href="{{ url_for('user_blueprint.profile') }}">Profile</a></li>
+                <li><a href="{{ url_for('solution_blueprint.leaderboard') }}">Leaderboard</a></li>
+            </ul>
+        </nav>
+    </header>
+    <main>
+        <section>
+            <h2>Submit Your Code</h2>
+            <form action="{{ url_for('solution_blueprint.submit_solution', problem_id=problem.id) }}" method="POST">
+                <div>
+                    <label for="problemTitle">Problem Title:</label>
+                    <input type="text" id="problemTitle" name="problemTitle" value="{{ problem.title }}" readonly>
+                </div>
+                <div>
+                    <label for="language">Programming Language:</label>
+                    <select id="language" name="language" required>
+                        <option value="python">Python</option>
+                        <option value="cpp">C++</option>
+                        <option value="java">Java</option>
+                        <option value="javascript">JavaScript</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="code">Your Code:</label>
+                    <textarea id="code" name="code" rows="10" cols="50" required></textarea>
+                </div>
+                <div>
+                    <button type="submit">Submit</button>
+                </div>
+            </form>
+        </section>
+    </main>
+    <footer>
+        <p>&copy; 2023 ACM Problem-Solving Platform. All rights reserved.</p>
+    </footer>
+</body>
+</html>
