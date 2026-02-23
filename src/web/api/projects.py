@@ -38,7 +38,7 @@ def analyze_requirement():
 
     try:
         settings = Settings()
-        llm_service = LLMService(settings)
+        llm_service = LLMService.from_settings(settings)
         agent = InteractionAgent(llm_service)
 
         analysis = agent.analyze_requirement(requirement)
@@ -70,7 +70,7 @@ def clarify_requirement():
 
     try:
         settings = Settings()
-        llm_service = LLMService(settings)
+        llm_service = LLMService.from_settings(settings)
         agent = InteractionAgent(llm_service)
 
         questions = agent.generate_clarification_questions(requirement)
@@ -112,7 +112,7 @@ def finalize_requirement():
 
     try:
         settings = Settings()
-        llm_service = LLMService(settings)
+        llm_service = LLMService.from_settings(settings)
         agent = InteractionAgent(llm_service)
 
         # Create dummy questions list from clarifications

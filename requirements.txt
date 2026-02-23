@@ -4,6 +4,11 @@ pydantic>=2.10.0
 pydantic-settings>=2.7.0
 python-dotenv>=1.0.0
 
+# AI/LLM
+langchain>=0.3.0
+langchain-openai>=0.2.0
+langchain-core>=0.3.0
+
 # Web framework
 flask>=3.0.0
 flask-cors>=4.0.0

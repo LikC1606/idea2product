@@ -1,15 +1,18 @@
 """
-Full-cycle Testing Agent
+Full-cycle Testing Agent (EXPERIMENTAL, NOT USED IN MAIN PIPELINE)
 
-This agent performs comprehensive testing including:
+This agent stub is part of an earlier design that unifies agents via AgentBase.
+The production pipeline currently uses the concrete implementation in
+`src.agents.stage4_validation.validation_agents.FullCycleTestingAgent` instead.
+
+Planned responsibilities (not yet implemented here):
 1. BDD (Behavior-Driven Development) test execution
 2. Visual verification using VLM (Vision Language Model)
 3. Functional testing of generated code
 
-Changes from original Black-box Testing Agent:
-- Added BDD test case generation and execution (from plan.txt update)
-- Added visual verification for frontend using VLM
-- Renamed from Black-box Testing to Full-cycle Testing
+Note:
+- This class is not imported by the orchestrator and can be considered
+  experimental. Prefer extending the validation_agents version for new work.
 """
 
 from typing import Dict, Any

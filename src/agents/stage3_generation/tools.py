@@ -1,5 +1,5 @@
 """Tools system using LangChain."""
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from pathlib import Path
 import sys
 
@@ -8,6 +8,15 @@ from langchain_core.tools import tool
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+# Optional code memory service for search_similar_snippet
+_code_memory_service = None
+
+
+def set_code_memory_service(service):
+    """Set code memory service for snippet search (when ENABLE_CODE_MEMORY)."""
+    global _code_memory_service
+    _code_memory_service = service
 
 
 # 全局项目路径（由 get_tools 设置）
@@ -132,15 +141,41 @@ def run_app() -> str:
             sys.path.remove(str(_project_path))
 
 
-def get_tools(project_path: Path):
-    """获取所有工具实例。"""
-    global _project_path
-    _project_path = project_path
+@tool
+def search_similar_snippet(query: str) -> str:
+    """Search code memory for similar implementations. Use when implementing CRUD, auth, or common patterns.
 
-    return [
+    Args:
+        query: Search terms, e.g. 'flask crud api', 'sqlalchemy model', 'blueprint route'
+    """
+    global _code_memory_service
+    if not _code_memory_service:
+        return "Code memory is disabled. Implement from scratch."
+    try:
+        snippets = _code_memory_service.search_snippets(query, limit=3)
+        if not snippets:
+            return "No similar snippets found in memory."
+        out = []
+        for s in snippets:
+            out.append(f"=== {s.function_name} ===\n{s.code[:800]}\n")
+        return "\n".join(out)[:3000]
+    except Exception as e:
+        return f"Search failed: {e}"
+
+
+def get_tools(project_path: Path, code_memory_service=None) -> List:
+    """获取所有工具实例。"""
+    global _project_path, _code_memory_service
+    _project_path = project_path
+    _code_memory_service = code_memory_service
+
+    tools = [
         list_files,
         read_file,
         write_file,
         modify_file,
         run_app,
     ]
+    if code_memory_service:
+        tools.append(search_similar_snippet)
+    return tools

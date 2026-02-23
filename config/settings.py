@@ -30,7 +30,8 @@ class Settings(BaseSettings):
     # Execution Configuration
     sandbox_timeout: int = 30
     max_fix_attempts: int = 2
-    enable_code_mining: bool = True
+    enable_code_memory: bool = False
+    enable_code_mining: bool = False
     enable_visual_verification: bool = True
     enable_bdd_testing: bool = True
 

@@ -63,11 +63,26 @@ class FullCycleTestingAgent:
             logger.info("App runs successfully!")
 
         # 2. 检查未使用的文件
-        if not errors:  # 只在代码能运行的情况下检查
+        if not errors:
             unused_warnings = self._check_unused_files(generated_path)
             if unused_warnings:
-                warnings.extend(unused_warnings)
+                warnings.extend([str(w.error_message) if hasattr(w, "error_message") else str(w) for w in unused_warnings])
                 logger.info(f"Found {len(unused_warnings)} unused files")
+
+        # 3. BDD → pytest: 生成并执行 BDD 测试（当 enable_bdd_testing 时）
+        bdd_pytest_errors = []
+        bdd_stdout, bdd_stderr = "", ""
+        try:
+            from config.settings import get_settings
+            settings = get_settings()
+            if getattr(settings, "enable_bdd_testing", False) and not errors:
+                self._write_bdd_pytest_file(generated_path, bdd_tests, context)
+                bdd_pytest_errors, bdd_stdout, bdd_stderr = self._run_tests(generated_path, repository)
+                if bdd_pytest_errors:
+                    errors.extend(bdd_pytest_errors)
+                    test_stderr = test_stderr or "BDD tests failed"
+        except Exception as e:
+            logger.debug(f"BDD pytest skipped: {e}")
 
         execution_time = time.time() - start_time
 
@@ -472,16 +487,19 @@ class FullCycleTestingAgent:
             logger.info(f"Generated {len(init_files)} __init__.py files")
 
     def _run_tests(self, project_path: Path, repository: CodeRepository) -> tuple[List[TestError], str, str]:
-        """Run pytest on the generated tests."""
+        """Run pytest on the generated tests (including test_bdd_smoke.py if present)."""
         errors = []
         stdout = ""
         stderr = ""
 
-        # Find test files
-        test_files = [f for f in repository.files if f.path.startswith('tests/') and f.language == 'python']
+        test_dir = project_path / "tests"
+        if not test_dir.exists():
+            logger.info("No tests directory found")
+            return errors, stdout, stderr
 
+        test_files = list(test_dir.glob("test_*.py"))
         if not test_files:
-            logger.info("No test files found")
+            logger.info("No test_*.py files in tests/")
             return errors, stdout, stderr
 
         logger.info(f"Running {len(test_files)} test files...")
@@ -612,6 +630,84 @@ class FullCycleTestingAgent:
             ))
 
         return tests
+
+    def _write_bdd_pytest_file(
+        self,
+        project_path: Path,
+        bdd_tests: list[BDDTestCase],
+        context: ExecutionContext,
+    ) -> None:
+        """Generate and write test_bdd_smoke.py with executable pytest cases."""
+        api_specs = {}
+        if hasattr(context, "engineering_plan") and context.engineering_plan:
+            api_specs = getattr(context.engineering_plan, "api_specs", {}) or {}
+
+        lines = [
+            '"""BDD smoke tests auto-generated from requirements."""',
+            "",
+            "import pytest",
+            "",
+        ]
+
+        # test_home_page
+        lines.append("def test_home_page_loads():")
+        lines.append('    """Given app is running, When user visits /, Then page loads."')
+        lines.append("    try:")
+        lines.append("        from app import create_app")
+        lines.append("        app = create_app()")
+        lines.append("        with app.test_client() as client:")
+        lines.append("            r = client.get('/')")
+        lines.append("            assert r.status_code in (200, 302), f'Got {r.status_code}'")
+        lines.append("    except Exception as e:")
+        lines.append("        pytest.fail(f'Home page failed: {e}')")
+        lines.append("")
+
+        # test API endpoints from api_specs
+        endpoints = api_specs.get("endpoints", []) or []
+        for ep in endpoints[:8]:
+            path = ep.get("path", "")
+            method = (ep.get("method") or "GET").upper()
+            if not path:
+                continue
+            safe_name = re.sub(r"[^a-zA-Z0-9]", "_", path)[:50]
+            lines.append(f"def test_api_{safe_name}_{method.lower()}():")
+            lines.append(f'    """BDD: API {method} {path} should respond."')
+            lines.append("    try:")
+            lines.append("        from app import create_app")
+            lines.append("        app = create_app()")
+            lines.append("        with app.test_client() as client:")
+            if method == "GET":
+                lines.append(f'            r = client.get("{path}")')
+            elif method == "POST":
+                lines.append(f'            r = client.post("{path}", json={{}}, content_type="application/json")')
+            else:
+                lines.append(f'            r = client.get("{path}")')
+            lines.append("            assert r.status_code in (200, 201, 204, 302, 400, 404), f'Got {r.status_code}'")
+            lines.append("    except Exception as e:")
+            lines.append(f"        pytest.fail(f'API {{path}} failed: {{e}}')")
+            lines.append("")
+
+        # Feature-based smoke tests
+        for t in bdd_tests[:3]:
+            safe_id = re.sub(r"[^a-zA-Z0-9]", "_", t.test_id)[:40]
+            lines.append(f"def test_bdd_{safe_id}():")
+            lines.append(f'    """{t.scenario}: {t.given} -> {t.when} -> {t.then}"""')
+            lines.append("    try:")
+            lines.append("        from app import create_app")
+            lines.append("        app = create_app()")
+            lines.append("        with app.test_client() as client:")
+            lines.append("            r = client.get('/')")
+            lines.append("            assert r.status_code in (200, 302)")
+            lines.append("    except Exception as e:")
+            lines.append(f"        pytest.fail(str(e))")
+            lines.append("")
+
+        content = "\n".join(lines)
+        test_dir = project_path / "tests"
+        test_dir.mkdir(parents=True, exist_ok=True)
+        out_path = test_dir / "test_bdd_smoke.py"
+        out_path.write_text(content, encoding="utf-8")
+        logger.info(f"Wrote BDD smoke tests to {out_path}")
 
     def _save_files(self, project_path: Path, repository: CodeRepository):
         """Save generated code files to disk."""

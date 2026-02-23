@@ -40,6 +40,18 @@ class LLMService:
         self.temperature = temperature
         self.max_retries = max_retries
 
+    @classmethod
+    def from_settings(cls, settings) -> "LLMService":
+        """Create LLMService from a Settings instance (config.settings.Settings or any object with same attributes)."""
+        return cls(
+            api_key=settings.openai_api_key,
+            model=getattr(settings, "openai_model", "gpt-4o"),
+            vlm_model=getattr(settings, "openai_vlm_model", "gpt-4o"),
+            max_tokens=getattr(settings, "max_tokens", 4096),
+            temperature=getattr(settings, "temperature", 0.7),
+            base_url=getattr(settings, "openai_base_url", "https://api.openai.com/v1"),
+        )
+
     def generate(
         self,
         prompt: str,

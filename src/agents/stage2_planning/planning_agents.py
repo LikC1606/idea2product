@@ -296,7 +296,12 @@ class SchemePlanningAgent:
     def __init__(self, llm_service: LLMService):
         self.llm_service = llm_service
 
-    def execute(self, requirements: Requirements, tasks: List[Task], flow_simulation: str = "") -> Tuple[List[FileSpec], List[InterfaceSpec], Dict, Dict]:
+    def execute(
+        self,
+        requirements: Requirements,
+        tasks: List[Task],
+        flow_simulation: str = "",
+    ) -> Tuple[List[FileSpec], List[InterfaceSpec], Dict, Dict]:
         """Create file structure - files grouped by task."""
         # 构建每个任务的详细描述
         task_descriptions = ""
@@ -383,8 +388,8 @@ Return ONLY valid JSON.
             result = self.llm_service.generate_json(prompt)
 
             # 解析 task_files
-            files = []
-            task_files_dict = result.get("task_files", {})
+            files: list[FileSpec] = []
+            task_files_dict = result.get("task_files", {}) or {}
 
             for task_id, task_file_list in task_files_dict.items():
                 if not isinstance(task_file_list, list):
@@ -392,39 +397,43 @@ Return ONLY valid JSON.
                 for f in task_file_list:
                     if not isinstance(f, dict):
                         continue
-                    files.append(FileSpec(
-                        path=f.get("path", ""),
-                        purpose=f.get("purpose", ""),
-                        dependencies=f.get("dependencies", []),
-                        layer=f.get("layer"),
-                        related_tasks=[task_id]
-                    ))
+                    path = (f.get("path") or "").strip()
+                    if not path:
+                        continue
+                    files.append(
+                        FileSpec(
+                            path=path,
+                            purpose=f.get("purpose", "") or "",
+                            dependencies=f.get("dependencies", []) or [],
+                            layer=f.get("layer"),
+                            related_tasks=[task_id],
+                        )
+                    )
 
             # 简化 interface_specs - 从 task_files 推断
-            interface_specs = []
+            interface_specs: list[InterfaceSpec] = []
             for f in files:
-                if f.path.endswith('.py') and not f.path.startswith('tests/'):
+                if f.path.endswith(".py") and not f.path.startswith("tests/"):
                     # 推断简单的 interface spec
                     spec = InterfaceSpec(
-                        module_name=f.path.replace('/', '.').replace('.py', ''),
+                        module_name=f.path.replace("/", ".").replace(".py", ""),
                         file_path=f.path,
                         purpose=f.purpose,
                         layer=f.layer,
                         exports=[],
                         imports=[],
                         database_access="none",
-                        related_files=[]
+                        related_files=[],
                     )
                     interface_specs.append(spec)
 
-            # 解析 api_specs
-            api_specs = result.get("api_specs", {})
-
-            # 解析 pyi_stubs
-            pyi_stubs = result.get("pyi_stubs", {})
+            # 解析 api_specs / pyi_stubs，保证至少返回空 dict
+            api_specs: Dict = result.get("api_specs") or {}
+            pyi_stubs: Dict = result.get("pyi_stubs") or {}
 
             return files, interface_specs, api_specs, pyi_stubs
 
         except Exception as e:
-            logger.warning(f"LLM scheme planning failed: {e}")
-            return [], []
+            # 保证返回值签名稳定，让上游可以做空计划处理或显式报错
+            logger.warning(f"LLM scheme planning failed, returning empty plan: {e}")
+            return [], [], {}, {}

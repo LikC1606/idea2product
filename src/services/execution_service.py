@@ -1,4 +1,11 @@
-"""Execution Service - Sandboxed code execution."""
+"""Execution Service - Sandboxed code execution.
+
+RESERVED / NOT USED IN MAIN PIPELINE:
+This service is a placeholder for future sandboxed execution (venv, Docker).
+Currently, Stage 4 validation agents (FullCycleTestingAgent, etc.) run code
+via subprocess and in-process import directly. Do not depend on ExecutionService
+for pipeline behavior until it is implemented and wired in.
+"""
 
 import subprocess
 import tempfile
@@ -14,6 +21,9 @@ class ExecutionService:
     Service for executing generated code in isolated sandbox.
 
     Uses Python virtual environments (MVP) - can upgrade to Docker later.
+
+    NOTE: Not used by Orchestrator or any agent yet. Pipeline uses
+    subprocess and importlib in validation agents directly.
     """
 
     def __init__(self, timeout: int = 30):

@@ -287,6 +287,8 @@ class TestError(BaseModel):
 class TestResult(BaseModel):
     """Results from full-cycle testing (logic + visual)."""
 
+    __test__ = False  # Pytest: do not collect as test class
+
     # Logic testing
     logic_passed: bool = Field(..., description="Whether logic tests passed")
     bdd_test_cases: List[BDDTestCase] = Field(default_factory=list, description="BDD test cases")

@@ -59,14 +59,7 @@ class Orchestrator:
             settings: Application settings
         """
         self.settings = settings
-        self.llm_service = LLMService(
-            api_key=settings.openai_api_key,
-            model=settings.openai_model,
-            vlm_model=settings.openai_vlm_model,
-            max_tokens=settings.max_tokens,
-            temperature=settings.temperature,
-            base_url=settings.openai_base_url,
-        )
+        self.llm_service = LLMService.from_settings(settings)
         self.prompt_loader = PromptLoader(settings.prompts_dir)
 
         # Set up logging
@@ -207,7 +200,10 @@ class Orchestrator:
         """
         self.logger.info("Stage 2: Task Division → Algorithm Analysis → Scheme Planning")
 
+        # Basic precondition check
         requirements = context.requirements
+        if requirements is None:
+            raise ValueError("Stage 2 requires non-empty requirements in context")
 
         # Flow Simulation Agent (Stage 2 Agent 0)
         flow_agent = FlowSimulationAgent(self.llm_service)
@@ -226,15 +222,28 @@ class Orchestrator:
 
         # Scheme Planning Agent
         scheme_agent = SchemePlanningAgent(self.llm_service)
-        file_structure, interface_specs, api_specs, pyi_stubs = scheme_agent.execute(requirements, tasks, flow_simulation)
-        self.logger.info(f"  - Planned {len(file_structure)} files with {len(interface_specs)} interface specs")
+        file_structure, interface_specs, api_specs, pyi_stubs = scheme_agent.execute(
+            requirements, tasks, flow_simulation
+        )
 
-        # Extract dependencies from algorithm analysis
-        dependencies = set(["flask"])  # Base dependency
+        if not file_structure:
+            self.logger.warning("SchemePlanningAgent returned empty file_structure")
+
+        self.logger.info(
+            f"  - Planned {len(file_structure)} files with {len(interface_specs)} interface specs"
+        )
+
+        # Extract dependencies from algorithm analysis (always include flask as base)
+        dependencies: set[str] = {"flask"}
         for alg in algorithms.values():
             for lib in alg.libraries:
-                if lib and lib.lower() not in ["dict", "list", "str", "int", "standard"]:
-                    dependencies.add(lib)
+                if not lib:
+                    continue
+                lib_normalized = lib.strip()
+                # Filter out obvious non-package or built-in names
+                if lib_normalized.lower() in {"dict", "list", "str", "int", "standard"}:
+                    continue
+                dependencies.add(lib_normalized)
 
         # Create engineering plan
         plan = EngineeringPlan(
@@ -242,7 +251,7 @@ class Orchestrator:
             algorithms=algorithms,
             file_structure=file_structure,
             interface_specs=interface_specs,
-            dependencies=["flask"],
+            dependencies=sorted(dependencies),
             architecture_notes=f"Web application: {requirements.title}",
             api_specs=api_specs,
             pyi_stubs=pyi_stubs
@@ -263,18 +272,24 @@ class Orchestrator:
         """
         self.logger.info("Stage 3: Code Generation (with Memory and Mining support)")
 
-        # Code Generation Agent
-        code_agent = CodeGenerationAgent(self.llm_service)
+        # Basic precondition checks
+        if context.engineering_plan is None:
+            raise ValueError("Stage 3 requires an EngineeringPlan in context")
+        if not context.engineering_plan.file_structure:
+            raise ValueError("Stage 3 requires a non-empty file_structure in EngineeringPlan")
+
+        # Code Generation Agent (with optional memory/mining via settings)
+        code_agent = CodeGenerationAgent(self.llm_service, settings=self.settings)
         repository = code_agent.execute(context)
 
         self.logger.info(f"Stage 3 complete: Generated {len(repository.files)} files")
 
-        # Code Memory Agent (skipped for MVP)
-        memory_agent = CodeMemoryAgent(self.llm_service)
+        # Code Memory Agent: save snippets when ENABLE_CODE_MEMORY
+        memory_agent = CodeMemoryAgent(self.llm_service, settings=self.settings)
         memory_agent.execute(context, repository)
 
-        # Code Mining Agent (skipped for MVP)
-        mining_agent = CodeMiningAgent(self.llm_service)
+        # Code Mining Agent: runs per-task in CodeGenerationAgent; this logs status
+        mining_agent = CodeMiningAgent(self.llm_service, settings=self.settings)
         mining_agent.execute(context)
 
         return repository
@@ -321,11 +336,25 @@ class Orchestrator:
         test_result = testing_agent.execute(context)
         self.logger.info(f"  - Final test: {len(test_result.errors)} errors, logic_passed={test_result.logic_passed}")
 
-        # Visual Verification Agent (skipped for MVP)
-        visual_agent = VisualVerificationAgent(self.llm_service)
-        visual_agent.execute(context)
+        # Optional: if still errors/warnings, try FineTuningAgent (syntax/import/entry-point fixes on repository)
+        if (test_result.errors or test_result.warnings) and not test_result.logic_passed:
+            fine_tuning_agent = FineTuningAgent(self.llm_service)
+            repository, fixed = fine_tuning_agent.execute(context, test_result)
+            if fixed:
+                context.code_repository = repository
+                repository = context.code_repository
+                test_result = testing_agent.execute(context)
+                self.logger.info(f"  - After FineTuning: {len(test_result.errors)} errors, logic_passed={test_result.logic_passed}")
 
-        # Create validated project
+        # Visual Verification Agent (optional, controlled by settings flag)
+        if getattr(self.settings, "enable_visual_verification", False):
+            visual_agent = VisualVerificationAgent(self.llm_service)
+            visual_agent.execute(context)
+        else:
+            self.logger.info("Visual verification disabled by settings; skipping UI analysis")
+
+        # Create validated project (use context.repository in case FineTuning updated it)
+        repository = context.code_repository
         validated_project = create_validated_project(
             repository=repository,
             test_result=test_result,

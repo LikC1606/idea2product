@@ -1,4 +1,10 @@
-"""Task Service - Background task management."""
+"""Task Service - Background task management.
+
+Long-running pipeline tasks run in a background thread. Clients get status via
+polling: GET /api/projects/<id>/status returns status (pending|processing|completed|failed),
+progress (0-100), and current_stage (e.g. Stage 1: Requirements, Stage 4: Validating).
+WebSocket real-time progress is not implemented; use polling for now.
+"""
 
 import os
 import json
@@ -220,7 +226,7 @@ class TaskService:
         if project_path.exists():
             code_repo_file = project_path / '03_code_repository.json'
             if code_repo_file.exists():
-                with open(code_repo_file) as f:
+                with open(code_repo_file, encoding='utf-8') as f:
                     data = json.load(f)
                     files = data.get('files', [])
                     return [{'path': f['path'], 'language': f.get('language', 'text')}
@@ -279,7 +285,7 @@ class TaskService:
         # Load requirements
         req_file = project_path / '01_requirements.json'
         if req_file.exists():
-            with open(req_file) as f:
+            with open(req_file, encoding='utf-8') as f:
                 req_data = json.load(f)
 
             return {
