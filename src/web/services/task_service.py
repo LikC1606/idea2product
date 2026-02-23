@@ -1,307 +1,393 @@
-"""Task Service - Background task management.
+"""Task Service - Background task management with per-project serialization.
 
-Long-running pipeline tasks run in a background thread. Clients get status via
-polling: GET /api/projects/<id>/status returns status (pending|processing|completed|failed),
-progress (0-100), and current_stage (e.g. Stage 1: Requirements, Stage 4: Validating).
-WebSocket real-time progress is not implemented; use polling for now.
+Supports two generation modes:
+  1. First-time: conversation_to_requirements → run_first_time (Stage 2-4)
+  2. Incremental: merge_requirements → run_from_stage_2 (Stage 2-4)
+
+Same project_id tasks are serialized: if a new generation is requested while one
+is running, the latest request is queued and executed after the current one finishes.
 """
 
-import os
 import json
 import threading
+import traceback
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 
 from config.settings import Settings
-# Import Orchestrator lazily to avoid API key requirement at startup
-# from src.core.orchestrator import Orchestrator
+from src.utils.file_utils import read_json
 
 
 class TaskService:
-    """Service for managing background tasks."""
+    """Background task management with per-project serialization."""
 
     def __init__(self, settings: Settings):
         self.settings = settings
         self.tasks: Dict[str, Dict[str, Any]] = {}
-        self.lock = threading.Lock()
+        self._lock = threading.Lock()
+        self._project_locks: Dict[str, threading.Lock] = {}
+        self._pending_regenerate: Dict[str, bool] = {}
 
-    def create_project(self, requirement: str, interactive: bool = False, clarifications: Dict[str, str] = None) -> str:
-        """Create a new project and start background processing."""
-        # Generate project ID - use timestamp only for stability
-        project_id = f"proj_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    def _get_project_lock(self, project_id: str) -> threading.Lock:
+        with self._lock:
+            if project_id not in self._project_locks:
+                self._project_locks[project_id] = threading.Lock()
+            return self._project_locks[project_id]
 
-        if clarifications is None:
-            clarifications = {}
+    # ------------------------------------------------------------------
+    # Project creation (chat-first: no requirement needed upfront)
+    # ------------------------------------------------------------------
 
-        # Initialize task
-        with self.lock:
+    def create_chat_project(self) -> str:
+        """Create a project for chat-based workflow. Returns project_id."""
+        import uuid
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        short = uuid.uuid4().hex[:6]
+        project_id = f"proj_{ts}_{short}"
+
+        project_dir = self.settings.projects_dir / project_id
+        artifacts_dir = project_dir / "artifacts"
+        artifacts_dir.mkdir(parents=True, exist_ok=True)
+        (project_dir / "generated").mkdir(exist_ok=True)
+        (project_dir / "logs").mkdir(exist_ok=True)
+
+        with self._lock:
             self.tasks[project_id] = {
-                'project_id': project_id,
-                'requirement': requirement,
-                'status': 'pending',
-                'progress': 0,
-                'created_at': datetime.now().isoformat(),
-                'result': None,
-                'error': None,
-                'interactive': interactive,
-                'clarifications': clarifications,
-                'current_stage': 'initializing'
+                "project_id": project_id,
+                "requirement": "",
+                "status": "idle",
+                "progress": 0,
+                "current_stage": "",
+                "created_at": datetime.now().isoformat(),
+                "result": None,
+                "error": None,
             }
-
-        # Start background task
-        thread = threading.Thread(
-            target=self._process_project,
-            args=(project_id, requirement, interactive, clarifications)
-        )
-        thread.daemon = True
-        thread.start()
-
         return project_id
 
-    def _process_project(self, project_id: str, requirement: str, interactive: bool = False, clarifications: Dict[str, str] = None):
-        """Process project in background."""
-        # Import here to avoid API key requirement at startup
+    # ------------------------------------------------------------------
+    # Legacy: create project with requirement (non-chat mode)
+    # ------------------------------------------------------------------
+
+    def create_project(
+        self, requirement: str, interactive: bool = False, clarifications: Dict[str, str] = None
+    ) -> str:
+        project_id = self.create_chat_project()
+        with self._lock:
+            self.tasks[project_id]["requirement"] = requirement
+        self._enqueue_legacy(project_id, requirement, interactive, clarifications or {})
+        return project_id
+
+    def _enqueue_legacy(
+        self, project_id: str, requirement: str, interactive: bool, clarifications: Dict[str, str]
+    ):
+        thread = threading.Thread(
+            target=self._run_legacy, args=(project_id, requirement, interactive, clarifications), daemon=True
+        )
+        thread.start()
+
+    def _run_legacy(
+        self, project_id: str, requirement: str, interactive: bool, clarifications: Dict[str, str]
+    ):
         from src.core.orchestrator import Orchestrator
-        import signal
-        import sys
 
-        if clarifications is None:
-            clarifications = {}
+        proj_lock = self._get_project_lock(project_id)
+        with proj_lock:
+            try:
+                self._update(project_id, status="processing", progress=5, stage="Stage 1: Analyzing requirements")
+                orchestrator = Orchestrator(self.settings)
+                result = orchestrator.run(requirement, interactive=False)
+                self._complete(project_id, result)
+            except Exception as e:
+                self._fail(project_id, e)
 
-        # Debug: Print to stderr so we can see it
-        print(f"[DEBUG] Starting project {project_id}", file=sys.stderr, flush=True)
+    # ------------------------------------------------------------------
+    # Chat-based generation (auto-triggered after each message)
+    # ------------------------------------------------------------------
 
-        # Set timeout (5 minutes max)
-        def timeout_handler():
-            self._update_status(project_id, 'failed', 0)
-            with self.lock:
-                if project_id in self.tasks:
-                    self.tasks[project_id]['error'] = 'Processing timeout (5 minutes)'
+    def enqueue_generation(self, project_id: str):
+        """Enqueue a generation task for a project.
+
+        If a generation is already running for this project, mark that a
+        re-generation is needed so it runs again with the latest conversation
+        once the current one finishes.
+        """
+        proj_lock = self._get_project_lock(project_id)
+        acquired = proj_lock.acquire(blocking=False)
+        if not acquired:
+            with self._lock:
+                self._pending_regenerate[project_id] = True
+            return
+
+        thread = threading.Thread(
+            target=self._run_generation, args=(project_id, proj_lock), daemon=True
+        )
+        thread.start()
+
+    def _run_generation(self, project_id: str, proj_lock: threading.Lock):
+        """Run generation holding the project lock. Re-runs if pending."""
+        try:
+            self._do_generate(project_id)
+        finally:
+            proj_lock.release()
+
+        with self._lock:
+            should_rerun = self._pending_regenerate.pop(project_id, False)
+        if should_rerun:
+            self.enqueue_generation(project_id)
+
+    def _do_generate(self, project_id: str):
+        from src.core.orchestrator import Orchestrator
+        from src.agents.stage1_requirements.interaction_agent import InteractionAgent
+        from src.services.llm_service import LLMService
+        from src.web.services.chat_service import get_messages
 
         try:
-            print(f"[DEBUG] Creating orchestrator for {project_id}", file=sys.stderr, flush=True)
+            messages = get_messages(self.settings, project_id)
+            if not messages:
+                return
 
-            # Update status
-            self._update_status(project_id, 'processing', 5)
-            self.tasks[project_id]['current_stage'] = 'Stage 1: Requirements'
+            self._update(project_id, status="processing", progress=5, stage="Preparing requirements")
 
-            # Create orchestrator
+            llm_service = LLMService.from_settings(self.settings)
+            agent = InteractionAgent(llm_service)
             orchestrator = Orchestrator(self.settings)
 
-            print(f"[DEBUG] Running orchestrator for {project_id}", file=sys.stderr, flush=True)
+            req_path = self.settings.projects_dir / project_id / "artifacts" / "01_requirements.json"
+            is_incremental = req_path.exists()
 
-            # Update progress - Stage 1
-            self._update_status(project_id, 'processing', 15)
-            self.tasks[project_id]['current_stage'] = 'Stage 1: Analyzing requirements'
+            if is_incremental:
+                self._update(project_id, progress=10, stage="Merging requirements")
+                existing_data = read_json(req_path)
+                from src.core.data_models import Requirements
+                existing_req = Requirements(**existing_data)
+                last_user_msg = ""
+                for m in reversed(messages):
+                    if m.get("role") == "user":
+                        last_user_msg = m.get("content", "")
+                        break
+                requirements = agent.merge_requirements(existing_req, last_user_msg, messages[-5:])
+            else:
+                self._update(project_id, progress=10, stage="Analyzing conversation")
+                requirements = agent.conversation_to_requirements(messages)
 
-            # Run the pipeline (non-interactive for web)
-            # Note: Interactive mode requires terminal input which isn't available in web
-            result = orchestrator.run(requirement, interactive=False)
+            with self._lock:
+                self.tasks.setdefault(project_id, {})["requirement"] = (
+                    requirements.description or requirements.title or ""
+                )
 
-            print(f"[DEBUG] Orchestrator completed for {project_id}, result: {result}", file=sys.stderr, flush=True)
+            self._update(project_id, progress=20, stage="Stage 2: Planning")
+            result = orchestrator.run_from_stage_2(project_id, requirements)
 
-            # Update progress - Stage 2
-            self._update_status(project_id, 'processing', 40)
-            self.tasks[project_id]['current_stage'] = 'Stage 2: Planning'
+            self._complete(project_id, result)
 
-            # Stage 3
-            self._update_status(project_id, 'processing', 70)
-            self.tasks[project_id]['current_stage'] = 'Stage 3: Generating code'
-
-            # Stage 4
-            self._update_status(project_id, 'processing', 90)
-            self.tasks[project_id]['current_stage'] = 'Stage 4: Validating'
-
-            # Update with result
-            with self.lock:
-                if project_id in self.tasks:
-                    if result is None:
-                        self.tasks[project_id]['status'] = 'completed'
-                        self.tasks[project_id]['progress'] = 100
-                        self.tasks[project_id]['current_stage'] = 'Completed'
-                        self.tasks[project_id]['result'] = {
-                            'is_deployable': True,
-                            'files_count': 0,
-                            'test_passed': False
-                        }
-                    else:
-                        self.tasks[project_id]['status'] = 'completed'
-                        self.tasks[project_id]['progress'] = 100
-                        self.tasks[project_id]['current_stage'] = 'Completed'
-                        self.tasks[project_id]['result'] = {
-                            'is_deployable': result.is_deployable,
-                            'files_count': len(result.repository.files),
-                            'test_passed': result.test_results.logic_passed if result.test_results else False
-                        }
+            self._try_start_preview(project_id)
 
         except Exception as e:
-            import traceback
-            error_msg = str(e)
-            print(f"[DEBUG] Exception in _process_project: {error_msg}", file=sys.stderr, flush=True)
-            traceback.print_exc(file=sys.stderr)
-            with self.lock:
-                if project_id in self.tasks:
-                    self.tasks[project_id]['status'] = 'failed'
-                    self.tasks[project_id]['error'] = error_msg
-                    self.tasks[project_id]['current_stage'] = f'Error: {error_msg[:50]}'
+            self._fail(project_id, e)
 
-    def _update_status(self, project_id: str, status: str, progress: int):
-        """Update task status."""
-        with self.lock:
-            if project_id in self.tasks:
-                self.tasks[project_id]['status'] = status
-                self.tasks[project_id]['progress'] = progress
+    def _try_start_preview(self, project_id: str):
+        """Try to start/restart preview after generation completes."""
+        try:
+            from src.web.services.preview_service import preview_service
+            preview_service.start_preview(project_id)
+        except Exception as e:
+            print(f"[WARN] Preview start failed for {project_id}: {e}", file=sys.stderr)
+
+    # ------------------------------------------------------------------
+    # Status helpers
+    # ------------------------------------------------------------------
+
+    def _update(self, project_id: str, status: str = None, progress: int = None, stage: str = None):
+        with self._lock:
+            task = self.tasks.setdefault(project_id, {})
+            if status:
+                task["status"] = status
+            if progress is not None:
+                task["progress"] = progress
+            if stage:
+                task["current_stage"] = stage
+
+    def _complete(self, project_id: str, result):
+        with self._lock:
+            task = self.tasks.setdefault(project_id, {})
+            task["status"] = "completed"
+            task["progress"] = 100
+            task["current_stage"] = "Completed"
+            task["error"] = None
+            if result is not None:
+                task["result"] = {
+                    "is_deployable": getattr(result, "is_deployable", True),
+                    "files_count": len(result.repository.files) if hasattr(result, "repository") else 0,
+                    "test_passed": (
+                        result.test_results.logic_passed if hasattr(result, "test_results") and result.test_results else False
+                    ),
+                }
+            else:
+                task["result"] = {"is_deployable": True, "files_count": 0, "test_passed": False}
+
+    def _fail(self, project_id: str, error: Exception):
+        msg = str(error)
+        print(f"[ERROR] Generation failed for {project_id}: {msg}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        with self._lock:
+            task = self.tasks.setdefault(project_id, {})
+            task["status"] = "failed"
+            task["error"] = msg
+            task["current_stage"] = f"Error: {msg[:80]}"
+
+    # ------------------------------------------------------------------
+    # Query methods
+    # ------------------------------------------------------------------
 
     def get_status(self, project_id: str) -> Optional[Dict[str, Any]]:
-        """Get project status."""
-        with self.lock:
+        with self._lock:
             task = self.tasks.get(project_id)
-            if not task:
-                return None
 
-            return {
-                'project_id': project_id,
-                'status': task['status'],
-                'progress': task['progress'],
-                'current_stage': task.get('current_stage', ''),
-                'error': task.get('error')
-            }
+        if not task:
+            if (self.settings.projects_dir / project_id).exists():
+                return {
+                    "project_id": project_id,
+                    "status": "idle",
+                    "progress": 0,
+                    "current_stage": "",
+                    "error": None,
+                }
+            return None
+
+        return {
+            "project_id": project_id,
+            "status": task.get("status", "idle"),
+            "progress": task.get("progress", 0),
+            "current_stage": task.get("current_stage", ""),
+            "error": task.get("error"),
+        }
 
     def get_project(self, project_id: str) -> Optional[Dict[str, Any]]:
-        """Get full project details."""
-        with self.lock:
+        with self._lock:
             task = self.tasks.get(project_id)
-            if not task:
-                # Try to load from disk
-                return self._load_project(project_id)
-
-            return task
+            if task:
+                return dict(task)
+        return self._load_project(project_id)
 
     def list_projects(self) -> List[Dict[str, Any]]:
-        """List all projects."""
         projects = []
+        seen = set()
 
-        # Load from memory
-        with self.lock:
-            for project_id, task in self.tasks.items():
+        with self._lock:
+            for pid, task in self.tasks.items():
+                seen.add(pid)
                 projects.append({
-                    'project_id': project_id,
-                    'requirement': task.get('requirement', ''),
-                    'status': task.get('status', 'unknown'),
-                    'created_at': task.get('created_at', '')
+                    "project_id": pid,
+                    "requirement": task.get("requirement", ""),
+                    "status": task.get("status", "unknown"),
+                    "created_at": task.get("created_at", ""),
                 })
 
-        # Also scan data directory
-        data_dir = self.settings.data_dir / 'projects'
+        data_dir = self.settings.projects_dir
         if data_dir.exists():
-            for proj_dir in data_dir.iterdir():
-                if proj_dir.is_dir():
-                    proj_id = proj_dir.name
-                    if proj_id not in self.tasks:
-                        # Load from disk
-                        project = self._load_project(proj_id)
-                        if project:
-                            projects.append({
-                                'project_id': proj_id,
-                                'requirement': project.get('requirement', ''),
-                                'status': project.get('status', 'completed'),
-                                'created_at': project.get('created_at', '')
-                            })
-
+            for proj_dir in sorted(data_dir.iterdir(), reverse=True):
+                if proj_dir.is_dir() and proj_dir.name not in seen:
+                    project = self._load_project(proj_dir.name)
+                    if project:
+                        projects.append({
+                            "project_id": proj_dir.name,
+                            "requirement": project.get("requirement", ""),
+                            "status": project.get("status", "completed"),
+                            "created_at": project.get("created_at", ""),
+                        })
         return projects
 
     def list_files(self, project_id: str) -> Optional[List[Dict[str, str]]]:
-        """List project files."""
-        project = self.get_project(project_id)
-        if not project:
-            return None
+        """List files from the generated/ directory, falling back to artifacts."""
+        gen_dir = self.settings.projects_dir / project_id / "generated"
+        if gen_dir.exists():
+            files = []
+            for f in sorted(gen_dir.rglob("*")):
+                if f.is_file():
+                    rel = f.relative_to(gen_dir).as_posix()
+                    files.append({"path": rel, "language": self._guess_language(f.suffix)})
+            if files:
+                return files
 
-        result = project.get('result', {})
-        if not result:
-            return []
-
-        # Try to load from disk
-        project_path = self.settings.data_dir / 'projects' / project_id / 'artifacts'
-        if project_path.exists():
-            code_repo_file = project_path / '03_code_repository.json'
-            if code_repo_file.exists():
-                with open(code_repo_file, encoding='utf-8') as f:
-                    data = json.load(f)
-                    files = data.get('files', [])
-                    return [{'path': f['path'], 'language': f.get('language', 'text')}
-                            for f in files]
-
+        art_path = self.settings.projects_dir / project_id / "artifacts" / "03_code_repository.json"
+        if art_path.exists():
+            try:
+                data = json.loads(art_path.read_text(encoding="utf-8"))
+                return [
+                    {"path": f["path"], "language": f.get("language", "text")}
+                    for f in data.get("files", [])
+                ]
+            except Exception:
+                pass
         return []
 
     def get_file(self, project_id: str, file_path: str) -> Optional[Dict[str, str]]:
-        """Get file content."""
-        project_path = self.settings.data_dir / 'projects' / project_id / 'generated' / file_path
-
-        if not project_path.exists():
+        full = self.settings.projects_dir / project_id / "generated" / file_path
+        if not full.exists():
             return None
-
-        # Determine language
-        ext = Path(file_path).suffix.lower()
-        lang_map = {
-            '.py': 'python',
-            '.html': 'html',
-            '.css': 'css',
-            '.js': 'javascript',
-            '.json': 'json',
-            '.md': 'markdown'
-        }
-
-        with open(project_path, 'r', encoding='utf-8') as f:
-            content = f.read()
-
+        try:
+            content = full.read_text(encoding="utf-8")
+        except Exception:
+            content = full.read_text(encoding="utf-8", errors="replace")
         return {
-            'path': file_path,
-            'content': content,
-            'language': lang_map.get(ext, 'text')
+            "path": file_path,
+            "content": content,
+            "language": self._guess_language(Path(file_path).suffix),
         }
 
     def delete_project(self, project_id: str) -> bool:
-        """Delete a project."""
-        with self.lock:
-            if project_id in self.tasks:
-                del self.tasks[project_id]
+        with self._lock:
+            self.tasks.pop(project_id, None)
 
-        # Also delete from disk
-        project_path = self.settings.data_dir / 'projects' / project_id
+        project_path = self.settings.projects_dir / project_id
         if project_path.exists():
             import shutil
-            shutil.rmtree(project_path)
+            shutil.rmtree(project_path, ignore_errors=True)
             return True
+        return False
 
-        return project_id in self.tasks
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
 
     def _load_project(self, project_id: str) -> Optional[Dict[str, Any]]:
-        """Load project from disk."""
-        project_path = self.settings.data_dir / 'projects' / project_id / 'artifacts'
-        if not project_path.exists():
+        artifacts = self.settings.projects_dir / project_id / "artifacts"
+        if not artifacts.exists():
             return None
-
-        # Load requirements
-        req_file = project_path / '01_requirements.json'
+        req_file = artifacts / "01_requirements.json"
+        chat_file = artifacts / "chat.json"
+        desc = ""
         if req_file.exists():
-            with open(req_file, encoding='utf-8') as f:
-                req_data = json.load(f)
+            try:
+                data = json.loads(req_file.read_text(encoding="utf-8"))
+                desc = data.get("description", "")
+            except Exception:
+                pass
+        if not desc and chat_file.exists():
+            try:
+                data = json.loads(chat_file.read_text(encoding="utf-8"))
+                msgs = data.get("messages", [])
+                for m in msgs:
+                    if m.get("role") == "user":
+                        desc = m.get("content", "")[:100]
+                        break
+            except Exception:
+                pass
+        return {
+            "project_id": project_id,
+            "requirement": desc,
+            "status": "completed",
+            "created_at": "",
+            "result": {"is_deployable": True, "files_count": 0, "test_passed": True},
+        }
 
-            return {
-                'project_id': project_id,
-                'requirement': req_data.get('description', ''),
-                'status': 'completed',
-                'created_at': req_data.get('created_at', ''),
-                'result': {
-                    'is_deployable': True,
-                    'files_count': 0,
-                    'test_passed': True
-                }
-            }
-
-        return None
-
-
-# Global task service instance
-task_service = TaskService(Settings())
+    @staticmethod
+    def _guess_language(ext: str) -> str:
+        return {
+            ".py": "python", ".html": "html", ".css": "css", ".js": "javascript",
+            ".json": "json", ".md": "markdown", ".txt": "text", ".yml": "yaml",
+            ".yaml": "yaml", ".toml": "toml", ".cfg": "ini", ".ini": "ini",
+            ".sh": "bash", ".bat": "batch", ".sql": "sql",
+        }.get(ext.lower(), "text")

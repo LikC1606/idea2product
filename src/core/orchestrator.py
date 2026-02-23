@@ -376,3 +376,48 @@ class Orchestrator:
         filepath = artifacts_dir / filename
         write_json(filepath, data)
         self.logger.debug(f"Saved artifact: {filename}")
+
+    def run_from_stage_2(self, project_id: str, requirements: Requirements) -> ValidatedProject:
+        """
+        Run Stage 2 through 4 for an existing project with given requirements.
+        Used for incremental updates: merge new requirements then re-plan and re-generate.
+        Creates/uses project_path = projects_dir / project_id and writes all artifacts there.
+        """
+        project_path = self.settings.projects_dir / project_id
+        ensure_dir(project_path)
+        logs_dir = project_path / "logs"
+        artifacts_dir = project_path / "artifacts"
+        ensure_dir(logs_dir)
+        ensure_dir(artifacts_dir)
+
+        context = ExecutionContext(user_requirement=requirements.description or requirements.title or "App")
+        context.project_id = project_id
+        context.project_path = project_path
+        context.requirements = requirements
+        context.update_stage(1)
+
+        self._save_artifact(artifacts_dir, "01_requirements.json", requirements.model_dump(mode="json"))
+
+        context.update_stage(2)
+        engineering_plan = self.execute_stage_2(context)
+        context.engineering_plan = engineering_plan
+        self._save_artifact(artifacts_dir, "02_engineering_plan.json", engineering_plan.model_dump(mode="json"))
+
+        context.update_stage(3)
+        code_repository = self.execute_stage_3(context)
+        context.code_repository = code_repository
+        self._save_artifact(artifacts_dir, "03_code_repository.json", code_repository.model_dump(mode="json"))
+
+        context.update_stage(4)
+        validated_project = self.execute_stage_4(context)
+        self._save_artifact(artifacts_dir, "context.json", context.to_dict())
+
+        self.logger.info(f"run_from_stage_2 complete for {project_id}")
+        return validated_project
+
+    def run_first_time(self, project_id: str, requirements: Requirements) -> ValidatedProject:
+        """
+        First-time generate for a project: run from Stage 2 with given requirements
+        (Stage 1 output already provided as requirements). Same as run_from_stage_2.
+        """
+        return self.run_from_stage_2(project_id, requirements)

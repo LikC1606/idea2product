@@ -1,287 +1,238 @@
-"""Project API Blueprint."""
+"""Project API Blueprint.
 
-import os
+Endpoints:
+  POST   /api/projects              - create project (legacy or chat-first)
+  GET    /api/projects              - list projects
+  GET    /api/projects/<id>         - project details
+  GET    /api/projects/<id>/status  - generation status
+  POST   /api/projects/<id>/chat    - send message & get reply (auto-triggers generation)
+  GET    /api/projects/<id>/chat    - get chat history
+  GET    /api/projects/<id>/files   - list generated files
+  GET    /api/projects/<id>/file/<path> - get file content
+  GET    /api/projects/<id>/preview-url - get live preview URL
+  DELETE /api/projects/<id>         - delete project
+
+  POST   /api/projects/analyze      - analyze requirement (legacy)
+  POST   /api/projects/clarify      - generate clarification questions (legacy)
+  POST   /api/projects/finalize     - finalize requirement (legacy)
+"""
+
 import json
 from flask import Blueprint, jsonify, request
-from flask_socketio import emit
 
-from src.web.services.task_service import task_service
 from config.settings import Settings
-from src.agents.stage1_requirements.interaction_agent import InteractionAgent
 from src.services.llm_service import LLMService
+from src.agents.stage1_requirements.interaction_agent import InteractionAgent
+from src.web.services import chat_service
+from src.web.services.preview_service import preview_service
 
-bp = Blueprint('projects', __name__, url_prefix='/api/projects')
+bp = Blueprint("projects", __name__, url_prefix="/api/projects")
 
 
-@bp.route('/analyze', methods=['POST'])
-def analyze_requirement():
+def _get_task_service():
+    """Lazy import to avoid circular dependency."""
+    from src.web.services.task_service import TaskService
+    if not hasattr(_get_task_service, "_instance"):
+        _get_task_service._instance = TaskService(Settings())
+    return _get_task_service._instance
+
+
+# ======================================================================
+# Chat-based workflow
+# ======================================================================
+
+@bp.route("", methods=["POST"])
+def create_project():
+    """Create a new project.
+
+    Body options:
+      {"start_chat": true}              → chat-first (no requirement)
+      {"requirement": "Build a ..."}    → legacy one-shot generation
     """
-    Analyze a requirement and generate clarification questions.
+    data = request.get_json(silent=True) or {}
+    ts = _get_task_service()
 
-    Request body:
-    {
-        "requirement": "Build a todo app"
-    }
+    if data.get("start_chat"):
+        project_id = ts.create_chat_project()
+        return jsonify({"project_id": project_id, "status": "idle"}), 201
 
-    Returns:
-    {
-        "needs_clarification": true/false,
-        "questions": [{"question": "...", "reason": "..."}],
-        "improvements": [...]
-    }
-    """
-    data = request.get_json()
-    requirement = data.get('requirement', '')
-
+    requirement = data.get("requirement", "")
     if not requirement:
-        return jsonify({'error': 'requirement is required'}), 400
+        return jsonify({"error": "requirement or start_chat is required"}), 400
 
+    interactive = data.get("interactive", False)
+    clarifications = data.get("clarifications", {})
+    project_id = ts.create_project(requirement, interactive=interactive, clarifications=clarifications)
+    return jsonify({"project_id": project_id, "status": "pending"}), 201
+
+
+@bp.route("/<project_id>/chat", methods=["POST"])
+def post_chat(project_id):
+    """Send a user message, get an assistant reply, auto-trigger generation.
+
+    Body: {"message": "I want a todo app with ..."}
+    Returns: {"reply": "...", "project_id": "..."}
+    """
+    data = request.get_json(silent=True) or {}
+    message = data.get("message", "").strip()
+    if not message:
+        return jsonify({"error": "message is required"}), 400
+
+    settings = Settings()
+
+    chat_service.append_message(settings, project_id, "user", message)
+
+    messages = chat_service.get_messages(settings, project_id)
+
+    try:
+        llm_service = LLMService.from_settings(settings)
+        agent = InteractionAgent(llm_service)
+        reply = agent.reply_in_chat(messages)
+    except Exception as e:
+        reply = f"收到你的需求，正在后台生成中。({e})"
+
+    chat_service.append_message(settings, project_id, "assistant", reply)
+
+    ts = _get_task_service()
+    ts.enqueue_generation(project_id)
+
+    return jsonify({"reply": reply, "project_id": project_id})
+
+
+@bp.route("/<project_id>/chat", methods=["GET"])
+def get_chat(project_id):
+    """Get chat history for a project."""
+    settings = Settings()
+    messages = chat_service.get_messages(settings, project_id)
+    return jsonify({"messages": messages})
+
+
+# ======================================================================
+# Status & files
+# ======================================================================
+
+@bp.route("", methods=["GET"])
+def list_projects():
+    return jsonify({"projects": _get_task_service().list_projects()})
+
+
+@bp.route("/<project_id>", methods=["GET"])
+def get_project(project_id):
+    project = _get_task_service().get_project(project_id)
+    if not project:
+        return jsonify({"error": "Project not found"}), 404
+    return jsonify(project)
+
+
+@bp.route("/<project_id>/status", methods=["GET"])
+def get_project_status(project_id):
+    status = _get_task_service().get_status(project_id)
+    if not status:
+        return jsonify({"error": "Project not found"}), 404
+    return jsonify(status)
+
+
+@bp.route("/<project_id>/files", methods=["GET"])
+def list_project_files(project_id):
+    files = _get_task_service().list_files(project_id)
+    if files is None:
+        return jsonify({"error": "Project not found"}), 404
+    return jsonify({"files": files})
+
+
+@bp.route("/<project_id>/file/<path:file_path>", methods=["GET"])
+def get_project_file(project_id, file_path):
+    content = _get_task_service().get_file(project_id, file_path)
+    if content is None:
+        return jsonify({"error": "File not found"}), 404
+    return jsonify(content)
+
+
+@bp.route("/<project_id>/preview-url", methods=["GET"])
+def get_preview_url(project_id):
+    """Return the live preview URL (if preview is running)."""
+    url = preview_service.get_preview_url(project_id)
+    if not url:
+        return jsonify({"preview_url": None, "running": False})
+    return jsonify({"preview_url": url, "running": True})
+
+
+@bp.route("/<project_id>", methods=["DELETE"])
+def delete_project(project_id):
+    preview_service.stop_preview(project_id)
+    success = _get_task_service().delete_project(project_id)
+    if not success:
+        return jsonify({"error": "Project not found"}), 404
+    return jsonify({"message": "Project deleted"})
+
+
+# ======================================================================
+# Legacy analysis endpoints (kept for backward compat)
+# ======================================================================
+
+@bp.route("/analyze", methods=["POST"])
+def analyze_requirement():
+    data = request.get_json(silent=True) or {}
+    requirement = data.get("requirement", "")
+    if not requirement:
+        return jsonify({"error": "requirement is required"}), 400
     try:
         settings = Settings()
         llm_service = LLMService.from_settings(settings)
         agent = InteractionAgent(llm_service)
-
         analysis = agent.analyze_requirement(requirement)
         return jsonify(analysis)
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({"error": str(e)}), 500
 
 
-@bp.route('/clarify', methods=['POST'])
+@bp.route("/clarify", methods=["POST"])
 def clarify_requirement():
-    """
-    Generate clarification questions for a requirement.
-
-    Request body:
-    {
-        "requirement": "Build a todo app"
-    }
-
-    Returns:
-    {
-        "questions": [{"id": "q1", "category": "...", "question": "..."}]
-    }
-    """
-    data = request.get_json()
-    requirement = data.get('requirement', '')
-
+    data = request.get_json(silent=True) or {}
+    requirement = data.get("requirement", "")
     if not requirement:
-        return jsonify({'error': 'requirement is required'}), 400
-
+        return jsonify({"error": "requirement is required"}), 400
     try:
         settings = Settings()
         llm_service = LLMService.from_settings(settings)
         agent = InteractionAgent(llm_service)
-
         questions = agent.generate_clarification_questions(requirement)
         return jsonify({
-            'questions': [
-                {'id': q.id, 'category': q.category, 'question': q.question}
+            "questions": [
+                {"id": q.id, "category": q.category, "question": q.question}
                 for q in questions
             ]
         })
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({"error": str(e)}), 500
 
 
-@bp.route('/finalize', methods=['POST'])
+@bp.route("/finalize", methods=["POST"])
 def finalize_requirement():
-    """
-    Generate final requirements from initial requirement + clarifications.
-
-    Request body:
-    {
-        "requirement": "Build a todo app",
-        "clarifications": {"question1": "answer1", "question2": "answer2"}
-    }
-
-    Returns:
-    {
-        "title": "...",
-        "description": "...",
-        "features": [...],
-        ...
-    }
-    """
-    data = request.get_json()
-    requirement = data.get('requirement', '')
-    clarifications = data.get('clarifications', {})
-
+    data = request.get_json(silent=True) or {}
+    requirement = data.get("requirement", "")
+    clarifications = data.get("clarifications", {})
     if not requirement:
-        return jsonify({'error': 'requirement is required'}), 400
-
+        return jsonify({"error": "requirement is required"}), 400
     try:
         settings = Settings()
         llm_service = LLMService.from_settings(settings)
         agent = InteractionAgent(llm_service)
-
-        # Create dummy questions list from clarifications
         questions = [
-            type('Question', (), {'id': f'q{i}', 'question': q})()
+            type("Question", (), {"id": f"q{i}", "question": q})()
             for i, q in enumerate(clarifications.keys(), 1)
         ]
-
         final_req = agent._generate_final_requirements(requirement, questions, clarifications)
-
         return jsonify({
-            'title': final_req.title,
-            'description': final_req.description,
-            'features': [
-                {'id': f.id, 'name': f.name, 'description': f.description, 'priority': f.priority}
+            "title": final_req.title,
+            "description": final_req.description,
+            "features": [
+                {"id": f.id, "name": f.name, "description": f.description, "priority": f.priority}
                 for f in final_req.features
             ],
-            'constraints': final_req.constraints,
-            'target_users': final_req.target_users,
-            'data_requirements': final_req.data_requirements
+            "constraints": final_req.constraints,
+            "target_users": final_req.target_users,
+            "data_requirements": final_req.data_requirements,
         })
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
-@bp.route('', methods=['POST'])
-def create_project():
-    """
-    Create a new project.
-
-    Request body:
-    {
-        "requirement": "Build a todo app",
-        "interactive": false  // Optional: enable interactive Q&A mode
-    }
-
-    Returns:
-    {
-        "project_id": "proj_xxx",
-        "status": "pending"
-    }
-    """
-    data = request.get_json()
-    requirement = data.get('requirement', '')
-    interactive = data.get('interactive', False)
-    clarifications = data.get('clarifications', {})
-
-    if not requirement:
-        return jsonify({'error': 'requirement is required'}), 400
-
-    # Create project through task service
-    project_id = task_service.create_project(requirement, interactive=interactive, clarifications=clarifications)
-
-    return jsonify({
-        'project_id': project_id,
-        'status': 'pending',
-        'message': 'Project created, processing started'
-    }), 201
-
-
-@bp.route('', methods=['GET'])
-def list_projects():
-    """
-    List all projects.
-
-    Returns:
-    {
-        "projects": [
-            {
-                "project_id": "proj_xxx",
-                "requirement": "Build a todo app",
-                "status": "completed",
-                "created_at": "2024-01-01T00:00:00"
-            }
-        ]
-    }
-    """
-    projects = task_service.list_projects()
-    return jsonify({'projects': projects})
-
-
-@bp.route('/<project_id>', methods=['GET'])
-def get_project(project_id):
-    """
-    Get project details.
-
-    Returns:
-    {
-        "project_id": "proj_xxx",
-        "requirement": "Build a todo app",
-        "status": "completed",
-        "result": {...}
-    }
-    """
-    project = task_service.get_project(project_id)
-
-    if not project:
-        return jsonify({'error': 'Project not found'}), 404
-
-    return jsonify(project)
-
-
-@bp.route('/<project_id>/status', methods=['GET'])
-def get_project_status(project_id):
-    """
-    Get project status.
-
-    Returns:
-    {
-        "project_id": "proj_xxx",
-        "status": "completed",
-        "progress": 100
-    }
-    """
-    status = task_service.get_status(project_id)
-
-    if not status:
-        return jsonify({'error': 'Project not found'}), 404
-
-    return jsonify(status)
-
-
-@bp.route('/<project_id>/files', methods=['GET'])
-def list_project_files(project_id):
-    """
-    List all files in a project.
-
-    Returns:
-    {
-        "files": [
-            {"path": "app.py", "language": "python"},
-            {"path": "templates/index.html", "language": "html"}
-        ]
-    }
-    """
-    files = task_service.list_files(project_id)
-
-    if files is None:
-        return jsonify({'error': 'Project not found'}), 404
-
-    return jsonify({'files': files})
-
-
-@bp.route('/<project_id>/file/<path:file_path>', methods=['GET'])
-def get_project_file(project_id, file_path):
-    """
-    Get file content.
-
-    Returns:
-    {
-        "path": "app.py",
-        "content": "...",
-        "language": "python"
-    }
-    """
-    content = task_service.get_file(project_id, file_path)
-
-    if content is None:
-        return jsonify({'error': 'File not found'}), 404
-
-    return jsonify(content)
-
-
-@bp.route('/<project_id>', methods=['DELETE'])
-def delete_project(project_id):
-    """Delete a project."""
-    success = task_service.delete_project(project_id)
-
-    if not success:
-        return jsonify({'error': 'Project not found'}), 404
-
-    return jsonify({'message': 'Project deleted'})
+        return jsonify({"error": str(e)}), 500

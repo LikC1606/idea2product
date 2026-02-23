@@ -3,584 +3,602 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Idea2Product - AI应用生成平台</title>
+    <title>Idea2Product - AI Build Studio</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        :root {
+            --bg-primary: #1e1e2e;
+            --bg-secondary: #181825;
+            --bg-surface: #313244;
+            --bg-hover: #45475a;
+            --text-primary: #cdd6f4;
+            --text-secondary: #a6adc8;
+            --text-muted: #6c7086;
+            --accent: #89b4fa;
+            --accent-hover: #74c7ec;
+            --green: #a6e3a1;
+            --red: #f38ba8;
+            --yellow: #f9e2af;
+            --border: #45475a;
+            --radius: 8px;
         }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: #343541;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            height: 100vh;
+            overflow: hidden;
         }
 
+        /* ---- Header ---- */
         .header {
-            background: #343541;
-            border-bottom: 1px solid #565869;
-            padding: 12px 20px;
+            height: 48px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
             display: flex;
             align-items: center;
-            justify-content: space-between;
-            color: white;
+            padding: 0 16px;
+            gap: 12px;
         }
-
-        .header h1 {
-            font-size: 1.2rem;
+        .header .logo { font-weight: 700; font-size: 1rem; color: var(--accent); }
+        .header .new-btn {
+            margin-left: auto;
+            background: var(--accent);
+            color: var(--bg-secondary);
+            border: none;
+            padding: 6px 14px;
+            border-radius: var(--radius);
+            cursor: pointer;
+            font-size: 0.85rem;
             font-weight: 600;
         }
+        .header .new-btn:hover { background: var(--accent-hover); }
 
-        .header .new-chat-btn {
-            background: #10a37f;
-            border: none;
-            color: white;
-            padding: 8px 16px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 0.9rem;
-        }
-
-        .main-container {
-            flex: 1;
+        /* ---- Main layout ---- */
+        .main {
             display: flex;
-            overflow: hidden;
+            height: calc(100vh - 48px);
         }
 
-        .chat-container {
-            flex: 1;
+        /* ---- Left panel: Chat ---- */
+        .panel-chat {
+            width: 420px;
+            min-width: 320px;
             display: flex;
             flex-direction: column;
-            max-width: 900px;
-            margin: 0 auto;
-            width: 100%;
-            padding: 20px;
+            border-right: 1px solid var(--border);
+            background: var(--bg-primary);
+        }
+
+        .chat-messages {
+            flex: 1;
             overflow-y: auto;
-        }
-
-        .message {
+            padding: 16px;
             display: flex;
-            gap: 20px;
-            padding: 20px 0;
-            border-bottom: 1px solid #565869;
+            flex-direction: column;
+            gap: 12px;
         }
 
-        .message.user .message-icon {
-            background: #5436da;
-            color: white;
-        }
-
-        .message.assistant .message-icon {
-            background: #10a37f;
-            color: white;
-        }
-
-        .message-icon {
-            width: 30px;
-            height: 30px;
-            border-radius: 4px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.2rem;
-            flex-shrink: 0;
-        }
-
-        .message-content {
-            flex: 1;
-            color: #ececf1;
-            line-height: 1.6;
-        }
-
-        .questions-section {
-            background: #444654;
-            border-radius: 8px;
-            padding: 15px;
-            margin: 10px 0;
-        }
-
-        .questions-section h4 {
-            color: #ececf1;
-            margin-bottom: 12px;
-            font-size: 0.95rem;
-        }
-
-        .question-item {
-            margin-bottom: 12px;
-        }
-
-        .question-item label {
-            display: block;
-            color: #acacbe;
-            margin-bottom: 6px;
+        .msg {
+            max-width: 92%;
+            padding: 10px 14px;
+            border-radius: var(--radius);
+            line-height: 1.55;
             font-size: 0.9rem;
+            white-space: pre-wrap;
+            word-break: break-word;
         }
-
-        .question-item input {
-            width: 100%;
-            padding: 10px 12px;
-            border: 1px solid #565869;
-            border-radius: 6px;
-            background: #343541;
-            color: #ececf1;
-            font-size: 0.95rem;
+        .msg.user {
+            align-self: flex-end;
+            background: var(--accent);
+            color: var(--bg-secondary);
+            border-bottom-right-radius: 2px;
         }
-
-        .question-item input:focus {
-            outline: none;
-            border-color: #10a37f;
+        .msg.assistant {
+            align-self: flex-start;
+            background: var(--bg-surface);
+            color: var(--text-primary);
+            border-bottom-left-radius: 2px;
         }
-
-        .progress-section {
-            background: #444654;
-            border-radius: 8px;
-            padding: 15px;
-            margin: 10px 0;
-        }
-
-        .progress-section h4 {
-            color: #ececf1;
-            margin-bottom: 12px;
-        }
-
-        .progress-bar-container {
-            background: #343541;
-            border-radius: 10px;
-            height: 20px;
-            overflow: hidden;
-            margin-bottom: 10px;
-        }
-
-        .progress-bar-fill {
-            background: linear-gradient(90deg, #10a37f, #1a7f5a);
-            height: 100%;
-            border-radius: 10px;
-            transition: width 0.3s ease;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
+        .msg.system {
+            align-self: center;
+            background: transparent;
+            color: var(--text-muted);
             font-size: 0.8rem;
-        }
-
-        .progress-text {
-            color: #acacbe;
-            font-size: 0.9rem;
             text-align: center;
         }
 
-        .welcome-screen {
+        .welcome {
             flex: 1;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            color: #ececf1;
-            padding: 40px;
-        }
-
-        .welcome-screen h1 {
-            font-size: 2.5rem;
-            margin-bottom: 20px;
-        }
-
-        .welcome-screen p {
-            color: #acacbe;
-            margin-bottom: 40px;
-            max-width: 500px;
+            padding: 32px;
             text-align: center;
-            line-height: 1.6;
         }
+        .welcome h2 { font-size: 1.4rem; margin-bottom: 8px; color: var(--accent); }
+        .welcome p { color: var(--text-secondary); margin-bottom: 24px; font-size: 0.9rem; line-height: 1.5; }
 
-        .quick-prompts {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 15px;
-            max-width: 600px;
-            width: 100%;
+        .quick-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            justify-content: center;
         }
-
-        .quick-prompt {
-            background: #40414f;
-            border: 1px solid #565869;
-            border-radius: 10px;
-            padding: 15px;
+        .chip {
+            padding: 8px 14px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: 20px;
             cursor: pointer;
-            transition: all 0.2s;
-            color: #ececf1;
+            font-size: 0.82rem;
+            color: var(--text-secondary);
+            transition: all .15s;
         }
+        .chip:hover { border-color: var(--accent); color: var(--accent); }
 
-        .quick-prompt:hover {
-            background: #4a4b5c;
-            border-color: #10a37f;
+        .chat-input-area {
+            padding: 12px 16px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            gap: 8px;
         }
-
-        .quick-prompt h4 {
-            font-size: 0.95rem;
-            margin-bottom: 5px;
-        }
-
-        .quick-prompt p {
-            font-size: 0.8rem;
-            color: #acacbe;
-            margin: 0;
-        }
-
-        .input-container {
-            padding: 20px;
-            background: #343541;
-            border-top: 1px solid #565869;
-        }
-
-        .input-wrapper {
-            max-width: 900px;
-            margin: 0 auto;
-            position: relative;
-        }
-
-        .input-wrapper textarea {
-            width: 100%;
-            padding: 16px 20px;
-            padding-right: 60px;
-            border: 1px solid #565869;
-            border-radius: 12px;
-            background: #40414f;
-            color: #ececf1;
-            font-size: 1rem;
+        .chat-input-area textarea {
+            flex: 1;
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--text-primary);
+            padding: 10px 12px;
+            font-size: 0.9rem;
             font-family: inherit;
             resize: none;
-            min-height: 56px;
-            max-height: 200px;
+            min-height: 42px;
+            max-height: 120px;
         }
-
-        .input-wrapper textarea:focus {
-            outline: none;
-            border-color: #10a37f;
-        }
-
-        .input-wrapper textarea::placeholder {
-            color: #8e8ea0;
-        }
-
-        .send-btn {
-            position: absolute;
-            right: 12px;
-            bottom: 12px;
-            background: #10a37f;
+        .chat-input-area textarea:focus { outline: none; border-color: var(--accent); }
+        .chat-input-area textarea::placeholder { color: var(--text-muted); }
+        .chat-input-area button {
+            width: 42px;
+            height: 42px;
             border: none;
-            color: white;
-            width: 36px;
-            height: 36px;
-            border-radius: 8px;
+            border-radius: var(--radius);
+            background: var(--accent);
+            color: var(--bg-secondary);
             cursor: pointer;
+            font-size: 1.2rem;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 1.2rem;
+            flex-shrink: 0;
+        }
+        .chat-input-area button:hover { background: var(--accent-hover); }
+        .chat-input-area button:disabled { opacity: .4; cursor: default; }
+
+        /* ---- Right panel: Code + Preview ---- */
+        .panel-right {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: var(--bg-secondary);
         }
 
-        .send-btn:hover {
-            background: #1a7f5a;
+        .right-tabs {
+            display: flex;
+            border-bottom: 1px solid var(--border);
+            height: 40px;
         }
-
-        .loading {
+        .right-tab {
+            padding: 0 20px;
             display: flex;
             align-items: center;
-            gap: 10px;
-            color: #acacbe;
-            padding: 10px 0;
-        }
-
-        .spinner {
-            width: 20px;
-            height: 20px;
-            border: 2px solid #565869;
-            border-top-color: #10a37f;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        .hidden {
-            display: none !important;
-        }
-
-        .btn-submit {
-            background: #10a37f;
-            border: none;
-            color: white;
-            padding: 10px 20px;
-            border-radius: 6px;
+            font-size: 0.85rem;
             cursor: pointer;
-            font-size: 0.95rem;
-            margin-top: 15px;
+            border-bottom: 2px solid transparent;
+            color: var(--text-secondary);
+            transition: all .15s;
+        }
+        .right-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+        .right-tab:hover { color: var(--text-primary); }
+
+        .right-content {
+            flex: 1;
+            overflow: hidden;
+            position: relative;
+        }
+        .tab-pane {
+            display: none;
+            position: absolute;
+            inset: 0;
+        }
+        .tab-pane.active { display: flex; }
+
+        /* Code pane */
+        .code-pane { display: flex; }
+        .file-tree {
+            width: 220px;
+            overflow-y: auto;
+            border-right: 1px solid var(--border);
+            padding: 8px 0;
+            background: var(--bg-primary);
+        }
+        .file-item {
+            padding: 6px 16px;
+            font-size: 0.82rem;
+            cursor: pointer;
+            color: var(--text-secondary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .file-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+        .file-item.active { background: var(--bg-surface); color: var(--accent); }
+
+        .code-viewer {
+            flex: 1;
+            overflow: auto;
+            padding: 16px;
+        }
+        .code-viewer pre {
+            margin: 0;
+            font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
+            font-size: 0.82rem;
+            line-height: 1.6;
+            color: var(--text-primary);
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .code-viewer .placeholder {
+            color: var(--text-muted);
+            text-align: center;
+            margin-top: 80px;
+            font-size: 0.9rem;
         }
 
-        .btn-submit:hover {
-            background: #1a7f5a;
+        /* Preview pane */
+        .preview-pane {
+            flex-direction: column;
         }
+        .preview-pane iframe {
+            flex: 1;
+            border: none;
+            background: #fff;
+        }
+        .preview-pane .no-preview {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        /* Status bar */
+        .status-bar {
+            height: 28px;
+            background: var(--bg-secondary);
+            border-top: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            padding: 0 16px;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            gap: 16px;
+        }
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 6px;
+        }
+        .status-dot.idle { background: var(--text-muted); }
+        .status-dot.processing { background: var(--yellow); animation: pulse 1s infinite; }
+        .status-dot.completed { background: var(--green); }
+        .status-dot.failed { background: var(--red); }
+
+        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+
+        .typing-indicator { display: flex; gap: 4px; padding: 10px 14px; }
+        .typing-indicator span {
+            width: 7px; height: 7px; background: var(--text-muted);
+            border-radius: 50%; animation: bounce .6s infinite alternate;
+        }
+        .typing-indicator span:nth-child(2) { animation-delay: .2s; }
+        .typing-indicator span:nth-child(3) { animation-delay: .4s; }
+        @keyframes bounce { to { transform: translateY(-5px); opacity: .4; } }
     </style>
 </head>
 <body>
     <div class="header">
-        <h1>Idea2Product</h1>
-        <button class="new-chat-btn" onclick="startNewChat()">新建对话</button>
+        <span class="logo">Idea2Product</span>
+        <button class="new-btn" onclick="newProject()">+ New Project</button>
     </div>
 
-    <div class="main-container">
-        <div class="chat-container" id="chatContainer">
-            <div class="welcome-screen" id="welcomeScreen">
-                <h1>Idea2Product</h1>
-                <p>描述你想要的应用功能，AI将自动生成完整的代码并部署</p>
-
-                <div class="quick-prompts">
-                    <div class="quick-prompt" onclick="sendMessage('创建一个待办事项应用，支持添加、删除和完成待办')">
-                        <h4>待办事项应用</h4>
-                        <p>添加、删除、完成待办事项</p>
-                    </div>
-                    <div class="quick-prompt" onclick="sendMessage('创建一个博客系统，支持文章发布和评论')">
-                        <h4>博客系统</h4>
-                        <p>文章发布、评论功能</p>
-                    </div>
-                    <div class="quick-prompt" onclick="sendMessage('创建一个天气预报应用，显示未来一周天气')">
-                        <h4>天气预报应用</h4>
-                        <p>获取并展示天气预报</p>
-                    </div>
-                    <div class="quick-prompt" onclick="sendMessage('创建一个在线笔记应用，支持Markdown编辑')">
-                        <h4>在线笔记</h4>
-                        <p>Markdown编辑器</p>
+    <div class="main">
+        <!-- Left: Chat -->
+        <div class="panel-chat">
+            <div class="chat-messages" id="chatMessages">
+                <div class="welcome" id="welcome">
+                    <h2>Idea2Product</h2>
+                    <p>描述你想要的应用，AI 将在后台自动生成。<br>你可以随时补充需求，持续改进。</p>
+                    <div class="quick-chips">
+                        <span class="chip" onclick="quickSend('创建一个待办事项应用，支持添加、删除和标记完成')">待办事项</span>
+                        <span class="chip" onclick="quickSend('创建一个博客系统，支持文章发布和评论')">博客系统</span>
+                        <span class="chip" onclick="quickSend('创建一个在线笔记应用，支持Markdown')">在线笔记</span>
+                        <span class="chip" onclick="quickSend('创建一个天气查询应用')">天气查询</span>
                     </div>
                 </div>
             </div>
+            <div class="chat-input-area">
+                <textarea id="chatInput" placeholder="描述你想要的应用..." rows="1"
+                          onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMsg()}"></textarea>
+                <button id="sendBtn" onclick="sendMsg()">&#x2191;</button>
+            </div>
+        </div>
 
-            <div id="messagesContainer" class="hidden"></div>
+        <!-- Right: Code / Preview -->
+        <div class="panel-right">
+            <div class="right-tabs">
+                <div class="right-tab active" data-tab="code" onclick="switchTab('code')">Code</div>
+                <div class="right-tab" data-tab="preview" onclick="switchTab('preview')">Preview</div>
+            </div>
+            <div class="right-content">
+                <div class="tab-pane code-pane active" id="paneCode">
+                    <div class="file-tree" id="fileTree">
+                        <div class="file-item" style="color:var(--text-muted);cursor:default;">等待生成...</div>
+                    </div>
+                    <div class="code-viewer" id="codeViewer">
+                        <div class="placeholder">选择左侧文件查看代码</div>
+                    </div>
+                </div>
+                <div class="tab-pane preview-pane" id="panePreview">
+                    <div class="no-preview" id="noPreview">生成完成后将显示应用预览</div>
+                    <iframe id="previewFrame" style="display:none;"></iframe>
+                </div>
+            </div>
         </div>
     </div>
 
-    <div class="input-container">
-        <div class="input-wrapper">
-            <textarea id="userInput" placeholder="描述你想要的应用功能..." rows="1" onkeydown="handleKeyDown(event)"></textarea>
-            <button class="send-btn" id="sendBtn" onclick="handleSend()">↑</button>
-        </div>
+    <div class="status-bar">
+        <span><span class="status-dot idle" id="statusDot"></span><span id="statusText">Ready</span></span>
+        <span id="statusStage"></span>
     </div>
 
-    <script>
-        let currentProjectId = null;
-        let pollInterval = null;
-        let isWaitingForClarifications = false;
-        let currentRequirement = '';
-        let currentClarifications = {};
+<script>
+let projectId = null;
+let pollTimer = null;
+let sending = false;
+let currentFile = null;
 
-        function handleKeyDown(event) {
-            if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault();
-                handleSend();
-            }
+// ---- Project lifecycle ----
+
+async function newProject() {
+    stopPolling();
+    projectId = null;
+    currentFile = null;
+    document.getElementById('chatMessages').innerHTML = `
+        <div class="welcome" id="welcome">
+            <h2>Idea2Product</h2>
+            <p>描述你想要的应用，AI 将在后台自动生成。<br>你可以随时补充需求，持续改进。</p>
+            <div class="quick-chips">
+                <span class="chip" onclick="quickSend('创建一个待办事项应用，支持添加、删除和标记完成')">待办事项</span>
+                <span class="chip" onclick="quickSend('创建一个博客系统，支持文章发布和评论')">博客系统</span>
+                <span class="chip" onclick="quickSend('创建一个在线笔记应用，支持Markdown')">在线笔记</span>
+                <span class="chip" onclick="quickSend('创建一个天气查询应用')">天气查询</span>
+            </div>
+        </div>`;
+    document.getElementById('fileTree').innerHTML = '<div class="file-item" style="color:var(--text-muted);cursor:default;">等待生成...</div>';
+    document.getElementById('codeViewer').innerHTML = '<div class="placeholder">选择左侧文件查看代码</div>';
+    document.getElementById('previewFrame').style.display = 'none';
+    document.getElementById('noPreview').style.display = 'flex';
+    setStatus('idle', 'Ready', '');
+}
+
+async function ensureProject() {
+    if (projectId) return;
+    const res = await fetch('/api/projects', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({start_chat: true})
+    });
+    const data = await res.json();
+    projectId = data.project_id;
+}
+
+// ---- Chat ----
+
+function quickSend(text) {
+    document.getElementById('chatInput').value = text;
+    sendMsg();
+}
+
+async function sendMsg() {
+    const input = document.getElementById('chatInput');
+    const text = input.value.trim();
+    if (!text || sending) return;
+    input.value = '';
+
+    const wel = document.getElementById('welcome');
+    if (wel) wel.remove();
+
+    appendMsg('user', text);
+    sending = true;
+    document.getElementById('sendBtn').disabled = true;
+
+    showTyping();
+
+    try {
+        await ensureProject();
+        const res = await fetch(`/api/projects/${projectId}/chat`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({message: text})
+        });
+        const data = await res.json();
+        removeTyping();
+        if (data.reply) {
+            appendMsg('assistant', data.reply);
         }
+        startPolling();
+    } catch (err) {
+        removeTyping();
+        appendMsg('system', '发送失败: ' + err.message);
+    } finally {
+        sending = false;
+        document.getElementById('sendBtn').disabled = false;
+        input.focus();
+    }
+}
 
-        function startNewChat() {
-            document.getElementById('welcomeScreen').classList.remove('hidden');
-            document.getElementById('messagesContainer').classList.add('hidden');
-            document.getElementById('messagesContainer').innerHTML = '';
-            currentProjectId = null;
-            isWaitingForClarifications = false;
-            if (pollInterval) {
-                clearInterval(pollInterval);
-                pollInterval = null;
-            }
+function appendMsg(role, text) {
+    const container = document.getElementById('chatMessages');
+    const div = document.createElement('div');
+    div.className = 'msg ' + role;
+    div.textContent = text;
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+}
+
+function showTyping() {
+    const container = document.getElementById('chatMessages');
+    let el = document.getElementById('typingIndicator');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'typingIndicator';
+        el.className = 'typing-indicator';
+        el.innerHTML = '<span></span><span></span><span></span>';
+    }
+    container.appendChild(el);
+    container.scrollTop = container.scrollHeight;
+}
+
+function removeTyping() {
+    const el = document.getElementById('typingIndicator');
+    if (el) el.remove();
+}
+
+// ---- Polling ----
+
+function startPolling() {
+    if (pollTimer) return;
+    pollTimer = setInterval(pollStatus, 2500);
+    pollStatus();
+}
+
+function stopPolling() {
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+
+async function pollStatus() {
+    if (!projectId) return;
+    try {
+        const res = await fetch(`/api/projects/${projectId}/status`);
+        const s = await res.json();
+        const status = s.status || 'idle';
+        setStatus(status, statusLabel(status, s.progress), s.current_stage || '');
+
+        if (status === 'processing' || status === 'completed') {
+            refreshFiles();
         }
-
-        async function handleSend() {
-            const input = document.getElementById('userInput');
-            const message = input.value.trim();
-            if (!message) return;
-            await sendMessage(message);
+        if (status === 'completed') {
+            refreshPreview();
+            stopPolling();
         }
-
-        async function sendMessage(message) {
-            const input = document.getElementById('userInput');
-            input.value = '';
-
-            document.getElementById('welcomeScreen').classList.add('hidden');
-            document.getElementById('messagesContainer').classList.remove('hidden');
-
-            addMessage('user', message);
-
-            const loadingId = showLoading();
-
-            if (isWaitingForClarifications) {
-                currentClarifications[getCurrentQuestion()] = message;
-                const pendingInputs = document.querySelectorAll('.question-item input:not([data-answered="true"])');
-                if (pendingInputs.length > 0) {
-                    pendingInputs[0].setAttribute('data-answered', 'true');
-                    pendingInputs[0].value = message;
-                    showNextQuestion();
-                    removeLoading(loadingId);
-                    return;
-                }
-                isWaitingForClarifications = false;
-                await createProjectWithClarifications(currentRequirement, currentClarifications);
-                removeLoading(loadingId);
-                return;
-            }
-
-            currentRequirement = message;
-
-            try {
-                const response = await fetch('/api/projects/clarify', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({requirement: message})
-                });
-
-                const data = await response.json();
-                removeLoading(loadingId);
-
-                if (data.questions && data.questions.length > 0) {
-                    showClarificationQuestions(data.questions);
-                } else {
-                    await createProjectDirect(message);
-                }
-            } catch (error) {
-                removeLoading(loadingId);
-                addMessage('assistant', '抱歉，发生了错误: ' + error.message);
-            }
+        if (status === 'failed') {
+            stopPolling();
         }
+    } catch (e) { /* ignore */ }
+}
 
-        function showClarificationQuestions(questions) {
-            let html = '<div class="questions-section"><h4>请回答以下问题以完善需求：</h4>';
-            questions.forEach((q, i) => {
-                html += `<div class="question-item" id="question_${i}"><label>${q.question}</label><input type="text" placeholder="请输入..." data-question="${q.question}"></div>`;
-            });
-            html += '<button class="btn-submit" onclick="submitClarifications()">确认并生成</button></div>';
-            addMessage('assistant', html);
-            isWaitingForClarifications = true;
-            currentClarifications = {};
+function statusLabel(status, progress) {
+    if (status === 'processing') return `Generating... ${progress || 0}%`;
+    if (status === 'completed') return 'Done';
+    if (status === 'failed') return 'Failed';
+    return 'Ready';
+}
+
+function setStatus(status, text, stage) {
+    const dot = document.getElementById('statusDot');
+    dot.className = 'status-dot ' + status;
+    document.getElementById('statusText').textContent = text;
+    document.getElementById('statusStage').textContent = stage;
+}
+
+// ---- Files panel ----
+
+async function refreshFiles() {
+    if (!projectId) return;
+    try {
+        const res = await fetch(`/api/projects/${projectId}/files`);
+        const data = await res.json();
+        const tree = document.getElementById('fileTree');
+        if (!data.files || data.files.length === 0) return;
+
+        tree.innerHTML = '';
+        data.files.forEach(f => {
+            const div = document.createElement('div');
+            div.className = 'file-item' + (f.path === currentFile ? ' active' : '');
+            div.textContent = f.path;
+            div.title = f.path;
+            div.onclick = () => loadFile(f.path);
+            tree.appendChild(div);
+        });
+
+        if (!currentFile && data.files.length > 0) {
+            loadFile(data.files[0].path);
         }
+    } catch (e) { /* ignore */ }
+}
 
-        function getCurrentQuestion() {
-            const firstUnanswered = document.querySelector('.question-item input:not([data-answered="true"])');
-            return firstUnanswered ? firstUnanswered.dataset.question : '';
+async function loadFile(path) {
+    if (!projectId) return;
+    currentFile = path;
+    document.querySelectorAll('.file-item').forEach(el => {
+        el.classList.toggle('active', el.textContent === path);
+    });
+    try {
+        const res = await fetch(`/api/projects/${projectId}/file/${encodeURIComponent(path)}`);
+        const data = await res.json();
+        document.getElementById('codeViewer').innerHTML = '<pre>' + escapeHtml(data.content || '') + '</pre>';
+    } catch (e) {
+        document.getElementById('codeViewer').innerHTML = '<div class="placeholder">Failed to load file</div>';
+    }
+}
+
+// ---- Preview panel ----
+
+async function refreshPreview() {
+    if (!projectId) return;
+    try {
+        const res = await fetch(`/api/projects/${projectId}/preview-url`);
+        const data = await res.json();
+        if (data.running && data.preview_url) {
+            const frame = document.getElementById('previewFrame');
+            frame.src = data.preview_url;
+            frame.style.display = 'block';
+            document.getElementById('noPreview').style.display = 'none';
         }
+    } catch (e) { /* ignore */ }
+}
 
-        function showNextQuestion() {
-            const nextInput = document.querySelector('.question-item input:not([data-answered="true"])');
-            if (nextInput) nextInput.focus();
-        }
+// ---- Tab switching ----
 
-        function submitClarifications() {
-            const inputs = document.querySelectorAll('.question-item input');
-            inputs.forEach(input => {
-                currentClarifications[input.dataset.question] = input.value;
-            });
-            createProjectWithClarifications(currentRequirement, currentClarifications);
-        }
+function switchTab(tab) {
+    document.querySelectorAll('.right-tab').forEach(el => el.classList.toggle('active', el.dataset.tab === tab));
+    document.querySelectorAll('.tab-pane').forEach(el => el.classList.remove('active'));
+    document.getElementById(tab === 'code' ? 'paneCode' : 'panePreview').classList.add('active');
+}
 
-        async function createProjectDirect(requirement) {
-            addMessage('assistant', '<div class="progress-section"><h4>正在创建项目...</h4><p>AI正在分析需求并生成代码</p></div>');
-            try {
-                const response = await fetch('/api/projects', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({requirement})
-                });
-                const data = await response.json();
-                if (data.project_id) {
-                    currentProjectId = data.project_id;
-                    startPolling();
-                } else {
-                    addMessage('assistant', '创建失败: ' + (data.error || '未知错误'));
-                }
-            } catch (error) {
-                addMessage('assistant', '创建失败: ' + error.message);
-            }
-        }
+// ---- Helpers ----
 
-        async function createProjectWithClarifications(requirement, clarifications) {
-            let summaryHtml = '<div class="questions-section"><h4>需求已完善：</h4>';
-            for (const [q, a] of Object.entries(clarifications)) {
-                summaryHtml += `<p><strong>${q}</strong>: ${a}</p>`;
-            }
-            summaryHtml += '</div>';
-            addMessage('assistant', summaryHtml);
-            addMessage('assistant', '<div class="progress-section" id="progressSection"><h4>正在生成应用...</h4><div class="progress-bar-container"><div class="progress-bar-fill" id="progressFill" style="width: 0%">0%</div></div><p class="progress-text" id="progressText">正在初始化...</p></div>');
-
-            try {
-                const response = await fetch('/api/projects', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({requirement, clarifications, interactive: true})
-                });
-                const data = await response.json();
-                if (data.project_id) {
-                    currentProjectId = data.project_id;
-                    startPolling();
-                } else {
-                    addMessage('assistant', '创建失败: ' + (data.error || '未知错误'));
-                }
-            } catch (error) {
-                addMessage('assistant', '创建失败: ' + error.message);
-            }
-        }
-
-        function startPolling() {
-            if (pollInterval) clearInterval(pollInterval);
-            pollInterval = setInterval(async () => {
-                if (!currentProjectId) return;
-                try {
-                    const response = await fetch(`/api/projects/${currentProjectId}/status`);
-                    const status = await response.json();
-                    updateProgress(status);
-                    if (status.status === 'completed' || status.status === 'failed') {
-                        clearInterval(pollInterval);
-                        pollInterval = null;
-                        if (status.status === 'completed') {
-                            addMessage('assistant', '<div class="questions-section" style="background: #1a7f5a;"><h4>项目创建成功！</h4></div>');
-                        } else {
-                            addMessage('assistant', '<div class="questions-section" style="background: #7f1a1a;"><h4>项目创建失败</h4><p>' + (status.error || '未知错误') + '</p></div>');
-                        }
-                    }
-                } catch (error) {
-                    console.error('Poll error:', error);
-                }
-            }, 2000);
-        }
-
-        function updateProgress(status) {
-            const progressFill = document.getElementById('progressFill');
-            const progressText = document.getElementById('progressText');
-            if (progressFill) {
-                progressFill.style.width = status.progress + '%';
-                progressFill.textContent = status.progress + '%';
-            }
-            if (progressText) {
-                progressText.textContent = (status.current_stage || '处理中...') + ' (' + status.progress + '%)';
-            }
-        }
-
-        function addMessage(role, content) {
-            const container = document.getElementById('messagesContainer');
-            const icon = role === 'user' ? '👤' : '💡';
-            container.insertAdjacentHTML('beforeend', '<div class="message ' + role + '"><div class="message-icon">' + icon + '</div><div class="message-content">' + content + '</div></div>');
-            container.scrollTop = container.scrollHeight;
-        }
-
-        function showLoading() {
-            const id = 'loading_' + Date.now();
-            addMessage('assistant', '<div class="loading" id="' + id + '"><div class="spinner"></div><span>AI正在思考...</span></div>');
-            return id;
-        }
-
-        function removeLoading(id) {
-            const el = document.getElementById(id);
-            if (el) el.remove();
-        }
-    </script>
+function escapeHtml(s) {
+    const map = {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'};
+    return s.replace(/[&<>"']/g, c => map[c]);
+}
+</script>
 </body>
 </html>

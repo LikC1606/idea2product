@@ -191,11 +191,12 @@ Respond with valid JSON only.
 
         except Exception as e:
             logger.warning(f"Requirement analysis failed: {e}")
+            fallback_qs = self._default_questions(requirement)
             return {
                 "needs_clarification": True,
                 "questions": [
-                    {"question": "请描述应用的核心功能", "reason": "需要明确功能"},
-                    {"question": "数据如何存储？", "reason": "需要明确存储方案"}
+                    {"question": q.question, "reason": "LLM unavailable; keyword-based fallback"}
+                    for q in fallback_qs
                 ],
                 "improvements": []
             }
@@ -204,43 +205,83 @@ Respond with valid JSON only.
     # Interactive Dialogue Methods
     # =========================================================================
 
-    def generate_clarification_questions(self, requirement: str) -> List[ClarificationQuestion]:
+    def generate_clarification_questions(
+        self,
+        requirement: str,
+        analysis_result: Optional[dict] = None,
+    ) -> List[ClarificationQuestion]:
         """
-        Generate clarification questions based on the user requirement.
+        Generate clarification questions tailored to the specific requirement.
 
         Args:
             requirement: The initial user requirement
+            analysis_result: Optional output from analyze_requirement(); when
+                provided, its identified gaps are injected into the prompt so
+                the generated questions stay focused on those gaps.
 
         Returns:
             List of ClarificationQuestion objects
         """
-        prompt = f"""
-You are a requirements analyst helping clarify user needs. Analyze the following
-requirement and generate clarification questions to better understand the user's needs.
+        # Build an optional "gaps" section from a prior analysis
+        gaps_section = ""
+        if analysis_result:
+            gap_reasons = [
+                q.get("reason", "")
+                for q in analysis_result.get("questions", [])
+                if q.get("reason")
+            ]
+            if gap_reasons:
+                gaps_section = (
+                    "\n## Identified gaps from prior analysis (focus on these)\n"
+                    + "\n".join(f"- {r}" for r in gap_reasons[:6])
+                    + "\n"
+                )
 
-Generate 3-6 questions that cover these aspects:
-1. FUNCTIONAL: What exactly should the feature do? Any specific behaviors?
-2. DATA: How should data be stored? What fields are needed?
-3. USERS: Who are the target users? Any authentication needs?
-4. UI: Any specific UI preferences or layouts?
-5. TECHNICAL: Any specific tech stack or deployment requirements?
+        prompt = f"""You are a requirements analyst. Based on the user requirement below,
+generate 3-6 clarification questions that are **specific to this requirement**.
 
-Return a JSON array of questions, each with:
-{{
-    "id": "q1", "category": "functional|data|users|ui|technical",
-    "question": "The question text"
-}}
+## Rules
+- Every question MUST address a concrete gap, ambiguity, or missing detail in
+  THIS requirement. Do NOT ask generic questions that could apply to any app.
+- You may optionally assign a category (functional / data / users / ui / technical)
+  but only when the question genuinely belongs to that category. Do NOT force one
+  question per category.
+- The question language should match the user's requirement language.
 
-User Requirement:
+## Good / bad examples
+
+Requirement: "Build a todo app with add and delete"
+  GOOD: "Should tasks have a due date or priority level?"
+  GOOD: "Do you need to group tasks by category or tag?"
+  BAD:  "Who are the target users?" (too generic)
+  BAD:  "How should data be stored?" (implementation detail, not a requirement gap)
+
+Requirement: "Build a blog with comments"
+  GOOD: "Should comments support nested replies or only top-level?"
+  GOOD: "Can multiple authors publish posts, or is it single-author?"
+  BAD:  "What are the core features?" (already stated: blog + comments)
+
+Requirement: "Build a calculator with add, subtract, multiply, divide"
+  GOOD: "Should it support parentheses and operator precedence?"
+  GOOD: "Do you need a calculation history panel?"
+  BAD:  "What interaction method?" (obvious for a calculator)
+{gaps_section}
+## User Requirement
+
 {requirement}
 
-Respond with a valid JSON array only.
+## Output
+
+Return a JSON array (no markdown fences):
+[
+  {{"id": "q1", "category": "functional", "question": "..."}},
+  ...
+]
 """
         try:
             result = self.llm_service.generate_json(prompt)
             questions = []
 
-            # Handle both list and dict responses
             items = result if isinstance(result, list) else result.get("questions", [])
 
             for i, q in enumerate(items, 1):
@@ -258,22 +299,79 @@ Respond with a valid JSON array only.
             return self._default_questions(requirement)
 
     def _default_questions(self, requirement: str) -> List[ClarificationQuestion]:
-        """Fallback default questions when LLM is not available."""
+        """Keyword-based fallback questions when LLM is not available.
+
+        Instead of returning the same 3 generic questions for every requirement,
+        this method detects the application type from the requirement text and
+        returns questions relevant to that type.
+        """
+        req_lower = requirement.lower()
+
+        _DOMAIN_QUESTIONS: Dict[str, List[str]] = {
+            "todo": [
+                "Should tasks have a due date or priority level?",
+                "Do you need to organize tasks by category or tag?",
+                "Should completed tasks be archived or permanently deleted?",
+            ],
+            "blog": [
+                "Should comments support nested replies?",
+                "Can multiple authors publish posts, or single-author only?",
+                "Do you need rich-text editing or Markdown for posts?",
+            ],
+            "calculator": [
+                "Should it support parentheses and operator precedence?",
+                "Do you need a calculation history panel?",
+                "Should it handle scientific operations (sin, cos, log)?",
+            ],
+            "weather": [
+                "Should it show a multi-day forecast or current weather only?",
+                "Should the user search by city name or use their GPS location?",
+                "Do you need weather alerts or notifications?",
+            ],
+            "chat": [
+                "Should it support group conversations or 1-on-1 only?",
+                "Do you need message history persistence?",
+                "Should it support file/image sharing?",
+            ],
+            "note": [
+                "Should notes support rich formatting (bold, lists, images)?",
+                "Do you need folders or tags to organize notes?",
+                "Should notes sync across devices?",
+            ],
+            "shop": [
+                "Should there be a shopping cart and checkout flow?",
+                "Do you need product categories and search/filtering?",
+                "Should it support user reviews and ratings?",
+            ],
+        }
+
+        _DOMAIN_KEYWORDS: Dict[str, List[str]] = {
+            "todo": ["todo", "task", "待办", "任务"],
+            "blog": ["blog", "post", "article", "博客", "文章"],
+            "calculator": ["calculator", "calculate", "计算器", "计算"],
+            "weather": ["weather", "forecast", "天气", "预报"],
+            "chat": ["chat", "message", "聊天", "消息", "即时通讯"],
+            "note": ["note", "notebook", "笔记", "记事"],
+            "shop": ["shop", "store", "ecommerce", "商城", "商店", "购物"],
+        }
+
+        for domain, keywords in _DOMAIN_KEYWORDS.items():
+            if any(kw in req_lower for kw in keywords):
+                return [
+                    ClarificationQuestion(id=f"q{i+1}", category="functional", question=q)
+                    for i, q in enumerate(_DOMAIN_QUESTIONS[domain])
+                ]
+
         return [
             ClarificationQuestion(
                 id="q1",
                 category="functional",
-                question="What are the core features you need?"
+                question=f"What specific behaviors should the app have beyond '{requirement[:60]}'?",
             ),
             ClarificationQuestion(
                 id="q2",
-                category="data",
-                question="How should data be stored (local file, database, cloud)?"
-            ),
-            ClarificationQuestion(
-                id="q3",
-                category="users",
-                question="Do users need to log in?"
+                category="functional",
+                question="Are there any features you consider must-have vs nice-to-have?",
             ),
         ]
 
@@ -333,7 +431,9 @@ Respond with a valid JSON array only.
                 ))
             logger.info(f"Using {len(questions)} questions from analysis")
         else:
-            questions = self.generate_clarification_questions(requirement)
+            questions = self.generate_clarification_questions(
+                requirement, analysis_result=analysis
+            )
 
         print(f"\n需要澄清 {len(questions)} 个问题:")
         print("输入回答后按回车 (直接回车跳过)\n")
@@ -477,3 +577,120 @@ Respond with valid JSON only.
             data_requirements=clarifications.get("How should data be stored?"),
             user_clarifications=clarifications
         )
+
+    # =========================================================================
+    # Build-style: chat reply, conversation -> requirements, merge requirements
+    # =========================================================================
+
+    def reply_in_chat(self, messages: List[Dict[str, str]]) -> str:
+        """
+        Generate an assistant reply given conversation history (no pipeline).
+        Used for ChatGPT-style continuous dialogue.
+        """
+        if not messages:
+            return "请描述你想要的应用或功能，我会根据你的描述在后台生成产品。你可以随时补充需求，我会在已有基础上改进。"
+        system = """You are a friendly requirements analyst. The user is describing an app they want to build.
+Have a natural conversation to clarify their needs. When you have enough information, you can suggest they're ready;
+the system will automatically generate the app in the background. Keep replies concise. Use the same language as the user."""
+        conv = "\n".join(
+            f"{'User' if m.get('role') == 'user' else 'Assistant'}: {m.get('content', '')}"
+            for m in messages[-20:]
+        )
+        prompt = f"Conversation so far:\n{conv}\n\nRespond as the assistant (one message only):"
+        try:
+            return self.llm_service.generate(prompt, system=system)
+        except Exception as e:
+            logger.warning(f"reply_in_chat failed: {e}")
+            return "已收到。我会根据当前对话在后台生成或更新应用，你可以在右侧查看代码和预览。"
+
+    def conversation_to_requirements(self, messages: List[Dict[str, str]]) -> Requirements:
+        """
+        Turn full conversation history into a single Requirements object (for first-time generate).
+        """
+        conv = "\n".join(
+            f"{m.get('role', 'user').upper()}: {m.get('content', '')}"
+            for m in messages
+        )
+        prompt = f"""Based on this conversation about an app, output a single JSON object for the application requirements.
+Conversation:
+{conv}
+
+Output JSON only:
+{{
+    "title": "Short app title",
+    "description": "2-3 sentence description",
+    "features": [{{"id": "f1", "name": "...", "description": "...", "priority": 1}}],
+    "constraints": [],
+    "target_users": "...",
+    "data_requirements": "..."
+}}
+"""
+        try:
+            result = self.llm_service.generate_json(prompt)
+            features = []
+            for i, f in enumerate(result.get("features", []), 1):
+                features.append(Feature(
+                    id=f.get("id", f"f{i}"),
+                    name=f.get("name", f"Feature {i}"),
+                    description=f.get("description", ""),
+                    priority=f.get("priority", 3)
+                ))
+            return Requirements(
+                title=result.get("title", "Generated Application"),
+                description=result.get("description", ""),
+                features=features,
+                constraints=result.get("constraints", []),
+                target_users=result.get("target_users"),
+                data_requirements=result.get("data_requirements")
+            )
+        except Exception as e:
+            logger.warning(f"conversation_to_requirements failed: {e}")
+            last_user = next((m.get("content", "") for m in reversed(messages) if m.get("role") == "user"), "")
+            return self._fallback_parse(last_user or "Web application")
+
+    def merge_requirements(
+        self,
+        existing: Requirements,
+        new_message: str,
+        recent_messages: Optional[List[Dict[str, str]]] = None,
+    ) -> Requirements:
+        """
+        Merge new user request into existing Requirements (for incremental generate).
+        """
+        existing_json = existing.model_dump(mode="json")
+        existing_str = json.dumps(existing_json, indent=2, ensure_ascii=False)[:2500]
+        extra = ""
+        if recent_messages:
+            extra = "\nRecent messages:\n" + "\n".join(
+                f"{m.get('role')}: {m.get('content', '')}" for m in recent_messages[-5:]
+            )
+        prompt = f"""Existing requirements (JSON):
+{existing_str}
+
+New user request: {new_message}
+{extra}
+
+Output the UPDATED requirements as a single JSON object (same structure: title, description, features, constraints, target_users, data_requirements).
+Incorporate the new request into features or description. Do not remove existing features unless the user explicitly asks to remove something.
+Respond with valid JSON only."""
+        try:
+            result = self.llm_service.generate_json(prompt)
+            features = []
+            for i, f in enumerate(result.get("features", []), 1):
+                features.append(Feature(
+                    id=f.get("id", f"f{i}"),
+                    name=f.get("name", f"Feature {i}"),
+                    description=f.get("description", ""),
+                    priority=f.get("priority", 3)
+                ))
+            return Requirements(
+                title=result.get("title", existing.title),
+                description=result.get("description", existing.description),
+                features=features,
+                constraints=result.get("constraints", existing.constraints),
+                target_users=result.get("target_users") or existing.target_users,
+                data_requirements=result.get("data_requirements") or existing.data_requirements
+            )
+        except Exception as e:
+            logger.warning(f"merge_requirements failed: {e}")
+            return existing
