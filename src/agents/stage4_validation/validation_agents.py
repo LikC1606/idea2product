@@ -117,11 +117,12 @@ class FullCycleTestingAgent:
             ))
             return errors
 
-        # 使用 subprocess 启动应用并测试
+        self._install_project_deps(project_path)
+
         import subprocess
         import time
 
-        port = 5555  # 使用固定端口避免冲突
+        port = 5555
 
         logger.info(f"Starting {entry_file} on port {port}...")
 
@@ -504,37 +505,7 @@ class FullCycleTestingAgent:
 
         logger.info(f"Running {len(test_files)} test files...")
 
-        # Create a virtual environment or use existing one
-        # First, install dependencies
-        req_file = project_path / "requirements.txt"
-        if req_file.exists():
-            logger.info("Installing dependencies...")
-            try:
-                # Install requirements (only actual pip packages, filter out non-pip items)
-                req_content = req_file.read_text()
-                # Filter to only actual pip packages
-                valid_packages = ['flask', 'sqlalchemy', 'werkzeug', 'Pillow', 'openai']
-                packages_to_install = []
-                for line in req_content.strip().split('\n'):
-                    pkg = line.strip()
-                    if pkg and not pkg.startswith('#'):
-                        # Only install known working packages
-                        for valid in valid_packages:
-                            if valid.lower() in pkg.lower():
-                                packages_to_install.append(valid)
-                                break
-
-                if packages_to_install:
-                    install_result = subprocess.run(
-                        [sys.executable, "-m", "pip", "install", "-q"] + packages_to_install,
-                        capture_output=True,
-                        text=True,
-                        timeout=120
-                    )
-                    if install_result.returncode != 0:
-                        logger.warning(f"Failed to install some dependencies: {install_result.stderr}")
-            except Exception as e:
-                logger.warning(f"Could not install dependencies: {e}")
+        self._install_project_deps(project_path)
 
         # Run pytest on the generated code
         test_dir = project_path / "tests"
@@ -612,6 +583,27 @@ class FullCycleTestingAgent:
                 ))
 
         return errors, stdout, stderr
+
+    @staticmethod
+    def _install_project_deps(project_path: Path) -> None:
+        """Install pip packages listed in the generated project's requirements.txt."""
+        req_file = project_path / "requirements.txt"
+        if not req_file.exists():
+            return
+        try:
+            logger.info("Installing generated project dependencies...")
+            result = subprocess.run(
+                [sys.executable, "-m", "pip", "install", "-q", "-r", str(req_file)],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            if result.returncode != 0:
+                logger.warning(f"pip install returned {result.returncode}: {result.stderr[:300]}")
+            else:
+                logger.info("Project dependencies installed")
+        except Exception as e:
+            logger.warning(f"Could not install project deps: {e}")
 
     def _generate_bdd_tests(self, requirements: Requirements) -> list[BDDTestCase]:
         """Generate BDD test cases from requirements."""
@@ -718,27 +710,26 @@ class FullCycleTestingAgent:
             file_path.parent.mkdir(parents=True, exist_ok=True)
             file_path.write_text(code_file.content, encoding='utf-8')
 
-        # Save requirements.txt - filter to actual pip packages
         if repository.dependencies:
-            # Filter out non-pip items (like React, Docker, etc.)
+            _NON_PIP = {
+                "react", "vue", "angular", "node", "npm", "docker",
+                "javascript", "typescript", "webpack", "babel", "standard",
+                "dict", "list", "str", "int",
+            }
             valid_packages = []
             for dep in repository.dependencies:
-                dep_lower = dep.lower()
-                # Known valid Python packages
-                if any(pkg in dep_lower for pkg in ['flask', 'sqlalchemy', 'werkzeug', 'pillow',
-                    'openai', 'requests', 'python-dotenv', 'gunicorn', 'pytest', 'pyyaml',
-                    'jinja', 'markupsafe', 'click', 'itsdangerous', 'jmespath']):
-                    if dep not in valid_packages:
-                        valid_packages.append(dep)
+                dep_stripped = dep.strip()
+                if not dep_stripped or dep_stripped.lower() in _NON_PIP:
+                    continue
+                if dep_stripped not in valid_packages:
+                    valid_packages.append(dep_stripped)
 
-            # Always include flask as base
-            if 'flask' not in valid_packages:
-                valid_packages.insert(0, 'flask')
+            if "flask" not in [p.lower() for p in valid_packages]:
+                valid_packages.insert(0, "flask")
 
             if valid_packages:
                 req_path = project_path / "requirements.txt"
-                req_content = "\n".join(valid_packages)
-                req_path.write_text(req_content)
+                req_path.write_text("\n".join(valid_packages) + "\n")
 
         logger.info(f"Saved {len(repository.files)} files to {project_path}")
 
@@ -779,14 +770,21 @@ class FullCycleTestingAgent:
                 logger.info("SUCCESS: Code runs without errors!")
                 break
 
-            # 有错误，让 LLM 修复
             file_path, error_msg, line_number = error_info
             logger.info(f"Error in {file_path}: {error_msg}")
 
-            # 读取当前文件内容
+            # Skip errors about missing pip packages — not fixable by editing code
+            if file_path.startswith("import:") and "No module named" in error_msg:
+                module = file_path.split("import:")[-1]
+                logger.info(f"Skipping pip-package error ({module}); attempting pip install...")
+                subprocess.run(
+                    [sys.executable, "-m", "pip", "install", "-q", module],
+                    capture_output=True, text=True, timeout=60,
+                )
+                continue
+
             full_path = project_path / "generated" / file_path
             if not full_path.exists():
-                # 尝试其他可能路径
                 for ext in ['', '.py']:
                     alt_path = project_path / "generated" / file_path
                     if alt_path.exists():

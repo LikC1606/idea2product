@@ -1,7 +1,7 @@
 """Main orchestrator for the Idea2Product system."""
 
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 from datetime import datetime
 
 from config.settings import Settings
@@ -380,12 +380,25 @@ class Orchestrator:
         write_json(filepath, data)
         self.logger.debug(f"Saved artifact: {filename}")
 
-    def run_from_stage_2(self, project_id: str, requirements: Requirements) -> ValidatedProject:
+    def run_from_stage_2(
+        self,
+        project_id: str,
+        requirements: Requirements,
+        progress_callback: Optional[Callable[[int, str], None]] = None,
+    ) -> ValidatedProject:
         """
         Run Stage 2 through 4 for an existing project with given requirements.
         Used for incremental updates: merge new requirements then re-plan and re-generate.
         Creates/uses project_path = projects_dir / project_id and writes all artifacts there.
+        If progress_callback(progress_pct, stage_name) is provided, it is called at each stage start.
         """
+        def _report(progress: int, stage: str) -> None:
+            if progress_callback:
+                try:
+                    progress_callback(progress, stage)
+                except Exception:
+                    pass
+
         set_correlation(project_id=project_id)
         project_path = self.settings.projects_dir / project_id
         ensure_dir(project_path)
@@ -402,16 +415,19 @@ class Orchestrator:
 
         self._save_artifact(artifacts_dir, "01_requirements.json", requirements.model_dump(mode="json"))
 
+        _report(25, "Stage 2: Planning")
         context.update_stage(2)
         engineering_plan = self.execute_stage_2(context)
         context.engineering_plan = engineering_plan
         self._save_artifact(artifacts_dir, "02_engineering_plan.json", engineering_plan.model_dump(mode="json"))
 
+        _report(50, "Stage 3: Code Generation")
         context.update_stage(3)
         code_repository = self.execute_stage_3(context)
         context.code_repository = code_repository
         self._save_artifact(artifacts_dir, "03_code_repository.json", code_repository.model_dump(mode="json"))
 
+        _report(75, "Stage 4: Validation & Testing")
         context.update_stage(4)
         validated_project = self.execute_stage_4(context)
         self._save_artifact(artifacts_dir, "context.json", context.to_dict())

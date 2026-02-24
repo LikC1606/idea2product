@@ -386,15 +386,43 @@
         }
 
         /* Preview pane */
-        .preview-pane { flex-direction: column; }
-        .preview-pane iframe { flex: 1; border: none; background: #fff; }
+        .preview-pane { flex-direction: column; min-height: 0; }
+        .preview-pane iframe { flex: 1; border: none; background: #fff; min-height: 0; }
         .preview-pane .no-preview {
             flex: 1;
             display: flex;
+            flex-direction: column;
             align-items: center;
             justify-content: center;
             color: var(--text-muted);
             font-size: 0.9rem;
+            gap: 12px;
+            min-height: 0;
+        }
+        .no-preview .preview-error-msg {
+            color: var(--red);
+            font-size: 0.82rem;
+            max-width: 400px;
+            text-align: center;
+            word-break: break-word;
+        }
+        .no-preview .preview-actions {
+            display: flex;
+            gap: 8px;
+        }
+        .no-preview .preview-actions button {
+            padding: 6px 16px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            background: var(--bg-surface);
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 0.82rem;
+            transition: all .15s;
+        }
+        .no-preview .preview-actions button:hover {
+            border-color: var(--accent);
+            color: var(--accent);
         }
 
         /* Status bar */
@@ -494,7 +522,14 @@
                     </div>
                 </div>
                 <div class="tab-pane preview-pane" id="panePreview">
-                    <div class="no-preview" id="noPreview">Live preview will appear here after generation</div>
+                    <div class="no-preview" id="noPreview">
+                        <span id="noPreviewText">Live preview will appear here after generation</span>
+                        <div class="preview-error-msg" id="previewErrorMsg" style="display:none;"></div>
+                        <div class="preview-actions" id="previewActions" style="display:none;">
+                            <button onclick="retryPreview()">Retry</button>
+                            <button id="openPreviewBtn" onclick="openPreviewExternal()" style="display:none;">Open in new tab</button>
+                        </div>
+                    </div>
                     <iframe id="previewFrame" style="display:none;"></iframe>
                 </div>
             </div>
@@ -541,15 +576,20 @@ const WELCOME_HTML = `
 
 async function newProject() {
     stopPolling();
+    cancelPreviewRetry();
     projectId = null;
     currentFile = null;
     lastStatus = 'idle';
+    lastKnownPreviewUrl = null;
     document.getElementById('chatMessages').innerHTML = WELCOME_HTML +
         '<div class="building-banner" id="buildBanner"><span class="spinner"></span><span id="buildBannerText">Building...</span></div>';
     document.getElementById('fileTree').innerHTML = '<div class="file-item root-file" style="color:var(--text-muted);cursor:default;">Waiting for generation...</div>';
     document.getElementById('codeViewer').innerHTML = '<div class="placeholder">Select a file to view its code</div>';
     document.getElementById('previewFrame').style.display = 'none';
     document.getElementById('noPreview').style.display = 'flex';
+    document.getElementById('noPreviewText').textContent = 'Live preview will appear here after generation';
+    document.getElementById('previewErrorMsg').style.display = 'none';
+    document.getElementById('previewActions').style.display = 'none';
     document.getElementById('projectIdLabel').textContent = '';
     setStatus('idle', 'Ready', '');
 }
@@ -568,9 +608,11 @@ async function ensureProject() {
 
 async function loadProject(pid) {
     stopPolling();
+    cancelPreviewRetry();
     projectId = pid;
     currentFile = null;
     lastStatus = 'idle';
+    lastKnownPreviewUrl = null;
     document.getElementById('projectIdLabel').textContent = pid;
     document.getElementById('chatMessages').innerHTML =
         '<div class="building-banner" id="buildBanner"><span class="spinner"></span><span id="buildBannerText">Building...</span></div>';
@@ -578,6 +620,9 @@ async function loadProject(pid) {
     document.getElementById('codeViewer').innerHTML = '<div class="placeholder">Select a file to view its code</div>';
     document.getElementById('previewFrame').style.display = 'none';
     document.getElementById('noPreview').style.display = 'flex';
+    document.getElementById('noPreviewText').textContent = 'Live preview will appear here after generation';
+    document.getElementById('previewErrorMsg').style.display = 'none';
+    document.getElementById('previewActions').style.display = 'none';
 
     try {
         const res = await fetch(`/api/projects/${pid}/chat`);
@@ -789,7 +834,7 @@ function handleStatusUpdate(s) {
         refreshFiles();
     }
     if (status === 'completed' && lastStatus !== 'completed') {
-        refreshPreview();
+        schedulePreviewRefresh(5, 2000);
     }
     if (status === 'completed' || status === 'failed') {
         stopPolling();
@@ -901,18 +946,93 @@ function guessLang(path) {
 
 // ---- Preview panel ----
 
+let previewRetryTimer = null;
+let lastKnownPreviewUrl = null;
+
 async function refreshPreview() {
     if (!projectId) return;
     try {
         const res = await fetch(`/api/projects/${projectId}/preview-url`);
         const data = await res.json();
         if (data.running && data.preview_url) {
+            lastKnownPreviewUrl = data.preview_url;
             const frame = document.getElementById('previewFrame');
             frame.src = data.preview_url;
             frame.style.display = 'block';
             document.getElementById('noPreview').style.display = 'none';
+            cancelPreviewRetry();
+            return true;
+        } else {
+            showPreviewPlaceholder(data.preview_error);
+            return false;
         }
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+        showPreviewPlaceholder(null);
+        return false;
+    }
+}
+
+function showPreviewPlaceholder(errorMsg) {
+    document.getElementById('previewFrame').style.display = 'none';
+    const noPreview = document.getElementById('noPreview');
+    noPreview.style.display = 'flex';
+
+    const textEl = document.getElementById('noPreviewText');
+    const errorEl = document.getElementById('previewErrorMsg');
+    const actionsEl = document.getElementById('previewActions');
+    const openBtn = document.getElementById('openPreviewBtn');
+
+    if (errorMsg) {
+        textEl.textContent = 'Preview could not start';
+        errorEl.textContent = errorMsg;
+        errorEl.style.display = 'block';
+    } else if (lastStatus === 'completed') {
+        textEl.textContent = 'Preview is starting...';
+        errorEl.style.display = 'none';
+    } else {
+        textEl.textContent = 'Live preview will appear here after generation';
+        errorEl.style.display = 'none';
+    }
+
+    if (lastStatus === 'completed' || lastStatus === 'failed') {
+        actionsEl.style.display = 'flex';
+    } else {
+        actionsEl.style.display = 'none';
+    }
+
+    openBtn.style.display = lastKnownPreviewUrl ? 'inline-block' : 'none';
+}
+
+function schedulePreviewRefresh(retries, delayMs) {
+    cancelPreviewRetry();
+    let attempt = 0;
+    async function tryOnce() {
+        attempt++;
+        const ok = await refreshPreview();
+        if (ok || attempt >= retries) {
+            previewRetryTimer = null;
+            return;
+        }
+        previewRetryTimer = setTimeout(tryOnce, delayMs);
+    }
+    tryOnce();
+}
+
+function cancelPreviewRetry() {
+    if (previewRetryTimer) {
+        clearTimeout(previewRetryTimer);
+        previewRetryTimer = null;
+    }
+}
+
+function retryPreview() {
+    schedulePreviewRefresh(5, 2000);
+}
+
+function openPreviewExternal() {
+    if (lastKnownPreviewUrl) {
+        window.open(lastKnownPreviewUrl, '_blank');
+    }
 }
 
 // ---- Tab switching ----
@@ -921,6 +1041,10 @@ function switchTab(tab) {
     document.querySelectorAll('.right-tab').forEach(el => el.classList.toggle('active', el.dataset.tab === tab));
     document.querySelectorAll('.tab-pane').forEach(el => el.classList.remove('active'));
     document.getElementById(tab === 'code' ? 'paneCode' : 'panePreview').classList.add('active');
+
+    if (tab === 'preview' && projectId && lastStatus === 'completed') {
+        refreshPreview();
+    }
 }
 
 // ---- Helpers ----

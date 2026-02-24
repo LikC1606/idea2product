@@ -237,8 +237,13 @@ class TaskService:
                     requirements.description or requirements.title or ""
                 )
 
+            def _on_progress(progress: int, stage: str) -> None:
+                self._update(project_id, progress=progress, stage=stage)
+
             self._update(project_id, progress=20, stage="Stage 2: Planning")
-            result = orchestrator.run_from_stage_2(project_id, requirements)
+            result = orchestrator.run_from_stage_2(
+                project_id, requirements, progress_callback=_on_progress
+            )
 
             elapsed = round(time.time() - start_time, 1)
             logger.info(f"Generation completed for {project_id} in {elapsed}s")

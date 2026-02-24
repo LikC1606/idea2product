@@ -156,7 +156,8 @@ def get_preview_url(project_id):
     """Return the live preview URL (if preview is running)."""
     url = preview_service.get_preview_url(project_id)
     if not url:
-        return jsonify({"preview_url": None, "running": False})
+        error = preview_service.get_preview_error(project_id)
+        return jsonify({"preview_url": None, "running": False, "preview_error": error})
     return jsonify({"preview_url": url, "running": True})
 
 

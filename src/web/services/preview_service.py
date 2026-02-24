@@ -59,6 +59,7 @@ class PreviewService:
     def __init__(self, settings: Settings):
         self.settings = settings
         self._previews: Dict[str, Dict] = {}
+        self._last_error: Dict[str, str] = {}
         self._lock = threading.Lock()
         self._reaper_started = False
 
@@ -69,19 +70,25 @@ class PreviewService:
 
         gen_dir = self.settings.projects_dir / project_id / "generated"
         if not gen_dir.exists():
+            self._set_error(project_id, "No generated/ directory found")
             logger.warning(f"No generated/ dir for {project_id}")
             return None
 
         entry = self._detect_entry_point(gen_dir)
         if not entry:
+            self._set_error(project_id, "No entry point (app.py / main.py) found in generated code")
             logger.warning(f"No entry point found in {gen_dir}")
             return None
+
+        self._install_requirements(gen_dir)
 
         port = _find_free_port()
         env = os.environ.copy()
         env["PORT"] = str(port)
         env["FLASK_RUN_PORT"] = str(port)
         env["FLASK_APP"] = entry
+        existing_pypath = env.get("PYTHONPATH", "")
+        env["PYTHONPATH"] = str(gen_dir) + (os.pathsep + existing_pypath if existing_pypath else "")
 
         log_dir = self.settings.projects_dir / project_id / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
@@ -100,6 +107,7 @@ class PreviewService:
                 creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0,
             )
         except Exception as e:
+            self._set_error(project_id, f"Failed to start process: {e}")
             logger.error(f"Failed to start preview for {project_id}: {e}")
             return None
 
@@ -118,6 +126,11 @@ class PreviewService:
         healthy = _wait_for_port(port)
         if not healthy:
             if proc.poll() is not None:
+                err_snippet = self._read_last_error_from_log(stderr_log)
+                self._set_error(
+                    project_id,
+                    f"Process exited immediately (code={proc.returncode}). {err_snippet}"
+                )
                 logger.warning(
                     f"Preview process for {project_id} exited immediately "
                     f"(code={proc.returncode}). Check {stderr_log}"
@@ -129,8 +142,32 @@ class PreviewService:
                 f"within {_HEALTH_CHECK_TIMEOUT}s; returning URL anyway"
             )
 
+        self._clear_error(project_id)
         logger.info(f"Preview started for {project_id} on {url} (pid={proc.pid}, healthy={healthy})")
         return url
+
+    def get_preview_error(self, project_id: str) -> Optional[str]:
+        """Return the last error message for this project's preview, or None."""
+        with self._lock:
+            return self._last_error.get(project_id)
+
+    def _set_error(self, project_id: str, message: str):
+        with self._lock:
+            self._last_error[project_id] = message
+
+    def _clear_error(self, project_id: str):
+        with self._lock:
+            self._last_error.pop(project_id, None)
+
+    @staticmethod
+    def _read_last_error_from_log(log_path: Path, max_chars: int = 200) -> str:
+        """Read the last few lines from the preview log to surface the error."""
+        try:
+            text = log_path.read_text(encoding="utf-8", errors="replace")
+            tail = text.strip()[-max_chars:] if text.strip() else ""
+            return tail
+        except Exception:
+            return ""
 
     def stop_preview(self, project_id: str):
         """Stop the preview subprocess for a project."""
@@ -224,6 +261,27 @@ class PreviewService:
                 fh.close()
             except Exception:
                 pass
+
+    @staticmethod
+    def _install_requirements(gen_dir: Path) -> None:
+        """Install pip packages from the generated project's requirements.txt."""
+        req_file = gen_dir / "requirements.txt"
+        if not req_file.exists():
+            return
+        try:
+            logger.info(f"Installing dependencies from {req_file}")
+            result = subprocess.run(
+                [sys.executable, "-m", "pip", "install", "-q", "-r", str(req_file)],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            if result.returncode != 0:
+                logger.warning(f"pip install returned {result.returncode}: {result.stderr[:300]}")
+            else:
+                logger.info("Dependencies installed successfully")
+        except Exception as e:
+            logger.warning(f"Failed to install dependencies: {e}")
 
     @staticmethod
     def _detect_entry_point(gen_dir: Path) -> Optional[str]:

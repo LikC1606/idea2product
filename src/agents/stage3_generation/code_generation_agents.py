@@ -259,13 +259,17 @@ Description: {task.description}
    - Use: from config import get_config (NOT 'config.get_config' string!)
    - CRITICAL: Inside the Blueprint, use RELATIVE paths only! Example: @blogs_bp.route('/') NOT @blogs_bp.route('/api/blogs')
    - If url_prefix='/api/blogs', then routes inside should be @bp.route('/') NOT @bp.route('/api/blogs')
-3. CRITICAL: You MUST add ALL frontend routes in app/__init__.py for EACH template:
+4. CRITICAL: You MUST add ALL frontend routes in app/__init__.py for EACH template:
    - For each template (e.g., blog.html, blog_list.html, blog_detail.html), add a route that renders it
    - Example: @app.route('/blogs/<int:id>') def blog_detail(): return render_template('blog_detail.html')
    - MUST match the frontend_routes specified above!
    - IMPORTANT: Frontend routes ONLY render templates, do NOT pass data! All data should be fetched via JavaScript API calls in the template
-4. Generate ACTUAL working HTML with forms, buttons, and API calls - not placeholder text!
-5. Use list_files() to see available files, read_file() to read them, write_file() to create/modify
+5. Generate ACTUAL working HTML with forms, buttons, and API calls - not placeholder text!
+6. Use list_files() to see available files, read_file() to read them, write_file() to create/modify
+7. CRITICAL: Do NOT worry about whether packages are installed in the current environment.
+   Do NOT output messages like "please run pip install" or "dependencies not installed".
+   Just write the code with the correct imports. Dependencies will be installed separately.
+   Your ONLY job is to write correct Python/HTML/CSS/JS code files using the tools.
 
 ## When Task is Complete
 Reply with "TASK_COMPLETE" when you have finished the task."""
