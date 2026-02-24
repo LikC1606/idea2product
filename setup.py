@@ -28,6 +28,11 @@ setup(
         "pydantic>=2.10.0",
         "pydantic-settings>=2.7.0",
         "python-dotenv>=1.0.0",
+        "langchain>=0.3.0",
+        "langchain-openai>=0.2.0",
+        "langchain-core>=0.3.0",
+        "flask>=3.0.0",
+        "flask-cors>=4.0.0",
         "click>=8.1.0",
         "rich>=13.0.0",
         "astroid>=3.3.0",
@@ -35,9 +40,21 @@ setup(
         "requests>=2.32.0",
         "httpx>=0.28.0",
         "Pillow>=10.0.0",
-        "selenium>=4.27.0",
         "pytest-bdd>=7.0.0",
     ],
+    extras_require={
+        "visual": [
+            "selenium>=4.27.0",
+        ],
+        "dev": [
+            "pytest>=8.0.0",
+            "pytest-asyncio>=0.24.0",
+            "pytest-cov>=6.0.0",
+            "black>=24.0.0",
+            "ruff>=0.8.0",
+            "mypy>=1.13.0",
+        ],
+    },
     entry_points={
         "console_scripts": [
             "idea2product=src.cli:main",

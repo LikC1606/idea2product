@@ -57,19 +57,25 @@ A 4-stage pipeline with 10 specialized agents that transform natural language re
 - `src/services/code_memory_service.py` - SQLite knowledge graph (`data/code_memory.db`)
 - `src/services/code_mining_service.py` - GitHub code retrieval
 - `src/services/execution_service.py` - Reserved (not used in pipeline)
+- `src/web/services/chat_service.py` - Per-project chat persistence (`artifacts/chat.json`)
+- `src/web/services/preview_service.py` - Manages subprocesses for live preview of generated apps
+- `src/web/services/task_service.py` - Background generation with per-project serialization
 
 ## Project Structure
 
 ```
-config/settings.py          # Pydantic-settings configuration
-src/core/orchestrator.py    # Main pipeline coordinator
-src/cli.py                  # Click CLI
-src/web/app.py              # Flask web backend
-src/web/api/projects.py     # REST API endpoints
-templates/flask_base/       # Flask app template for code generation
-templates/index.html        # Web UI homepage
-data/projects/{id}/         # Generated project artifacts
-tests/                      # Unit tests (mocked, no API key needed)
+config/settings.py                  # Pydantic-settings configuration
+src/core/orchestrator.py            # Main pipeline coordinator
+src/cli.py                          # Click CLI
+src/web/app.py                      # Flask web backend
+src/web/api/projects.py             # REST API endpoints
+src/web/services/chat_service.py    # Chat persistence (artifacts/chat.json)
+src/web/services/preview_service.py # Live preview subprocess manager
+src/web/services/task_service.py    # Background generation tasks
+templates/flask_base/               # Flask app template for code generation
+templates/index.html                # Build Studio UI (chat + code + preview)
+data/projects/{id}/                 # Generated project artifacts
+tests/                              # Unit tests (mocked, no API key needed)
 ```
 
 ## Environment Variables
@@ -88,3 +94,13 @@ Key settings in `.env`:
 - Code generation uses interface-first: generates `.pyi` files, then dependency graph, then implementations
 - `CodeSkeleton` is built from pyi stubs via `src/utils/skeleton_builder.py` and injected into the LLM prompt
 - Generated apps are saved to `data/projects/{id}/generated/`
+
+## Web Flow (Chat-first)
+
+1. `POST /api/projects {"start_chat": true}` → creates project dirs, returns `project_id`
+2. `POST /api/projects/<id>/chat {"message": "..."}` → appends user msg, gets AI reply, auto-triggers generation
+3. First generation: `conversation_to_requirements()` → `orchestrator.run_from_stage_2()`
+4. Incremental: `merge_requirements(existing, new_msg)` → `orchestrator.run_from_stage_2()`
+5. After generation completes, `preview_service.start_preview()` launches the app on a dynamic port
+6. `GET /api/projects/<id>/preview-url` returns the live URL for iframe embedding
+7. Per-project serialization: only one generation runs per project; subsequent requests queue and re-run

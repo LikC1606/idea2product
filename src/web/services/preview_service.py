@@ -154,4 +154,22 @@ class PreviewService:
         return None
 
 
-preview_service = PreviewService(Settings())
+_preview_service: Optional[PreviewService] = None
+
+
+def _get_preview_service() -> PreviewService:
+    global _preview_service
+    if _preview_service is None:
+        _preview_service = PreviewService(Settings())
+    return _preview_service
+
+
+class _PreviewServiceProxy:
+    """Lazy proxy so `preview_service` can be imported at module load
+    without requiring Settings / .env to be available."""
+
+    def __getattr__(self, name):
+        return getattr(_get_preview_service(), name)
+
+
+preview_service: PreviewService = _PreviewServiceProxy()  # type: ignore[assignment]

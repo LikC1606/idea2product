@@ -127,7 +127,7 @@ The pipeline will:
 4. Run the code, detect errors, and fix them automatically
 5. Save everything to `data/projects/<project_id>/`
 
-### Method 2: Web API
+### Method 2: Web UI (Chat-based Build)
 
 Start the Flask web server:
 
@@ -135,36 +135,66 @@ Start the Flask web server:
 python -m src.web.app
 ```
 
-The server starts on `http://localhost:5000`. Open it in a browser to see the web UI.
+The server starts on `http://localhost:5000`. Open it in a browser to see the Build Studio UI.
+
+The web UI provides a chat-based workflow inspired by Google AI Studio's Build feature:
+- **Left panel**: Chat with the AI agent — describe what you want to build
+- **Right panel**: Real-time code viewer and live preview of the generated application
+- The pipeline runs automatically in the background after each message
+- You can keep sending messages to refine requirements; the system incrementally updates the generated app
 
 **API Endpoints:**
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `GET` | `/api/health` | Health check |
-| `POST` | `/api/projects/analyze` | Analyze a requirement |
-| `POST` | `/api/projects/clarify` | Generate clarification questions |
-| `POST` | `/api/projects/finalize` | Finalize requirements with answers |
-| `POST` | `/api/projects` | Create a project (starts background processing) |
+| `POST` | `/api/projects` | Create project (`{"start_chat": true}` or `{"requirement": "..."}`) |
 | `GET` | `/api/projects` | List all projects |
 | `GET` | `/api/projects/<id>` | Get project details |
 | `GET` | `/api/projects/<id>/status` | Poll project status & progress |
+| `POST` | `/api/projects/<id>/chat` | Send message & get AI reply (auto-triggers generation) |
+| `GET` | `/api/projects/<id>/chat` | Get chat history |
 | `GET` | `/api/projects/<id>/files` | List generated files |
 | `GET` | `/api/projects/<id>/file/<path>` | Get file content |
+| `GET` | `/api/projects/<id>/preview-url` | Get live preview URL |
 | `DELETE` | `/api/projects/<id>` | Delete a project |
+| `POST` | `/api/projects/analyze` | Analyze a requirement (legacy) |
+| `POST` | `/api/projects/clarify` | Generate clarification questions (legacy) |
+| `POST` | `/api/projects/finalize` | Finalize requirements with answers (legacy) |
 
-**Example - create a project via curl:**
+**Example - chat-based workflow via curl:**
 
 ```bash
-# Create project
+# 1. Create a chat project
+curl -X POST http://localhost:5000/api/projects \
+  -H "Content-Type: application/json" \
+  -d '{"start_chat": true}'
+# Response: {"project_id": "proj_20260214_161539", "status": "idle"}
+
+# 2. Send a message (auto-triggers generation in background)
+curl -X POST http://localhost:5000/api/projects/proj_20260214_161539/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Build a calculator app with add, subtract, multiply, divide"}'
+# Response: {"reply": "...", "project_id": "proj_20260214_161539"}
+
+# 3. Poll status until completed
+curl http://localhost:5000/api/projects/proj_20260214_161539/status
+
+# 4. Send follow-up to refine (incremental update)
+curl -X POST http://localhost:5000/api/projects/proj_20260214_161539/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Add a history panel that shows previous calculations"}'
+
+# 5. Get live preview URL
+curl http://localhost:5000/api/projects/proj_20260214_161539/preview-url
+```
+
+**Example - legacy one-shot workflow:**
+
+```bash
 curl -X POST http://localhost:5000/api/projects \
   -H "Content-Type: application/json" \
   -d '{"requirement": "Build a calculator app"}'
-
-# Response: {"project_id": "proj_20260214_161539", "status": "pending"}
-
-# Poll status
-curl http://localhost:5000/api/projects/proj_20260214_161539/status
 ```
 
 ### Method 3: Python API
@@ -220,6 +250,7 @@ data/projects/<project_id>/
 │   ├── 02_engineering_plan.json   # Technical plan
 │   ├── 03_code_repository.json   # Generated code metadata
 │   ├── 04_validated_project.json  # Test results & validation
+│   ├── chat.json                 # Chat conversation history
 │   └── context.json              # Full execution context
 ├── generated/                     # The actual application code
 │   ├── app.py                    # Entry point
@@ -272,7 +303,7 @@ mypy src/                 # Type checking
 
 **Stage 1 - Requirements Gathering**
 
-The `InteractionAgent` analyzes the user's natural language input, optionally asks clarification questions, and produces a structured `Requirements` object with title, description, features, constraints, and data requirements.
+The `InteractionAgent` analyzes the user's natural language input, optionally asks clarification questions, and produces a structured `Requirements` object with title, description, features, constraints, and data requirements. In chat mode, the agent also supports multi-turn conversation (`reply_in_chat`), extracting requirements from conversations (`conversation_to_requirements`), and merging incremental updates (`merge_requirements`).
 
 **Stage 2 - Technical Planning**
 
@@ -302,6 +333,9 @@ The `CodeGenerationAgent` uses a LangChain agent with file-system tools to gener
 - **Settings**: Pydantic-settings based configuration in `config/settings.py`, loaded from `.env`.
 - **Templates**: A Flask base template (`templates/flask_base/`) bootstraps generated projects.
 - **Data Models**: All pipeline data types are Pydantic models in `src/core/data_models.py`.
+- **Chat Service**: `src/web/services/chat_service.py` persists per-project conversations to `artifacts/chat.json`.
+- **Preview Service**: `src/web/services/preview_service.py` manages subprocesses running generated apps for live preview.
+- **Task Service**: `src/web/services/task_service.py` handles background generation with per-project serialization.
 
 ---
 

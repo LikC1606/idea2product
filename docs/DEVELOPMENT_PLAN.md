@@ -223,26 +223,33 @@ TestResult:
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | /api/projects | 创建新项目 |
+| POST | /api/projects | 创建新项目（`{"start_chat": true}` 或 `{"requirement": "..."}`) |
 | GET | /api/projects | 项目列表 |
 | GET | /api/projects/<id> | 项目详情 |
 | GET | /api/projects/<id>/status | 项目状态 |
+| POST | /api/projects/<id>/chat | 发送消息 & 获取 AI 回复（自动触发生成） |
+| GET | /api/projects/<id>/chat | 获取聊天历史 |
 | GET | /api/projects/<id>/files | 文件列表 |
 | GET | /api/projects/<id>/file/<path> | 文件内容 |
-| WebSocket | /ws/project/<id> | 实时进度（**未实现**，当前通过轮询 GET /api/projects/<id>/status 获取 status/progress/current_stage） |
+| GET | /api/projects/<id>/preview-url | 获取实时预览 URL |
+| DELETE | /api/projects/<id> | 删除项目 |
+| POST | /api/projects/analyze | 需求分析（旧版） |
+| POST | /api/projects/clarify | 生成澄清问题（旧版） |
+| POST | /api/projects/finalize | 定稿需求（旧版） |
 
-**当前实现：** REST API 已实现；任务状态通过轮询 `GET /api/projects/<id>/status` 获取，返回 `status`（pending/processing/completed/failed）、`progress`（0–100）、`current_stage`（如 Stage 1: Requirements）。
+**当前实现：** REST API 全部实现。Chat 工作流：用户通过 `/chat` 端点与 AI 对话，系统自动在后台生成代码。任务状态通过轮询 `GET /api/projects/<id>/status` 获取，返回 `status`（idle/pending/processing/completed/failed）、`progress`（0–100）、`current_stage`。实时预览通过 `preview_service` 在动态端口启动生成的应用。
 
 ### 核心模块
 
 ```
 src/web/
-├── app.py              # Flask 应用
+├── app.py                        # Flask 应用
 ├── api/
-│   ├── projects.py    # 项目 API
-│   └── websocket.py   # WebSocket 进度
+│   └── projects.py              # 项目 API（含 chat/preview 端点）
 └── services/
-    └── task_service.py # 任务服务
+    ├── chat_service.py          # 聊天会话持久化 (artifacts/chat.json)
+    ├── preview_service.py       # 实时预览子进程管理
+    └── task_service.py          # 后台生成任务（支持按项目串行化）
 ```
 
 ---
@@ -289,8 +296,8 @@ Web API + 前端       [依赖完整 Pipeline]
 
 ## Phase 2 / Phase 3 完成情况
 
-- **Phase 2 Web 后端：** REST API 已实现（创建项目、列表、详情、状态、文件列表、文件内容、需求分析/澄清/定稿）。WebSocket `/ws/project/<id>` 未实现，进度通过轮询 GET 状态接口获取。
-- **Phase 3 Web 前端：** 由 `src.web.app` 提供静态首页与 API；若需完整前端（项目列表、代码查看器），需单独实现或集成现有静态页。
+- **Phase 2 Web 后端：** REST API 全部实现。Chat 对话端点、自动触发生成、实时预览 URL 端点均已完成。进度通过轮询 GET 状态接口获取（WebSocket 未实现）。后台任务支持按项目串行化，避免并发冲突。
+- **Phase 3 Web 前端：** Build Studio UI 已实现（`templates/index.html`）。左侧为聊天面板，右侧为代码查看器 + 实时预览（iframe）。支持快捷开始、实时文件树更新、代码高亮显示。
 
 ---
 
