@@ -6,7 +6,7 @@ from datetime import datetime
 
 from config.settings import Settings
 from src.services.llm_service import LLMService
-from src.utils.logger import setup_logger, get_logger
+from src.utils.logger import setup_logger, get_logger, set_correlation, clear_correlation
 from src.utils.prompt_loader import PromptLoader
 from src.utils.file_utils import ensure_dir, write_json
 
@@ -88,6 +88,7 @@ class Orchestrator:
 
         # Create execution context
         context = ExecutionContext(user_requirement=user_requirement)
+        set_correlation(project_id=context.project_id)
         self.logger.info(f"Project ID: {context.project_id}")
 
         # Create project directory
@@ -161,6 +162,8 @@ class Orchestrator:
             context.add_error(str(e))
             self._save_artifact(artifacts_dir, "context.json", context.to_dict())
             raise
+        finally:
+            clear_correlation()
 
     def execute_stage_1(self, context: ExecutionContext, interactive: bool = False) -> Requirements:
         """
@@ -383,6 +386,7 @@ class Orchestrator:
         Used for incremental updates: merge new requirements then re-plan and re-generate.
         Creates/uses project_path = projects_dir / project_id and writes all artifacts there.
         """
+        set_correlation(project_id=project_id)
         project_path = self.settings.projects_dir / project_id
         ensure_dir(project_path)
         logs_dir = project_path / "logs"
@@ -413,6 +417,7 @@ class Orchestrator:
         self._save_artifact(artifacts_dir, "context.json", context.to_dict())
 
         self.logger.info(f"run_from_stage_2 complete for {project_id}")
+        clear_correlation()
         return validated_project
 
     def run_first_time(self, project_id: str, requirements: Requirements) -> ValidatedProject:

@@ -1,23 +1,31 @@
 """Task Service - Background task management with per-project serialization.
 
 Supports two generation modes:
-  1. First-time: conversation_to_requirements → run_first_time (Stage 2-4)
-  2. Incremental: merge_requirements → run_from_stage_2 (Stage 2-4)
+  1. First-time: conversation_to_requirements -> run_first_time (Stage 2-4)
+  2. Incremental: merge_requirements -> run_from_stage_2 (Stage 2-4)
 
 Same project_id tasks are serialized: if a new generation is requested while one
 is running, the latest request is queued and executed after the current one finishes.
+
+Task metadata is persisted to artifacts/task_status.json so the server can
+reconstruct state after a restart.
 """
 
 import json
 import threading
 import traceback
-import sys
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 
 from config.settings import Settings
-from src.utils.file_utils import read_json
+from src.utils.file_utils import read_json, write_json
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+_TASK_STATUS_FILE = "task_status.json"
 
 
 class TaskService:
@@ -29,12 +37,57 @@ class TaskService:
         self._lock = threading.Lock()
         self._project_locks: Dict[str, threading.Lock] = {}
         self._pending_regenerate: Dict[str, bool] = {}
+        self._restore_persisted_tasks()
 
     def _get_project_lock(self, project_id: str) -> threading.Lock:
         with self._lock:
             if project_id not in self._project_locks:
                 self._project_locks[project_id] = threading.Lock()
             return self._project_locks[project_id]
+
+    # ------------------------------------------------------------------
+    # Task persistence
+    # ------------------------------------------------------------------
+
+    def _status_path(self, project_id: str) -> Path:
+        return self.settings.projects_dir / project_id / "artifacts" / _TASK_STATUS_FILE
+
+    def _persist_task(self, project_id: str):
+        """Write current task dict to disk for crash recovery."""
+        with self._lock:
+            task = self.tasks.get(project_id)
+        if not task:
+            return
+        serializable = {k: v for k, v in task.items() if k != "result" or v is None or isinstance(v, dict)}
+        try:
+            path = self._status_path(project_id)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            write_json(path, serializable)
+        except Exception:
+            pass
+
+    def _restore_persisted_tasks(self):
+        """On startup, scan projects_dir and reload last-known task status."""
+        projects_dir = self.settings.projects_dir
+        if not projects_dir.exists():
+            return
+        for proj_dir in projects_dir.iterdir():
+            if not proj_dir.is_dir():
+                continue
+            status_file = proj_dir / "artifacts" / _TASK_STATUS_FILE
+            if not status_file.exists():
+                continue
+            try:
+                data = read_json(status_file)
+                pid = data.get("project_id", proj_dir.name)
+                if data.get("status") == "processing":
+                    data["status"] = "failed"
+                    data["error"] = "Server restarted while generation was in progress"
+                    data["current_stage"] = "Interrupted"
+                with self._lock:
+                    self.tasks.setdefault(pid, data)
+            except Exception:
+                pass
 
     # ------------------------------------------------------------------
     # Project creation (chat-first: no requirement needed upfront)
@@ -53,17 +106,21 @@ class TaskService:
         (project_dir / "generated").mkdir(exist_ok=True)
         (project_dir / "logs").mkdir(exist_ok=True)
 
+        task_data = {
+            "project_id": project_id,
+            "requirement": "",
+            "status": "idle",
+            "progress": 0,
+            "current_stage": "",
+            "created_at": datetime.now().isoformat(),
+            "result": None,
+            "error": None,
+        }
         with self._lock:
-            self.tasks[project_id] = {
-                "project_id": project_id,
-                "requirement": "",
-                "status": "idle",
-                "progress": 0,
-                "current_stage": "",
-                "created_at": datetime.now().isoformat(),
-                "result": None,
-                "error": None,
-            }
+            self.tasks[project_id] = task_data
+        self._persist_task(project_id)
+
+        logger.info(f"Created chat project {project_id}")
         return project_id
 
     # ------------------------------------------------------------------
@@ -118,6 +175,7 @@ class TaskService:
         if not acquired:
             with self._lock:
                 self._pending_regenerate[project_id] = True
+            logger.info(f"Generation already running for {project_id}; queued re-run")
             return
 
         thread = threading.Thread(
@@ -142,6 +200,8 @@ class TaskService:
         from src.agents.stage1_requirements.interaction_agent import InteractionAgent
         from src.services.llm_service import LLMService
         from src.web.services.chat_service import get_messages
+
+        start_time = time.time()
 
         try:
             messages = get_messages(self.settings, project_id)
@@ -180,6 +240,8 @@ class TaskService:
             self._update(project_id, progress=20, stage="Stage 2: Planning")
             result = orchestrator.run_from_stage_2(project_id, requirements)
 
+            elapsed = round(time.time() - start_time, 1)
+            logger.info(f"Generation completed for {project_id} in {elapsed}s")
             self._complete(project_id, result)
 
             self._try_start_preview(project_id)
@@ -193,7 +255,7 @@ class TaskService:
             from src.web.services.preview_service import preview_service
             preview_service.start_preview(project_id)
         except Exception as e:
-            print(f"[WARN] Preview start failed for {project_id}: {e}", file=sys.stderr)
+            logger.warning(f"Preview start failed for {project_id}: {e}")
 
     # ------------------------------------------------------------------
     # Status helpers
@@ -208,6 +270,7 @@ class TaskService:
                 task["progress"] = progress
             if stage:
                 task["current_stage"] = stage
+        self._persist_task(project_id)
 
     def _complete(self, project_id: str, result):
         with self._lock:
@@ -226,16 +289,18 @@ class TaskService:
                 }
             else:
                 task["result"] = {"is_deployable": True, "files_count": 0, "test_passed": False}
+        self._persist_task(project_id)
 
     def _fail(self, project_id: str, error: Exception):
         msg = str(error)
-        print(f"[ERROR] Generation failed for {project_id}: {msg}", file=sys.stderr)
-        traceback.print_exc(file=sys.stderr)
+        logger.error(f"Generation failed for {project_id}: {msg}")
+        logger.debug(traceback.format_exc())
         with self._lock:
             task = self.tasks.setdefault(project_id, {})
             task["status"] = "failed"
             task["error"] = msg
             task["current_stage"] = f"Error: {msg[:80]}"
+        self._persist_task(project_id)
 
     # ------------------------------------------------------------------
     # Query methods
@@ -356,6 +421,14 @@ class TaskService:
         artifacts = self.settings.projects_dir / project_id / "artifacts"
         if not artifacts.exists():
             return None
+
+        status_file = artifacts / _TASK_STATUS_FILE
+        if status_file.exists():
+            try:
+                return read_json(status_file)
+            except Exception:
+                pass
+
         req_file = artifacts / "01_requirements.json"
         chat_file = artifacts / "chat.json"
         desc = ""

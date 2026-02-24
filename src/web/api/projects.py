@@ -5,11 +5,13 @@ Endpoints:
   GET    /api/projects              - list projects
   GET    /api/projects/<id>         - project details
   GET    /api/projects/<id>/status  - generation status
+  GET    /api/projects/<id>/events  - SSE stream of status updates
   POST   /api/projects/<id>/chat    - send message & get reply (auto-triggers generation)
   GET    /api/projects/<id>/chat    - get chat history
   GET    /api/projects/<id>/files   - list generated files
   GET    /api/projects/<id>/file/<path> - get file content
   GET    /api/projects/<id>/preview-url - get live preview URL
+  GET    /api/projects/<id>/visual-report - get visual verification results
   DELETE /api/projects/<id>         - delete project
 
   POST   /api/projects/analyze      - analyze requirement (legacy)
@@ -18,7 +20,8 @@ Endpoints:
 """
 
 import json
-from flask import Blueprint, jsonify, request
+import time
+from flask import Blueprint, Response, jsonify, request
 
 from config.settings import Settings
 from src.services.llm_service import LLMService
@@ -164,6 +167,58 @@ def delete_project(project_id):
     if not success:
         return jsonify({"error": "Project not found"}), 404
     return jsonify({"message": "Project deleted"})
+
+
+# ======================================================================
+# SSE - Server-Sent Events for real-time status updates
+# ======================================================================
+
+@bp.route("/<project_id>/events", methods=["GET"])
+def stream_status(project_id):
+    """SSE endpoint: streams status updates until completed or failed.
+
+    Usage (JS): new EventSource('/api/projects/<id>/events')
+    Each event is JSON: {"status": "...", "progress": N, "current_stage": "...", "error": ...}
+    """
+    def generate():
+        ts = _get_task_service()
+        prev = None
+        while True:
+            status = ts.get_status(project_id)
+            payload = json.dumps(status or {"status": "unknown"})
+            if payload != prev:
+                yield f"data: {payload}\n\n"
+                prev = payload
+            if status and status.get("status") in ("completed", "failed"):
+                break
+            time.sleep(1.5)
+
+    return Response(generate(), mimetype="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+# ======================================================================
+# Visual verification report
+# ======================================================================
+
+@bp.route("/<project_id>/visual-report", methods=["GET"])
+def get_visual_report(project_id):
+    """Return visual verification results if available."""
+    settings = Settings()
+    context_path = settings.projects_dir / project_id / "artifacts" / "context.json"
+    if not context_path.exists():
+        return jsonify({"error": "No context found"}), 404
+
+    try:
+        data = json.loads(context_path.read_text(encoding="utf-8"))
+    except Exception:
+        return jsonify({"error": "Failed to read context"}), 500
+
+    visual = data.get("visual_verification")
+    if not visual:
+        return jsonify({"available": False, "message": "Visual verification not run or not available"})
+
+    return jsonify({"available": True, "visual_verification": visual})
 
 
 # ======================================================================

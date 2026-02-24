@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Idea2Product - AI Build Studio</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.1/marked.min.js"></script>
     <style>
         :root {
             --bg-primary: #1e1e2e;
@@ -43,15 +46,31 @@
             gap: 12px;
         }
         .header .logo { font-weight: 700; font-size: 1rem; color: var(--accent); }
-        .header .new-btn {
-            margin-left: auto;
-            background: var(--accent);
-            color: var(--bg-secondary);
-            border: none;
+        .header .project-id {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .header .spacer { flex: 1; }
+        .header .history-btn, .header .new-btn {
+            background: var(--bg-surface);
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
             padding: 6px 14px;
             border-radius: var(--radius);
             cursor: pointer;
-            font-size: 0.85rem;
+            font-size: 0.82rem;
+            font-weight: 500;
+            transition: all .15s;
+        }
+        .header .history-btn:hover { border-color: var(--accent); color: var(--accent); }
+        .header .new-btn {
+            background: var(--accent);
+            color: var(--bg-secondary);
+            border: none;
             font-weight: 600;
         }
         .header .new-btn:hover { background: var(--accent-hover); }
@@ -61,6 +80,54 @@
             display: flex;
             height: calc(100vh - 48px);
         }
+
+        /* ---- Project history drawer ---- */
+        .history-drawer {
+            width: 0;
+            overflow: hidden;
+            background: var(--bg-primary);
+            border-right: 1px solid var(--border);
+            transition: width .2s ease;
+            flex-shrink: 0;
+        }
+        .history-drawer.open { width: 260px; }
+        .history-drawer-inner {
+            width: 260px;
+            height: 100%;
+            overflow-y: auto;
+            padding: 12px 0;
+        }
+        .history-title {
+            padding: 4px 16px 12px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        .history-item {
+            padding: 8px 16px;
+            font-size: 0.82rem;
+            color: var(--text-secondary);
+            cursor: pointer;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            border-left: 3px solid transparent;
+        }
+        .history-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+        .history-item.active { border-left-color: var(--accent); color: var(--accent); background: var(--bg-surface); }
+        .history-item .status-badge {
+            display: inline-block;
+            width: 6px; height: 6px;
+            border-radius: 50%;
+            margin-right: 6px;
+            vertical-align: middle;
+        }
+        .history-item .status-badge.idle { background: var(--text-muted); }
+        .history-item .status-badge.processing { background: var(--yellow); }
+        .history-item .status-badge.completed { background: var(--green); }
+        .history-item .status-badge.failed { background: var(--red); }
 
         /* ---- Left panel: Chat ---- */
         .panel-chat {
@@ -87,7 +154,6 @@
             border-radius: var(--radius);
             line-height: 1.55;
             font-size: 0.9rem;
-            white-space: pre-wrap;
             word-break: break-word;
         }
         .msg.user {
@@ -95,12 +161,34 @@
             background: var(--accent);
             color: var(--bg-secondary);
             border-bottom-right-radius: 2px;
+            white-space: pre-wrap;
         }
         .msg.assistant {
             align-self: flex-start;
             background: var(--bg-surface);
             color: var(--text-primary);
             border-bottom-left-radius: 2px;
+        }
+        .msg.assistant p { margin: 0 0 8px; }
+        .msg.assistant p:last-child { margin-bottom: 0; }
+        .msg.assistant ul, .msg.assistant ol { margin: 4px 0 8px 18px; }
+        .msg.assistant code {
+            background: rgba(0,0,0,.25);
+            padding: 1px 5px;
+            border-radius: 3px;
+            font-size: 0.84rem;
+        }
+        .msg.assistant pre {
+            background: rgba(0,0,0,.3);
+            padding: 10px;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 6px 0;
+        }
+        .msg.assistant pre code {
+            background: none;
+            padding: 0;
+            font-size: 0.82rem;
         }
         .msg.system {
             align-self: center;
@@ -109,6 +197,29 @@
             font-size: 0.8rem;
             text-align: center;
         }
+
+        /* Building indicator in chat area */
+        .building-banner {
+            align-self: center;
+            background: rgba(249,226,175,.08);
+            border: 1px solid rgba(249,226,175,.2);
+            color: var(--yellow);
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 0.78rem;
+            display: none;
+            gap: 6px;
+            align-items: center;
+        }
+        .building-banner.show { display: flex; }
+        .building-banner .spinner {
+            width: 12px; height: 12px;
+            border: 2px solid rgba(249,226,175,.3);
+            border-top-color: var(--yellow);
+            border-radius: 50%;
+            animation: spin .8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
 
         .welcome {
             flex: 1;
@@ -225,8 +336,17 @@
             padding: 8px 0;
             background: var(--bg-primary);
         }
+        .file-tree-dir {
+            padding: 6px 12px;
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+            cursor: default;
+        }
         .file-item {
-            padding: 6px 16px;
+            padding: 5px 12px 5px 24px;
             font-size: 0.82rem;
             cursor: pointer;
             color: var(--text-secondary);
@@ -234,22 +354,29 @@
             overflow: hidden;
             text-overflow: ellipsis;
         }
+        .file-item.root-file { padding-left: 12px; }
         .file-item:hover { background: var(--bg-hover); color: var(--text-primary); }
         .file-item.active { background: var(--bg-surface); color: var(--accent); }
+        .file-item.entry-point { font-weight: 600; }
 
         .code-viewer {
             flex: 1;
             overflow: auto;
-            padding: 16px;
+            padding: 0;
         }
         .code-viewer pre {
             margin: 0;
+            padding: 16px;
             font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
             font-size: 0.82rem;
             line-height: 1.6;
             color: var(--text-primary);
-            white-space: pre-wrap;
-            word-break: break-all;
+            white-space: pre;
+            overflow-x: auto;
+            background: transparent;
+        }
+        .code-viewer pre code {
+            background: transparent;
         }
         .code-viewer .placeholder {
             color: var(--text-muted);
@@ -259,14 +386,8 @@
         }
 
         /* Preview pane */
-        .preview-pane {
-            flex-direction: column;
-        }
-        .preview-pane iframe {
-            flex: 1;
-            border: none;
-            background: #fff;
-        }
+        .preview-pane { flex-direction: column; }
+        .preview-pane iframe { flex: 1; border: none; background: #fff; }
         .preview-pane .no-preview {
             flex: 1;
             display: flex;
@@ -289,8 +410,7 @@
             gap: 16px;
         }
         .status-dot {
-            width: 8px;
-            height: 8px;
+            width: 8px; height: 8px;
             border-radius: 50%;
             display: inline-block;
             margin-right: 6px;
@@ -310,31 +430,49 @@
         .typing-indicator span:nth-child(2) { animation-delay: .2s; }
         .typing-indicator span:nth-child(3) { animation-delay: .4s; }
         @keyframes bounce { to { transform: translateY(-5px); opacity: .4; } }
+
+        /* Highlight.js overrides */
+        .hljs { background: transparent !important; }
     </style>
 </head>
 <body>
     <div class="header">
         <span class="logo">Idea2Product</span>
-        <button class="new-btn" onclick="newProject()">+ New Project</button>
+        <span class="project-id" id="projectIdLabel"></span>
+        <span class="spacer"></span>
+        <button class="history-btn" onclick="toggleHistory()">History</button>
+        <button class="new-btn" onclick="newProject()">+ New</button>
     </div>
 
     <div class="main">
+        <!-- History drawer -->
+        <div class="history-drawer" id="historyDrawer">
+            <div class="history-drawer-inner">
+                <div class="history-title">Projects</div>
+                <div id="historyList"></div>
+            </div>
+        </div>
+
         <!-- Left: Chat -->
         <div class="panel-chat">
             <div class="chat-messages" id="chatMessages">
                 <div class="welcome" id="welcome">
                     <h2>Idea2Product</h2>
-                    <p>描述你想要的应用，AI 将在后台自动生成。<br>你可以随时补充需求，持续改进。</p>
+                    <p>Describe the app you want to build. The AI will generate it in the background.<br>Keep chatting to refine your requirements.</p>
                     <div class="quick-chips">
-                        <span class="chip" onclick="quickSend('创建一个待办事项应用，支持添加、删除和标记完成')">待办事项</span>
-                        <span class="chip" onclick="quickSend('创建一个博客系统，支持文章发布和评论')">博客系统</span>
-                        <span class="chip" onclick="quickSend('创建一个在线笔记应用，支持Markdown')">在线笔记</span>
-                        <span class="chip" onclick="quickSend('创建一个天气查询应用')">天气查询</span>
+                        <span class="chip" onclick="quickSend('Build a todo list app with add, delete, and mark as done')">Todo App</span>
+                        <span class="chip" onclick="quickSend('Build a blog with create, edit, delete posts and comments')">Blog</span>
+                        <span class="chip" onclick="quickSend('Build a Markdown note-taking app with live preview')">Notes App</span>
+                        <span class="chip" onclick="quickSend('Build a weather dashboard that shows forecasts')">Weather</span>
                     </div>
+                </div>
+                <div class="building-banner" id="buildBanner">
+                    <span class="spinner"></span>
+                    <span id="buildBannerText">Building...</span>
                 </div>
             </div>
             <div class="chat-input-area">
-                <textarea id="chatInput" placeholder="描述你想要的应用..." rows="1"
+                <textarea id="chatInput" placeholder="Describe the app you want..." rows="1"
                           onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMsg()}"></textarea>
                 <button id="sendBtn" onclick="sendMsg()">&#x2191;</button>
             </div>
@@ -349,14 +487,14 @@
             <div class="right-content">
                 <div class="tab-pane code-pane active" id="paneCode">
                     <div class="file-tree" id="fileTree">
-                        <div class="file-item" style="color:var(--text-muted);cursor:default;">等待生成...</div>
+                        <div class="file-item root-file" style="color:var(--text-muted);cursor:default;">Waiting for generation...</div>
                     </div>
                     <div class="code-viewer" id="codeViewer">
-                        <div class="placeholder">选择左侧文件查看代码</div>
+                        <div class="placeholder">Select a file to view its code</div>
                     </div>
                 </div>
                 <div class="tab-pane preview-pane" id="panePreview">
-                    <div class="no-preview" id="noPreview">生成完成后将显示应用预览</div>
+                    <div class="no-preview" id="noPreview">Live preview will appear here after generation</div>
                     <iframe id="previewFrame" style="display:none;"></iframe>
                 </div>
             </div>
@@ -369,10 +507,35 @@
     </div>
 
 <script>
+marked.setOptions({
+    breaks: true,
+    gfm: true,
+    highlight: function(code, lang) {
+        if (lang && hljs.getLanguage(lang)) {
+            try { return hljs.highlight(code, {language: lang}).value; } catch(e) {}
+        }
+        return hljs.highlightAuto(code).value;
+    }
+});
+
 let projectId = null;
 let pollTimer = null;
 let sending = false;
 let currentFile = null;
+let historyOpen = false;
+let lastStatus = 'idle';
+
+const WELCOME_HTML = `
+    <div class="welcome" id="welcome">
+        <h2>Idea2Product</h2>
+        <p>Describe the app you want to build. The AI will generate it in the background.<br>Keep chatting to refine your requirements.</p>
+        <div class="quick-chips">
+            <span class="chip" onclick="quickSend('Build a todo list app with add, delete, and mark as done')">Todo App</span>
+            <span class="chip" onclick="quickSend('Build a blog with create, edit, delete posts and comments')">Blog</span>
+            <span class="chip" onclick="quickSend('Build a Markdown note-taking app with live preview')">Notes App</span>
+            <span class="chip" onclick="quickSend('Build a weather dashboard that shows forecasts')">Weather</span>
+        </div>
+    </div>`;
 
 // ---- Project lifecycle ----
 
@@ -380,21 +543,14 @@ async function newProject() {
     stopPolling();
     projectId = null;
     currentFile = null;
-    document.getElementById('chatMessages').innerHTML = `
-        <div class="welcome" id="welcome">
-            <h2>Idea2Product</h2>
-            <p>描述你想要的应用，AI 将在后台自动生成。<br>你可以随时补充需求，持续改进。</p>
-            <div class="quick-chips">
-                <span class="chip" onclick="quickSend('创建一个待办事项应用，支持添加、删除和标记完成')">待办事项</span>
-                <span class="chip" onclick="quickSend('创建一个博客系统，支持文章发布和评论')">博客系统</span>
-                <span class="chip" onclick="quickSend('创建一个在线笔记应用，支持Markdown')">在线笔记</span>
-                <span class="chip" onclick="quickSend('创建一个天气查询应用')">天气查询</span>
-            </div>
-        </div>`;
-    document.getElementById('fileTree').innerHTML = '<div class="file-item" style="color:var(--text-muted);cursor:default;">等待生成...</div>';
-    document.getElementById('codeViewer').innerHTML = '<div class="placeholder">选择左侧文件查看代码</div>';
+    lastStatus = 'idle';
+    document.getElementById('chatMessages').innerHTML = WELCOME_HTML +
+        '<div class="building-banner" id="buildBanner"><span class="spinner"></span><span id="buildBannerText">Building...</span></div>';
+    document.getElementById('fileTree').innerHTML = '<div class="file-item root-file" style="color:var(--text-muted);cursor:default;">Waiting for generation...</div>';
+    document.getElementById('codeViewer').innerHTML = '<div class="placeholder">Select a file to view its code</div>';
     document.getElementById('previewFrame').style.display = 'none';
     document.getElementById('noPreview').style.display = 'flex';
+    document.getElementById('projectIdLabel').textContent = '';
     setStatus('idle', 'Ready', '');
 }
 
@@ -407,6 +563,67 @@ async function ensureProject() {
     });
     const data = await res.json();
     projectId = data.project_id;
+    document.getElementById('projectIdLabel').textContent = projectId;
+}
+
+async function loadProject(pid) {
+    stopPolling();
+    projectId = pid;
+    currentFile = null;
+    lastStatus = 'idle';
+    document.getElementById('projectIdLabel').textContent = pid;
+    document.getElementById('chatMessages').innerHTML =
+        '<div class="building-banner" id="buildBanner"><span class="spinner"></span><span id="buildBannerText">Building...</span></div>';
+    document.getElementById('fileTree').innerHTML = '';
+    document.getElementById('codeViewer').innerHTML = '<div class="placeholder">Select a file to view its code</div>';
+    document.getElementById('previewFrame').style.display = 'none';
+    document.getElementById('noPreview').style.display = 'flex';
+
+    try {
+        const res = await fetch(`/api/projects/${pid}/chat`);
+        const data = await res.json();
+        const msgs = data.messages || [];
+        if (msgs.length === 0) {
+            document.getElementById('chatMessages').innerHTML = WELCOME_HTML +
+                '<div class="building-banner" id="buildBanner"><span class="spinner"></span><span id="buildBannerText">Building...</span></div>';
+        } else {
+            const banner = document.getElementById('buildBanner');
+            const bannerHTML = banner ? banner.outerHTML : '';
+            document.getElementById('chatMessages').innerHTML = bannerHTML;
+            msgs.forEach(m => appendMsg(m.role, m.content));
+        }
+    } catch(e) {}
+
+    refreshFiles();
+    startPolling();
+    refreshHistory();
+}
+
+// ---- History ----
+
+function toggleHistory() {
+    historyOpen = !historyOpen;
+    document.getElementById('historyDrawer').classList.toggle('open', historyOpen);
+    if (historyOpen) refreshHistory();
+}
+
+async function refreshHistory() {
+    try {
+        const res = await fetch('/api/projects');
+        const data = await res.json();
+        const list = document.getElementById('historyList');
+        list.innerHTML = '';
+        (data.projects || []).forEach(p => {
+            const div = document.createElement('div');
+            div.className = 'history-item' + (p.project_id === projectId ? ' active' : '');
+            const statusCls = p.status || 'idle';
+            const label = p.requirement ? p.requirement.substring(0, 40) : p.project_id;
+            div.innerHTML = `<span class="status-badge ${statusCls}"></span>${escapeHtml(label)}`;
+            div.title = p.project_id;
+            div.onclick = () => loadProject(p.project_id);
+            list.appendChild(div);
+        });
+    } catch(e) {}
 }
 
 // ---- Chat ----
@@ -446,7 +663,7 @@ async function sendMsg() {
         startPolling();
     } catch (err) {
         removeTyping();
-        appendMsg('system', '发送失败: ' + err.message);
+        appendMsg('system', 'Send failed: ' + err.message);
     } finally {
         sending = false;
         document.getElementById('sendBtn').disabled = false;
@@ -456,15 +673,28 @@ async function sendMsg() {
 
 function appendMsg(role, text) {
     const container = document.getElementById('chatMessages');
+    const banner = document.getElementById('buildBanner');
     const div = document.createElement('div');
     div.className = 'msg ' + role;
-    div.textContent = text;
-    container.appendChild(div);
+
+    if (role === 'assistant') {
+        try { div.innerHTML = marked.parse(text); }
+        catch(e) { div.textContent = text; }
+        div.querySelectorAll('pre code').forEach(block => {
+            try { hljs.highlightElement(block); } catch(e) {}
+        });
+    } else {
+        div.textContent = text;
+    }
+
+    if (banner) container.insertBefore(div, banner);
+    else container.appendChild(div);
     container.scrollTop = container.scrollHeight;
 }
 
 function showTyping() {
     const container = document.getElementById('chatMessages');
+    const banner = document.getElementById('buildBanner');
     let el = document.getElementById('typingIndicator');
     if (!el) {
         el = document.createElement('div');
@@ -472,7 +702,8 @@ function showTyping() {
         el.className = 'typing-indicator';
         el.innerHTML = '<span></span><span></span><span></span>';
     }
-    container.appendChild(el);
+    if (banner) container.insertBefore(el, banner);
+    else container.appendChild(el);
     container.scrollTop = container.scrollHeight;
 }
 
@@ -481,15 +712,62 @@ function removeTyping() {
     if (el) el.remove();
 }
 
-// ---- Polling ----
+// ---- Build banner ----
+
+function updateBuildBanner(status, stage) {
+    const banner = document.getElementById('buildBanner');
+    if (!banner) return;
+    const textEl = document.getElementById('buildBannerText');
+    if (status === 'processing') {
+        banner.classList.add('show');
+        textEl.textContent = stage || 'Building...';
+    } else {
+        banner.classList.remove('show');
+    }
+}
+
+// ---- SSE with polling fallback ----
+
+let evtSource = null;
 
 function startPolling() {
+    if (evtSource || pollTimer) return;
+    if (!projectId) return;
+
+    if (typeof EventSource !== 'undefined') {
+        startSSE();
+    } else {
+        startPollingFallback();
+    }
+}
+
+function startSSE() {
+    if (evtSource) return;
+    evtSource = new EventSource(`/api/projects/${projectId}/events`);
+    evtSource.onmessage = function(event) {
+        try {
+            const s = JSON.parse(event.data);
+            handleStatusUpdate(s);
+        } catch(e) {}
+    };
+    evtSource.onerror = function() {
+        stopSSE();
+        startPollingFallback();
+    };
+}
+
+function stopSSE() {
+    if (evtSource) { evtSource.close(); evtSource = null; }
+}
+
+function startPollingFallback() {
     if (pollTimer) return;
     pollTimer = setInterval(pollStatus, 2500);
     pollStatus();
 }
 
 function stopPolling() {
+    stopSSE();
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
 }
 
@@ -498,20 +776,25 @@ async function pollStatus() {
     try {
         const res = await fetch(`/api/projects/${projectId}/status`);
         const s = await res.json();
-        const status = s.status || 'idle';
-        setStatus(status, statusLabel(status, s.progress), s.current_stage || '');
-
-        if (status === 'processing' || status === 'completed') {
-            refreshFiles();
-        }
-        if (status === 'completed') {
-            refreshPreview();
-            stopPolling();
-        }
-        if (status === 'failed') {
-            stopPolling();
-        }
+        handleStatusUpdate(s);
     } catch (e) { /* ignore */ }
+}
+
+function handleStatusUpdate(s) {
+    const status = s.status || 'idle';
+    setStatus(status, statusLabel(status, s.progress), s.current_stage || '');
+    updateBuildBanner(status, s.current_stage);
+
+    if (status === 'processing' || status === 'completed') {
+        refreshFiles();
+    }
+    if (status === 'completed' && lastStatus !== 'completed') {
+        refreshPreview();
+    }
+    if (status === 'completed' || status === 'failed') {
+        stopPolling();
+    }
+    lastStatus = status;
 }
 
 function statusLabel(status, progress) {
@@ -528,7 +811,9 @@ function setStatus(status, text, stage) {
     document.getElementById('statusStage').textContent = stage;
 }
 
-// ---- Files panel ----
+// ---- Files panel (grouped by directory) ----
+
+const ENTRY_POINTS = new Set(['app.py', 'main.py', 'server.py', 'run.py', 'manage.py']);
 
 async function refreshFiles() {
     if (!projectId) return;
@@ -539,34 +824,79 @@ async function refreshFiles() {
         if (!data.files || data.files.length === 0) return;
 
         tree.innerHTML = '';
+
+        const dirs = {};
+        const rootFiles = [];
         data.files.forEach(f => {
-            const div = document.createElement('div');
-            div.className = 'file-item' + (f.path === currentFile ? ' active' : '');
-            div.textContent = f.path;
-            div.title = f.path;
-            div.onclick = () => loadFile(f.path);
-            tree.appendChild(div);
+            const parts = f.path.split('/');
+            if (parts.length === 1) {
+                rootFiles.push(f);
+            } else {
+                const dir = parts.slice(0, -1).join('/');
+                if (!dirs[dir]) dirs[dir] = [];
+                dirs[dir].push(f);
+            }
+        });
+
+        rootFiles.forEach(f => {
+            tree.appendChild(makeFileItem(f, true));
+        });
+
+        Object.keys(dirs).sort().forEach(dir => {
+            const dirDiv = document.createElement('div');
+            dirDiv.className = 'file-tree-dir';
+            dirDiv.textContent = dir + '/';
+            tree.appendChild(dirDiv);
+            dirs[dir].forEach(f => {
+                tree.appendChild(makeFileItem(f, false));
+            });
         });
 
         if (!currentFile && data.files.length > 0) {
-            loadFile(data.files[0].path);
+            const entry = data.files.find(f => ENTRY_POINTS.has(f.path));
+            loadFile(entry ? entry.path : data.files[0].path);
         }
     } catch (e) { /* ignore */ }
+}
+
+function makeFileItem(f, isRoot) {
+    const div = document.createElement('div');
+    const filename = f.path.split('/').pop();
+    const isEntry = ENTRY_POINTS.has(filename);
+    div.className = 'file-item' +
+        (f.path === currentFile ? ' active' : '') +
+        (isRoot ? ' root-file' : '') +
+        (isEntry ? ' entry-point' : '');
+    div.textContent = isRoot ? f.path : f.path.split('/').pop();
+    div.title = f.path;
+    div.onclick = () => loadFile(f.path);
+    return div;
 }
 
 async function loadFile(path) {
     if (!projectId) return;
     currentFile = path;
     document.querySelectorAll('.file-item').forEach(el => {
-        el.classList.toggle('active', el.textContent === path);
+        el.classList.toggle('active', el.title === path);
     });
     try {
         const res = await fetch(`/api/projects/${projectId}/file/${encodeURIComponent(path)}`);
         const data = await res.json();
-        document.getElementById('codeViewer').innerHTML = '<pre>' + escapeHtml(data.content || '') + '</pre>';
+        const lang = data.language || guessLang(path);
+        const escaped = escapeHtml(data.content || '');
+        document.getElementById('codeViewer').innerHTML =
+            `<pre><code class="language-${lang}">${escaped}</code></pre>`;
+        document.querySelectorAll('#codeViewer pre code').forEach(block => {
+            try { hljs.highlightElement(block); } catch(e) {}
+        });
     } catch (e) {
         document.getElementById('codeViewer').innerHTML = '<div class="placeholder">Failed to load file</div>';
     }
+}
+
+function guessLang(path) {
+    const ext = path.split('.').pop();
+    return {py:'python',js:'javascript',html:'html',css:'css',json:'json',md:'markdown',yml:'yaml',yaml:'yaml',sh:'bash',sql:'sql',txt:'plaintext'}[ext] || 'plaintext';
 }
 
 // ---- Preview panel ----

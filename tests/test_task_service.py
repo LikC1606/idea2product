@@ -95,11 +95,14 @@ def test_enqueue_generation_runs_and_completes_with_mocked_pipeline(
                     MockAgent.return_value = mock_agent
                     MockLLM.from_settings.return_value = MagicMock()
 
-                    with patch(
-                        "src.web.services.task_service.threading.Thread",
-                        side_effect=fake_thread,
+                    with patch.object(
+                        task_service, "_try_start_preview"
                     ):
-                        task_service.enqueue_generation(project_id)
+                        with patch(
+                            "src.web.services.task_service.threading.Thread",
+                            side_effect=fake_thread,
+                        ):
+                            task_service.enqueue_generation(project_id)
 
     status = task_service.get_status(project_id)
     assert status["status"] == "completed"
