@@ -339,6 +339,19 @@ class Orchestrator:
         test_result = testing_agent.execute(context)
         self.logger.info(f"  - Final test: {len(test_result.errors)} errors, logic_passed={test_result.logic_passed}")
 
+        # Frontend API Testing with LangChain Agent (if basic tests pass)
+        from src.agents.stage4_validation.validation_agents import FrontendTestingAgent
+        if test_result.logic_passed:
+            self.logger.info("  - Running frontend API testing...")
+            frontend_agent = FrontendTestingAgent(self.llm_service)
+            frontend_errors = frontend_agent.execute(context.project_path / "generated", port=5555)
+            if frontend_errors:
+                test_result.errors.extend(frontend_errors)
+                test_result.logic_passed = False
+                self.logger.info(f"  - Frontend API testing found {len(frontend_errors)} errors")
+            else:
+                self.logger.info("  - Frontend API testing passed!")
+
         # Optional: if still errors/warnings, try FineTuningAgent (syntax/import/entry-point fixes on repository)
         if (test_result.errors or test_result.warnings) and not test_result.logic_passed:
             fine_tuning_agent = FineTuningAgent(self.llm_service)

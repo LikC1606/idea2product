@@ -1245,6 +1245,181 @@ if __name__ == '__main__':
         return repository
 
 
+class FrontendTestingAgent:
+    """Stage 4 Agent: Test APIs by reading frontend code using LangChain Agent."""
+
+    def __init__(self, llm_service: LLMService):
+        self.llm_service = llm_service
+
+    def execute(self, project_path: Path, port: int = 5555) -> List[TestError]:
+        """Test APIs by analyzing frontend code with LangChain Agent."""
+        from langchain_openai import ChatOpenAI
+        from langchain.agents import create_agent
+
+        from .tools import get_testing_tools
+
+        logger.info(f"Starting frontend API testing on port {port}...")
+
+        # Start the Flask app
+        proc = self._start_app(project_path, port)
+        if not proc:
+            return [
+                TestError(
+                    error_type=ErrorType.RUNTIME,
+                    file_path="app.py",
+                    line_number=0,
+                    error_message="Failed to start Flask app",
+                    suggestion="Check if app.py can run"
+                )
+            ]
+
+        errors = []
+
+        try:
+            # Get base URL
+            base_url = None
+            if hasattr(self.llm_service.client, 'base_url'):
+                base_url = str(self.llm_service.client.base_url)
+
+            # Create LLM
+            llm = ChatOpenAI(
+                model="gpt-4o",
+                temperature=0,
+                max_tokens=8000,
+                api_key=self.llm_service.client.api_key,
+                base_url=base_url
+            )
+
+            # Get tools
+            tools = get_testing_tools(str(project_path), port)
+
+            # Build system prompt
+            system_prompt = """You are a testing engineer. Your task is to:
+1. Use list_files and read_html_file to find frontend templates
+2. Extract all fetch/axios API calls from the HTML/JavaScript
+3. Use test_api to test these APIs
+
+## Rules
+- App runs on http://localhost:5555
+- Test complete CRUD: create -> list -> detail -> update -> delete
+- Verify status codes are 2xx or 201
+
+After testing, output "TEST_COMPLETE" with results."""
+
+            # Create agent
+            agent = create_agent(
+                model=llm,
+                tools=tools,
+                system_prompt=system_prompt,
+            )
+
+            # Run agent
+            initial_input = """Please test all APIs by:
+1. First list files in templates/ directory
+2. Read the HTML files to find all API calls
+3. Test each API endpoint you find with appropriate data
+4. Verify the responses are correct
+
+Start by exploring the templates directory."""
+
+            logger.info("Running LangChain agent for API testing...")
+
+            try:
+                result = agent.invoke(initial_input)
+                response = result.get("output", "")
+
+                logger.info(f"Agent response: {response[:500]}...")
+
+                # Parse errors from response
+                if "FAIL" in response or "error" in response.lower():
+                    # Extract error information
+                    error_lines = [line for line in response.split("\n")
+                                   if "FAIL" in line or "error" in line.lower()]
+                    for line in error_lines[:5]:  # Limit to 5 errors
+                        errors.append(TestError(
+                            error_type=ErrorType.RUNTIME,
+                            file_path="frontend_api",
+                            line_number=0,
+                            error_message=line.strip(),
+                            suggestion="Check API response"
+                        ))
+
+                if not errors:
+                    logger.info("Frontend API testing passed!")
+
+            except Exception as e:
+                logger.warning(f"Agent testing failed: {e}")
+                errors.append(TestError(
+                    error_type=ErrorType.RUNTIME,
+                    file_path="frontend_api",
+                    line_number=0,
+                    error_message=f"Agent testing error: {str(e)[:200]}",
+                    suggestion="Check if app is running correctly"
+                ))
+
+        finally:
+            # Stop the app
+            self._stop_app(proc)
+
+        return errors
+
+    def _start_app(self, project_path: Path, port: int):
+        """Start the Flask app in subprocess."""
+        import subprocess
+        import time
+
+        # Find entry file
+        entry_file = None
+        if (project_path / "app.py").exists():
+            entry_file = "app.py"
+        elif (project_path / "run.py").exists():
+            entry_file = "run.py"
+
+        if not entry_file:
+            logger.error("No entry point found")
+            return None
+
+        # Set port environment
+        env = {"PORT": str(port), "FLASK_ENV": "testing"}
+
+        try:
+            proc = subprocess.Popen(
+                ["python", entry_file],
+                cwd=str(project_path),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env={**__import__("os").environ, **env},
+                text=True
+            )
+
+            # Wait for startup
+            time.sleep(4)
+
+            # Check if still running
+            if proc.poll() is not None:
+                stdout, stderr = proc.communicate()
+                logger.error(f"App exited: {stderr[:200]}")
+                return None
+
+            logger.info(f"App started on port {port}")
+            return proc
+
+        except Exception as e:
+            logger.error(f"Failed to start app: {e}")
+            return None
+
+    def _stop_app(self, proc):
+        """Stop the Flask app subprocess."""
+        import subprocess
+
+        if proc and proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+
+
 class VisualVerificationAgent:
     """
     Stage 4 Agent 3: Visual verification using VLM.

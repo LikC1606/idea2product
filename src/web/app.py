@@ -33,8 +33,8 @@ def create_app():
     return app
 
 
-def run_server(host="0.0.0.0", port=5000, debug=False):
-    app.run(host=host, port=port, debug=debug)
+def run_server(host="127.0.0.1", port=8080, debug=False):
+    app.run(host=host, port=port, debug=debug, use_reloader=False)
 
 
 def _cleanup():

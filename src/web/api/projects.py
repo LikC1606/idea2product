@@ -156,8 +156,15 @@ def get_preview_url(project_id):
     """Return the live preview URL (if preview is running)."""
     url = preview_service.get_preview_url(project_id)
     if not url:
+        # Check if project is completed and auto-start preview
+        task_service = _get_task_service()
+        project = task_service.get_project(project_id)
+        if project and project.get("status") == "completed":
+            # Auto-start preview for completed projects
+            url = preview_service.start_preview(project_id)
+
         error = preview_service.get_preview_error(project_id)
-        return jsonify({"preview_url": None, "running": False, "preview_error": error})
+        return jsonify({"preview_url": url, "running": bool(url), "preview_error": error})
     return jsonify({"preview_url": url, "running": True})
 
 
