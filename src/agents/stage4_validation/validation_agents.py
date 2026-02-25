@@ -1420,6 +1420,99 @@ Start by exploring the templates directory."""
                 proc.kill()
 
 
+class CodeFixAgent:
+    """Stage 4 Agent: Use LangChain Agent to fix code until it runs."""
+
+    def __init__(self, llm_service: LLMService):
+        self.llm_service = llm_service
+
+    def execute(self, project_path: Path) -> CodeRepository:
+        """Use LangChain Agent to fix code until it runs."""
+        from langchain_openai import ChatOpenAI
+        from langchain.agents import create_agent
+
+        from .tools import get_fix_tools
+
+        logger.info("Starting CodeFixAgent to fix code...")
+
+        # Get base URL
+        base_url = None
+        if hasattr(self.llm_service.client, 'base_url'):
+            base_url = str(self.llm_service.client.base_url)
+
+        # Create LLM
+        llm = ChatOpenAI(
+            model="gpt-4o",
+            temperature=0,
+            max_tokens=8000,
+            api_key=self.llm_service.client.api_key,
+            base_url=base_url
+        )
+
+        # Get tools
+        tools = get_fix_tools(str(project_path), port=5555)
+
+        # Build system prompt
+        system_prompt = """You are a code fixing expert. Your task is to fix Flask app errors until it runs successfully.
+
+## Workflow (you will loop automatically)
+1. try_run() - Run app.py to check if it works
+2. If error:
+   - read_file() to read the code with error
+   - analyze the error
+   - write_file() to fix it
+   - try_run() again to verify
+3. Repeat until success
+
+## Common Errors and Fixes
+- db.ARRAY error → Use db.String instead (SQLite doesn't support ARRAY)
+- Missing fields → Check and add default values or optional fields
+- Import errors → Fix import paths
+- Route errors → Check Blueprint configuration
+
+## Important Rules
+- After each fix, must verify with try_run()
+- Do not make multiple fixes at once, fix one thing at a time
+- If unsure, read the code to understand the logic
+
+Output "FIXED" when the app runs successfully."""
+
+        # Create agent
+        agent = create_agent(
+            model=llm,
+            tools=tools,
+            system_prompt=system_prompt,
+        )
+
+        # Run agent
+        initial_input = """Fix the Flask app code to make it run successfully.
+Start by running try_run() to see what error occurs."""
+
+        logger.info("Running CodeFixAgent...")
+
+        try:
+            result = agent.invoke(initial_input)
+
+            # Handle different return types
+            if isinstance(result, dict):
+                response = result.get("output", "")
+            else:
+                response = str(result)
+
+            logger.info(f"CodeFixAgent result: {response[:500]}...")
+
+            if "FIXED" in response:
+                logger.info("CodeFixAgent: Code fixed successfully!")
+            else:
+                logger.warning("CodeFixAgent: May not have fixed all issues")
+
+        except Exception as e:
+            logger.error(f"CodeFixAgent error: {e}")
+
+        # Return None (files are already modified on disk)
+        return None
+
+
 class VisualVerificationAgent:
     """
     Stage 4 Agent 3: Visual verification using VLM.

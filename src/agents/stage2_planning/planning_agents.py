@@ -69,6 +69,157 @@ Respond in Chinese with detailed descriptions.
             return ""
 
 
+class ReviewAgent:
+    """Stage 2 Agent: Reviews and refines task division and API specs."""
+
+    def __init__(self, llm_service: LLMService):
+        self.llm_service = llm_service
+
+    def review_tasks(self, initial_tasks: List[Dict], requirements: Requirements) -> Dict:
+        """Review task division for completeness and consistency."""
+        features_str = "\n".join([
+            f"- {f.name}: {f.description}" for f in requirements.features
+        ])
+
+        prompt = f"""
+你是代码审查专家。请审查以下 Stage 2 生成的任务列表。
+
+## 原始需求
+Title: {requirements.title}
+Description: {requirements.description}
+Features:
+{features_str}
+
+## 初步生成的任务列表
+{initial_tasks}
+
+## 审查要点
+请从以下维度审查：
+
+1. **功能完整性**：是否覆盖了所有需求功能？
+   - 用户注册/登录
+   - 博客CRUD
+   - 评论CRUD
+   - 分类和标签
+   - 搜索功能
+   - 前端页面
+
+2. **一致性**：
+   - 任务描述与需求是否匹配
+   - 任务之间是否有遗漏或重复
+
+3. **关联性检查**：
+   - 如果需求包含用户系统，博客、评论等实体是否正确关联了作者ID（author_id）？
+   - 评论是否正确关联了博客ID和作者ID？
+
+4. **字段完整性**：
+   - 数据模型是否包含所有必要字段？
+   - API请求/响应是否包含所有必要字段？
+
+5. **CRUD完整性**：
+   - 每个实体是否都有增删改查操作？
+
+## 输出格式
+请返回以下JSON格式：
+
+{{
+    "issues": [
+        {{
+            "task_id": "T1",
+            "issue_type": "missing_feature|inconsistency|missing_field|...",
+            "description": "问题描述",
+            "suggestion": "修正建议"
+        }}
+    ],
+    "refined_tasks": [
+        {{
+            "id": "T1",
+            "name": "任务名称",
+            "description": "修正后的描述，包含所有必要字段",
+            "type": "backend|frontend",
+            "priority": 1-5,
+            "estimated_complexity": "low|medium|high"
+        }}
+    ]
+}}
+
+如果任务列表没有问题，issues 可以为空数组，但 refined_tasks 必须返回完整列表。
+请确保 refined_tasks 是完整且正确的JSON数组。
+"""
+        try:
+            result = self.llm_service.generate_json(prompt)
+            return result
+        except Exception as e:
+            logger.warning(f"Review failed: {e}")
+            return {"issues": [], "refined_tasks": initial_tasks}
+
+    def review_api_specs(
+        self,
+        initial_api_specs: Dict,
+        tasks: List[Task],
+        requirements: Requirements
+    ) -> Dict:
+        """Review API specs for consistency with tasks and requirements."""
+        tasks_str = "\n".join([
+            f"- {t.id}: {t.name} - {t.description[:200]}..."
+            for t in tasks
+        ])
+
+        prompt = f"""
+你是API审查专家。请审查以下生成的API规范。
+
+## 原始需求
+Title: {requirements.title}
+Features: {", ".join(f.name for f in requirements.features)}
+
+## 任务列表
+{tasks_str}
+
+## 初步生成的API规范
+{initial_api_specs}
+
+## 审查要点
+
+1. **关联模型一致性**：
+   - 博客创建API是否包含author_id（当前登录用户ID）？
+   - 评论创建API是否包含author_id和blog_id？
+
+2. **字段一致性**：
+   - API请求字段是否与数据模型字段一致？
+   - 任务描述中提到的字段是否都在API规范中体现？
+
+3. **完整性**：
+   - CRUD操作是否完整？
+   - 是否有遗漏的API端点？
+
+4. **类型正确性**：
+   - 字段类型是否正确（str, int, bool, list等）？
+
+## 输出格式
+{{
+    "issues": [
+        {{
+            "endpoint": "/api/blogs POST",
+            "issue_type": "missing_field|inconsistent_field|wrong_type|...",
+            "description": "问题描述",
+            "suggestion": "修正建议"
+        }}
+    ],
+    "refined_api_specs": {{
+        // 修正后的完整API规范
+    }}
+}}
+
+如果API规范没有问题，issues可以为空数组，但 refined_api_specs 必须返回完整内容。
+"""
+        try:
+            result = self.llm_service.generate_json(prompt)
+            return result
+        except Exception as e:
+            logger.warning(f"API review failed: {e}")
+            return {"issues": [], "refined_api_specs": initial_api_specs}
+
+
 class TaskDivisionAgent:
     """Stage 2 Agent 1: Divides requirements into atomic tasks."""
 
@@ -92,36 +243,59 @@ OUTPUT FORMAT (JSON array):
 每个任务必须包含：
 1. name: 任务名称（简洁）
 2. description: 用自然语言描述这个任务要实现什么功能
+3. priority: 必须是 1-5 之间的整数（1最高，5最低）
+
+【重要】description 要求：
+- 必须包含所有字段名称，不能用"等"、"等等"、"类"等模糊词汇
+- 必须列出所有页面显示的数据字段
+- 示例：
+  - 错误：创建博客的数据模型，包括标题，内容等字段
+  - 正确：创建博客的数据模型，包括 id(int)、title(str)、content(text)、created_at(datetime) 字段
+  - 错误：创建获取博客列表的API
+  - 正确：创建博客列表API，返回所有博客的基本信息
 
 任务拆分要求：
 1. 每个任务要能独立完成，不过于复杂
 2. 所有任务的总和要能完整实现所有功能，不能有遗漏
-3. 任务按依赖排序：先底层（数据库）、后中层（API）、前上层（前端）
+3. 任务按依赖排序：先底层、后中层、前上层
 4. 前端页面拆分原则：每个单独的HTML页面（如首页、列表页、详情页、创建页）应该是一个独立的任务
-5. **同一个实体的CRUD操作必须放在同一个任务中，不要拆分成多个任务**
-   - 例如：博客的增删改查应该是一个任务"创建博客API接口"，而不是拆成"创建博客"、"删除博客"、"编辑博客"等多个任务
-   - 图片上传如果和博客创建相关，应该集成在一起，而不是单独拆分成"实现图片上传功能"
+5. **【重要】数据库模型和对应的API必须放在同一个任务中，不要分开！**
+   - 例如：博客的数据模型 + 博客的CRUD API → "创建博客完整后端"（一个任务）
+   - 不要写成：T1创建模型、T2创建API ← 这是错误的！
+   - 评论模型 + 评论API 也应该在一起
+6. **同一个实体的CRUD操作必须放在同一个任务中，不要拆分成多个任务**
+   - 例如：博客的增删改查应该是一个任务"创建博客完整后端"
+   - 图片上传如果和博客创建相关，应该集成在一起
+7. **删除确认等功能不需要单独的任务，应该集成在详情页或列表页中**
 
 Example:
 [
     {{
         "id": "T1",
-        "name": "创建博客数据模型",
-        "description": "创建博客的数据模型，包括标题、内容、图片、创建时间等字段，保存到数据库。",
-        "type": "database",
+        "name": "创建博客完整后端",
+        "description": "创建博客的数据模型和完整后端API接口，包括：数据模型(标题、内容、标签、创建时间)、获取博客列表、获取单篇博客、创建博客、更新博客、删除博客。",
+        "type": "backend",
         "priority": 5,
-        "estimated_complexity": "low"
+        "estimated_complexity": "medium"
     }},
     {{
         "id": "T2",
-        "name": "创建博客API接口",
-        "description": "创建博客的完整后端API接口，包含：获取博客列表、获取单篇博客、创建博客（含图片上传）、更新博客、删除博客。图片上传应该集成在创建/更新API中。",
+        "name": "创建评论完整后端",
+        "description": "创建评论的数据模型和完整后端API接口，包括：数据模型(评论者名称、内容、关联博客ID)、获取评论、创建评论、删除评论。",
         "type": "backend",
         "priority": 5,
         "estimated_complexity": "medium"
     }},
     {{
         "id": "T3",
+        "name": "创建搜索功能后端",
+        "description": "实现搜索功能的API接口，支持根据关键词搜索博客标题和内容。",
+        "type": "backend",
+        "priority": 4,
+        "estimated_complexity": "medium"
+    }},
+    {{
+        "id": "T4",
         "name": "创建首页",
         "description": "创建首页HTML页面，显示欢迎信息和导航链接。",
         "type": "frontend",
@@ -129,7 +303,7 @@ Example:
         "estimated_complexity": "low"
     }},
     {{
-        "id": "T4",
+        "id": "T5",
         "name": "创建博客列表页",
         "description": "创建博客列表HTML页面，展示所有博客的标题、摘要、图片，点击可查看详情。",
         "type": "frontend",
@@ -137,7 +311,7 @@ Example:
         "estimated_complexity": "low"
     }},
     {{
-        "id": "T5",
+        "id": "T6",
         "name": "创建博客详情页",
         "description": "创建单篇博客详情HTML页面，显示完整内容和图片。",
         "type": "frontend",
@@ -145,7 +319,7 @@ Example:
         "estimated_complexity": "low"
     }},
     {{
-        "id": "T6",
+        "id": "T7",
         "name": "创建新建博客页面",
         "description": "创建新建博客的HTML表单页面，包含标题、内容输入框和图片上传。",
         "type": "frontend",
@@ -153,7 +327,7 @@ Example:
         "estimated_complexity": "low"
     }},
     {{
-        "id": "T7",
+        "id": "T8",
         "name": "创建编辑博客页面",
         "description": "创建编辑博客的HTML表单页面，预填充现有内容。",
         "type": "frontend",
@@ -232,17 +406,86 @@ Respond with valid JSON array only.
                     else:
                         task_type = TaskType.FRONTEND  # 默认
 
+                priority = t.get("priority", 3)
+
                 tasks.append(Task(
                     id=t["id"],
                     name=t["name"],
                     description=detailed_desc,
                     type=task_type,
                     dependencies=t.get("dependencies", []),
-                    priority=t.get("priority", 3),
+                    priority=priority,
                     estimated_complexity=TaskComplexity(complexity),
                     files_to_add=t.get("files_to_add", []),
                     files_to_modify=t.get("files_to_modify", [])
                 ))
+
+            # ===== Stage 2 反思审查机制 =====
+            # 首次生成完成后，进行审查
+            logger.info("Running task division review...")
+            review_agent = ReviewAgent(self.llm_service)
+
+            # 将初步任务转为dict格式用于审查
+            initial_tasks_dict = [
+                {
+                    "id": t.id,
+                    "name": t.name,
+                    "description": t.description[:500],  # 截取部分描述
+                    "type": t.type.value,
+                    "priority": t.priority,
+                    "estimated_complexity": t.estimated_complexity.value
+                }
+                for t in tasks
+            ]
+
+            review_result = review_agent.review_tasks(initial_tasks_dict, requirements)
+
+            # 如果审查发现问题，使用修正后的任务列表
+            if review_result.get("issues") and review_result["issues"]:
+                logger.info(f"Found {len(review_result['issues'])} issues, applying refinements...")
+                refined_tasks = review_result.get("refined_tasks", [])
+
+                # 重新解析修正后的任务
+                if refined_tasks:
+                    tasks = []
+                    for t in refined_tasks:
+                        complexity = t.get("estimated_complexity", "medium")
+                        if complexity not in [c.value for c in TaskComplexity]:
+                            complexity = "medium"
+
+                        detailed_desc = t.get("description", "")
+
+                        task_type_str = t.get("type", "frontend")
+                        try:
+                            task_type = TaskType(task_type_str)
+                        except ValueError:
+                            if "front" in task_type_str.lower():
+                                task_type = TaskType.FRONTEND
+                            elif "back" in task_type_str.lower() or "api" in task_type_str.lower():
+                                task_type = TaskType.BACKEND
+                            elif "data" in task_type_str.lower() or "model" in task_type_str.lower():
+                                task_type = TaskType.DATABASE
+                            elif "test" in task_type_str.lower():
+                                task_type = TaskType.TESTING
+                            elif "deploy" in task_type_str.lower():
+                                task_type = TaskType.DEPLOYMENT
+                            else:
+                                task_type = TaskType.FRONTEND
+
+                        priority = t.get("priority", 3)
+
+                        tasks.append(Task(
+                            id=t["id"],
+                            name=t["name"],
+                            description=detailed_desc,
+                            type=task_type,
+                            dependencies=t.get("dependencies", []),
+                            priority=priority,
+                            estimated_complexity=TaskComplexity(complexity),
+                            files_to_add=t.get("files_to_add", []),
+                            files_to_modify=t.get("files_to_modify", [])
+                        ))
+
             return tasks
         except Exception as e:
             logger.error(f"LLM task division failed: {e}")
@@ -336,6 +579,9 @@ YOUR JOB:
 5. api_specs must be extremely detailed: 每个endpoint的完整路径、请求参数、响应格式
 6. frontend_routes must list EVERY single page route and its corresponding template file
 7. CRITICAL: task_files must include ALL files defined in pyi_stubs, including base files like app/__init__.py, app/database.py that need to be created or modified
+8. **Session存储说明**：如果API需要跨请求保持状态（如用户登录、购物车等），必须在api_specs的endpoint中说明session的设置情况
+   - 例如：登录API需要说明 session['user_id'] = user.id
+   - 每个endpoint的session_info字段说明这个操作会设置什么session变量
 
 File assignment guidelines:
 - Frontend task: templates/*.html, static/*
@@ -358,7 +604,7 @@ Output format (JSON):
         "description": "前后端连接方式描述",
         "endpoints": [
             {{"path": "/api/notes", "method": "GET", "description": "获取笔记列表", "response": "[{{id, content, created_at}}]"}},
-            {{"path": "/api/notes", "method": "POST", "description": "创建笔记", "request": "{{title, content}}", "response": "{{id, title, content, created_at}}"}}
+            {{"path": "/api/auth/login", "method": "POST", "description": "用户登录", "request": "{{username, password}}", "response": "{{message, user}}", "session_info": {{"sets": "session['user_id'] = user.id", "description": "登录成功后保存用户ID到session"}}}}
         ],
         "frontend_routes": {{
             "/": {{"template": "index.html", "description": "主页显示笔记列表"}},
@@ -380,6 +626,7 @@ IMPORTANT:
 - pyi_stubs: 为每个Python文件生成类型存根（.pyi格式），让Stage 3知道每个文件的接口 - 必须详细
 - api_specs: 描述前后端如何连接，前端调用哪个URL，后端返回什么格式 - 必须完整
 - frontend_routes: 列出所有前端页面路由 - 不能遗漏
+- session_info: 如果endpoint会设置session，必须说明session变量名和值（如 session['user_id'] = user.id）
 
 Return ONLY valid JSON.
 """
@@ -430,6 +677,23 @@ Return ONLY valid JSON.
             # 解析 api_specs / pyi_stubs，保证至少返回空 dict
             api_specs: Dict = result.get("api_specs") or {}
             pyi_stubs: Dict = result.get("pyi_stubs") or {}
+
+            # ===== Stage 2 反思审查机制 - API规范审查 =====
+            logger.info("Running API specs review...")
+            review_agent = ReviewAgent(self.llm_service)
+
+            api_review_result = review_agent.review_api_specs(
+                initial_api_specs=api_specs,
+                tasks=tasks,
+                requirements=requirements
+            )
+
+            # 如果审查发现问题，使用修正后的API规范
+            if api_review_result.get("issues") and api_review_result["issues"]:
+                logger.info(f"Found {len(api_review_result['issues'])} API issues, applying refinements...")
+                refined_api_specs = api_review_result.get("refined_api_specs", {})
+                if refined_api_specs:
+                    api_specs = refined_api_specs
 
             return files, interface_specs, api_specs, pyi_stubs
 

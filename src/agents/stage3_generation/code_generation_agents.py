@@ -225,7 +225,24 @@ class CodeGenerationAgent:
         if api_specs and api_specs.get("endpoints"):
             api_info = "\n## API Endpoints (how frontend connects to backend)\n"
             for ep in api_specs.get("endpoints", []):
-                api_info += f"- {ep.get('method', '?')} {ep.get('path', '?')}: {ep.get('description', '')}\n"
+                method = ep.get('method', '?') or '?'
+                path = ep.get('path', '?') or '?'
+                desc = ep.get('description', '') or ''
+                request_fields = ep.get('request')
+                response_fields = ep.get('response')
+                session_info = ep.get('session_info')
+
+                api_info += f"- {method} {path}: {desc}\n"
+                if request_fields:
+                    api_info += f"  Request: {request_fields}\n"
+                if response_fields:
+                    api_info += f"  Response: {response_fields}\n"
+                if session_info and isinstance(session_info, dict):
+                    sets = session_info.get('sets')
+                    sdesc = session_info.get('description', '')
+                    if sets and sdesc:
+                        api_info += f"  Session: {sets} - {sdesc}\n"
+
             if api_specs.get("frontend_routes"):
                 api_info += "\nFrontend Routes:\n"
                 for path, info in api_specs.get("frontend_routes", {}).items():
@@ -247,12 +264,56 @@ class CodeGenerationAgent:
 Name: {task.name}
 Description: {task.description}
 
+## 【IMPORTANT】必须严格遵循 API 规范
+{api_info}
+
+你必须严格按照上述 API 规范生成代码：
+- API 端点路径必须完全匹配（如 /api/posts, /api/posts/<id>）
+- 请求格式（request）必须完全匹配，不能添加额外字段
+- 响应格式（response）必须完全匹配
+
+## 【CRITICAL】字段类型必须严格匹配
+api_specs 中的每个字段类型必须严格遵守：
+
+1. **类型转换规则**：
+   - `"bool"` → JavaScript `true`/`false`（不是字符串 "true"/"false"）
+   - `"int"` → JavaScript 数字（不是字符串）
+   - `"str"` → JavaScript 字符串
+   - `"array"` 或 `["str"]` → JavaScript 数组（不是逗号分隔的字符串）
+   - `"float"` → JavaScript 数字
+
+2. **表单数据转换**：
+   - HTML 表单输入的值都是字符串，需要根据 api_specs 的类型进行转换
+   - 数字字段：用 `Number()` 或 `parseInt()` 转换
+   - 布尔字段：用 `value === "true"` 或 `value === "false"` 转换
+   - 数组字段：用 `value.split(',').map(...)` 转换
+
+3. **【重要】关联 ID 处理**：
+   - 如果 API 需要 user_id、author_id、category_id 等关联 ID
+   - 前端必须从 session/cookie 获取当前用户信息
+   - 示例：调用获取当前用户的 API，然后使用其中的 id 字段
+
+## 【CRITICAL】Session 认证实现
+如果 api_specs 中的 endpoint 有 session_info 说明，必须按要求实现：
+
+1. **后端设置 session**：登录成功后设置 session['user_id'] = user.id（或其他 session_info 指定的变量）
+
+2. **后端获取当前用户**：提供 /api/auth/me 端点，从 session 获取用户ID并返回用户信息
+
+3. **确保 app/__init__.py 设置了 secret_key**：app.secret_key = 'your-secret-key'
+
+## 【禁止】不要添加 api_specs 中没有的字段**
+
 ## Important Requirements
 1. You MUST use tools to explore the project - start by listing files to see what's there
 2. Database initialization rule:
    - CRITICAL: db = SQLAlchemy() MUST be defined ONLY in app/__init__.py
    - All model files (app/models/*.py) MUST import db from app: from app import db
    - Do NOT create new SQLAlchemy() instances in model files!
+   - **IMPORTANT**: 使用 SQLite 兼容的类型：
+     - 禁止使用 db.ARRAY (SQLite 不支持)
+     - 数组字段用 db.String 存储（如用逗号分隔： "tag1,tag2,tag3"）
+     - 或者用 JSON 字符串存储
 3. When creating new route files (e.g., app/routes/xxx.py), you MUST also modify app/__init__.py:
    - Add import: from app.routes.xxx import xxx_bp
    - Add registration: app.register_blueprint(xxx_bp, url_prefix='/api')

@@ -299,7 +299,7 @@ class Orchestrator:
 
     def execute_stage_4(self, context: ExecutionContext) -> ValidatedProject:
         """
-        Execute Stage 4: Validation and testing with run-fix loop.
+        Execute Stage 4: Validation and testing with code fix agent.
 
         Args:
             context: Execution context with code repository
@@ -307,7 +307,7 @@ class Orchestrator:
         Returns:
             Validated and tested project
         """
-        self.logger.info("Stage 4: Run-Fix Loop (run code → fix errors → repeat)")
+        self.logger.info("Stage 4: Code Fix with LangChain Agent")
 
         # Full-cycle Testing Agent - saves files and generates tests
         testing_agent = FullCycleTestingAgent(self.llm_service)
@@ -315,27 +315,14 @@ class Orchestrator:
 
         self.logger.info(f"  - Initial test: {len(test_result.errors)} errors")
 
-        # 运行-修复循环 (最多5次)
-        validation_agent = FullCycleTestingAgent(self.llm_service)
+        # Use CodeFixAgent to fix code (replaces run_and_fix_loop)
+        from src.agents.stage4_validation.validation_agents import CodeFixAgent
+        code_fix_agent = CodeFixAgent(self.llm_service)
 
-        # 获取接口规范（如果有）
-        interface_specs = []
-        if hasattr(context, 'engineering_plan') and context.engineering_plan:
-            interface_specs = context.engineering_plan.interface_specs
+        generated_path = context.project_path / "generated"
+        code_fix_agent.execute(generated_path)
 
-        # 运行-修复循环
-        repository = validation_agent.run_and_fix_loop(
-            project_path=context.project_path,
-            repository=context.code_repository,
-            requirements=context.requirements,
-            interface_specs=interface_specs,
-            max_iterations=5
-        )
-
-        # 更新 context 中的 repository
-        context.code_repository = repository
-
-        # 重新运行测试确认
+        # Re-run tests to confirm
         test_result = testing_agent.execute(context)
         self.logger.info(f"  - Final test: {len(test_result.errors)} errors, logic_passed={test_result.logic_passed}")
 
