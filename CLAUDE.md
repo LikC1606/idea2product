@@ -19,8 +19,12 @@ python -m src.cli create -i "Build a todo app"   # interactive Q&A mode
 python -m src.cli list
 python -m src.cli status <project_id>
 
-# Web backend
+# Web backend (serves frontend from frontend/dist after build)
+cd frontend && npm run build && cd ..
 python -m src.web.app
+
+# Frontend dev (Vite dev server with proxy to Flask on 8080)
+cd frontend && npm run dev
 
 # Testing & code quality
 pytest tests/ -v

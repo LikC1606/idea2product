@@ -3,10 +3,11 @@
 import os
 import atexit
 from pathlib import Path
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, render_template, send_from_directory
 from flask_cors import CORS
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
+FRONTEND_DIST = PROJECT_ROOT / "frontend" / "dist"
 
 from config.settings import Settings
 
@@ -26,7 +27,19 @@ def health_check():
 
 @app.route("/")
 def index():
+    if FRONTEND_DIST.exists() and (FRONTEND_DIST / "index.html").exists():
+        return send_from_directory(FRONTEND_DIST, "index.html")
     return render_template("index.html")
+
+
+@app.route("/assets/<path:path>")
+def frontend_assets(path):
+    """Serve Vite-built frontend assets from frontend/dist/assets."""
+    if FRONTEND_DIST.exists():
+        assets_dir = FRONTEND_DIST / "assets"
+        if assets_dir.exists():
+            return send_from_directory(assets_dir, path)
+    return "", 404
 
 
 def create_app():
