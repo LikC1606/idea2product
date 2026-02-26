@@ -20,6 +20,8 @@ from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+FRAMEWORK_TEMPLATE_PATH = Path(__file__).parent.parent.parent.parent / "templates" / "flask_base"
+
 
 class FullCycleTestingAgent:
     """Stage 4 Agent 1: Full-cycle testing with BDD."""
@@ -65,6 +67,13 @@ class FullCycleTestingAgent:
             test_stderr = "Run errors found"
         else:
             logger.info("App runs successfully!")
+
+        # 1.5 检查 frontend_routes 是否存在（可选）
+        if not errors and context.engineering_plan:
+            route_errors = self._check_frontend_routes(generated_path, context.engineering_plan)
+            if route_errors:
+                errors.extend(route_errors)
+                test_stderr = test_stderr or "Frontend routes missing"
 
         # 2. 检查未使用的文件
         if not errors:
@@ -192,6 +201,64 @@ class FullCycleTestingAgent:
         import_test = self._test_import_module(project_path)
         if import_test:
             errors.extend(import_test)
+
+        return errors
+
+    def _check_frontend_routes(
+        self, project_path: Path, engineering_plan: "EngineeringPlan"
+    ) -> List[TestError]:
+        """Verify each frontend_route returns non-404 when app is runnable."""
+        errors = []
+        api_specs = getattr(engineering_plan, "api_specs", None) or {}
+        frontend_routes = api_specs.get("frontend_routes") or {}
+        if not frontend_routes:
+            return errors
+
+        import sys
+
+        sys.path.insert(0, str(project_path))
+        try:
+            import importlib.util
+
+            app_module = None
+            init_path = project_path / "app" / "__init__.py"
+            if init_path.exists():
+                spec = importlib.util.spec_from_file_location("app", init_path)
+                app_module = importlib.util.module_from_spec(spec)
+                sys.modules["app"] = app_module
+                spec.loader.exec_module(app_module)
+            if not app_module or not hasattr(app_module, "create_app"):
+                app_py = project_path / "app.py"
+                if app_py.exists():
+                    spec = importlib.util.spec_from_file_location("app_mod", app_py)
+                    mod = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(mod)
+                    if hasattr(mod, "create_app"):
+                        app_module = mod
+            if not app_module or not hasattr(app_module, "create_app"):
+                return errors
+
+            app = app_module.create_app()
+            with app.test_client() as client:
+                for path in frontend_routes.keys():
+                    if path == "/":
+                        continue
+                    r = client.get(path)
+                    if r.status_code == 404:
+                        errors.append(
+                            TestError(
+                                error_type=ErrorType.RUNTIME,
+                                file_path="app/__init__.py",
+                                line_number=0,
+                                error_message=f"Frontend route {path} returns 404",
+                                suggestion=f"Add @app.route('{path}') in app/__init__.py",
+                            )
+                        )
+        except Exception as e:
+            logger.debug(f"Frontend route check skipped: {e}")
+        finally:
+            if str(project_path) in sys.path:
+                sys.path.remove(str(project_path))
 
         return errors
 
@@ -715,12 +782,27 @@ class FullCycleTestingAgent:
                 "javascript", "typescript", "webpack", "babel", "standard",
                 "dict", "list", "str", "int",
             }
-            valid_packages = []
+
+            # Merge with flask_base template baseline to ensure template deps are never dropped
+            baseline_packages = []
+            req_baseline = FRAMEWORK_TEMPLATE_PATH / "requirements.txt"
+            if req_baseline.exists():
+                try:
+                    for line in req_baseline.read_text(encoding="utf-8").strip().splitlines():
+                        pkg = line.split("==")[0].split(">=")[0].split("<=")[0].strip()
+                        if pkg and pkg.lower() not in _NON_PIP:
+                            baseline_packages.append(pkg)
+                except Exception as e:
+                    logger.debug(f"Could not read template requirements: {e}")
+            if not baseline_packages:
+                baseline_packages = ["flask", "flask-sqlalchemy", "flask-cors", "python-dotenv"]
+
+            valid_packages = list(baseline_packages)
             for dep in repository.dependencies:
-                dep_stripped = dep.strip()
+                dep_stripped = dep.strip().split("==")[0].split(">=")[0].split("<=")[0].strip()
                 if not dep_stripped or dep_stripped.lower() in _NON_PIP:
                     continue
-                if dep_stripped not in valid_packages:
+                if dep_stripped.lower() not in [p.lower() for p in valid_packages]:
                     valid_packages.append(dep_stripped)
 
             if "flask" not in [p.lower() for p in valid_packages]:
@@ -1548,10 +1630,15 @@ class CodeFixAgent:
     def execute(self, project_path: Path) -> "Optional[CodeRepository]":
         """Fix code on disk until it runs. Returns None; files are modified in-place."""
         from langchain.agents import create_agent
+        from langchain_core.messages import HumanMessage
 
         from .tools import get_fix_tools
 
         logger.info("Starting CodeFixAgent to fix code...")
+
+        # Install project dependencies before attempting fixes (reduces ModuleNotFoundError)
+        proj_path = Path(project_path) if not isinstance(project_path, Path) else project_path
+        FullCycleTestingAgent._install_project_deps(proj_path)
 
         llm = self.llm_service.create_langchain_llm(temperature=0, max_tokens=8000)
 
@@ -1575,6 +1662,9 @@ class CodeFixAgent:
 - Missing fields → Check and add default values or optional fields
 - Import errors → Fix import paths
 - Route errors → Check Blueprint configuration
+- from myapp/application import X → Change to: from app import X
+- Index.html links 404 → Ensure app/__init__.py has @app.route('/path') for each frontend route
+- ModuleNotFoundError flask_sqlalchemy → Add to requirements.txt and run pip install
 
 ## Important Rules
 - After each fix, must verify with try_run()
@@ -1597,11 +1687,18 @@ Start by running try_run() to see what error occurs."""
         logger.info("Running CodeFixAgent...")
 
         try:
-            result = agent.invoke(initial_input)
+            result = agent.invoke(
+                {"messages": [HumanMessage(content=initial_input)]},
+                {"recursion_limit": 50}
+            )
 
             # Handle different return types
             if isinstance(result, dict):
-                response = result.get("output", "")
+                if "messages" in result and result["messages"]:
+                    last_msg = result["messages"][-1]
+                    response = getattr(last_msg, "content", "") or str(last_msg)
+                else:
+                    response = result.get("output", "")
             else:
                 response = str(result)
 

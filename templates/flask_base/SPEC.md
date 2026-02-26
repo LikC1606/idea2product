@@ -44,6 +44,8 @@ def save_image(image):
 
 ## Key Interface Specifications Example
 
+**Note**: The package name "app" is the ONLY valid name. Do NOT use myapp, application, or any variant.
+
 ### 1. Model Specification (app/models/__init__.py)
 ```python
 from app import db

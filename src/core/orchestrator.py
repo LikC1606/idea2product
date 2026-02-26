@@ -425,10 +425,23 @@ class Orchestrator:
 
         # Use CodeFixAgent to fix code (replaces run_and_fix_loop)
         from src.agents.stage4_validation.validation_agents import CodeFixAgent
-        code_fix_agent = CodeFixAgent(llm)
 
+        code_fix_agent = CodeFixAgent(llm)
         generated_path = context.project_path / "generated"
-        code_fix_agent.execute(generated_path)
+
+        try:
+            code_fix_agent.execute(generated_path)
+        except Exception as e:
+            self.logger.warning(f"CodeFixAgent failed ({e}), falling back to run_and_fix_loop")
+            context.code_repository = testing_agent.run_and_fix_loop(
+                context.project_path,
+                context.code_repository,
+                context.requirements,
+                getattr(context.engineering_plan, "api_specs", None),
+                max_iterations=5,
+            )
+            # Re-save fixed files to disk
+            testing_agent._save_files(generated_path, context.code_repository)
 
         # Re-run tests to confirm
         test_result = testing_agent.execute(context)

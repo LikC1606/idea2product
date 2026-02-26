@@ -1,6 +1,7 @@
 """Stage 3 Code Generation Agents - Using LangChain Agent."""
 
 import json
+import re
 import shutil
 from pathlib import Path
 from typing import List, Dict
@@ -116,6 +117,9 @@ class CodeGenerationAgent:
         )
 
         dependencies = self._extract_dependencies(plan, files)
+
+        # Consistency check: ensure all frontend_routes are registered in app/__init__.py
+        files = self._ensure_frontend_routes(files, plan)
 
         logger.info(f"Generated {len(files)} files")
         return CodeRepository(
@@ -310,6 +314,11 @@ class CodeGenerationAgent:
 {mining_context}
 {bdd_constraints}
 
+## CRITICAL Naming Conventions (NEVER violate)
+- Package name: ALWAYS use "app" (NOT myapp, application, or any variant)
+- All imports: from app import db | from app.models.xxx import Model
+- app.py entry: from app import create_app (NOT from application or myapp)
+
 ## Task to Complete
 Name: {task.name}
 Description: {task.description}
@@ -367,13 +376,16 @@ Description: {task.description}
    - Example: @app.route('/blogs/<int:id>') def blog_detail(): return render_template('blog_detail.html')
    - MUST match the frontend_routes specified above!
    - IMPORTANT: Frontend routes ONLY render templates, do NOT pass data! All data should be fetched via JavaScript API calls in the template
-5. Generate ACTUAL working HTML with forms, buttons, and API calls - not placeholder text!
-6. **【强制】在修改任何文件之前，必须先阅读文件内容**：
+5. CRITICAL: index.html links MUST match api_specs.frontend_routes exactly:
+   - If frontend_routes has /blogs, index.html links MUST be /blogs and /api/blogs (NOT /notes or /api/notes)
+   - Page title and description MUST match requirements.title (e.g. "Blog App" not "Notes App" if building a blog)
+6. Generate ACTUAL working HTML with forms, buttons, and API calls - not placeholder text!
+7. **【强制】在修改任何文件之前，必须先阅读文件内容**：
    - 先用 list_files() 查看所有文件
    - 再用 read_file() 读取目标文件的内容
    - 了解现有代码结构后再修改，不能直接覆盖！
    - 特别注意 app/__init__.py 等入口文件的结构
-7. CRITICAL: Do NOT worry about whether packages are installed in the current environment.
+8. CRITICAL: Do NOT worry about whether packages are installed in the current environment.
    Do NOT output messages like "please run pip install" or "dependencies not installed".
    Just write the code with the correct imports. Dependencies will be installed separately.
    Your ONLY job is to write correct Python/HTML/CSS/JS code files using the tools.
@@ -394,8 +406,13 @@ Reply with "TASK_COMPLETE" when you have finished the task."""
             )
 
             # 用户消息
+            frontend_routes_hint = ""
+            if api_specs and api_specs.get("frontend_routes"):
+                routes = list(api_specs["frontend_routes"].keys())[:5]
+                frontend_routes_hint = f"\nApp title: {requirements.title}. Frontend routes: {routes}. When editing index.html, links MUST use these paths (e.g. first non-root route for main nav)."
             user_message = f"""Current project structure:
 {context_md[:1000] if context_md else "No files yet"}
+{frontend_routes_hint}
 
 Start by listing files to see the current state, then complete the task: {task.description}
 
@@ -515,10 +532,80 @@ Remember to use tools (list_files, read_file, write_file, modify_file) to intera
         return files[0].path if files else "app.py"
 
     def _extract_dependencies(self, plan: EngineeringPlan, files: List[CodeFile]) -> List[str]:
-        """Extract Python dependencies from the plan."""
+        """Extract Python dependencies from the plan. Always include flask_base deps."""
         deps = set(plan.dependencies or [])
         deps.add("flask")
+        # flask_base template uses these; ensure they're in requirements.txt
+        deps.update(["flask-sqlalchemy", "flask-cors", "python-dotenv"])
         return list(deps)
+
+    def _ensure_frontend_routes(
+        self, files: List[CodeFile], plan: EngineeringPlan
+    ) -> List[CodeFile]:
+        """Ensure app/__init__.py has routes for all api_specs.frontend_routes."""
+        api_specs = getattr(plan, "api_specs", {}) or {}
+        frontend_routes = api_specs.get("frontend_routes") or {}
+        if not frontend_routes:
+            return files
+
+        init_content = None
+        init_idx = None
+        for i, f in enumerate(files):
+            if f.path.replace("\\", "/") in ("app/__init__.py", "app\\__init__.py"):
+                init_content = f.content
+                init_idx = i
+                break
+        if init_content is None or init_idx is None:
+            return files
+
+        # Check which routes are missing
+        routes_to_add = []
+        for path, info in frontend_routes.items():
+            if path == "/":
+                continue
+            if not isinstance(info, dict):
+                template = "index.html"
+            else:
+                template = info.get("template", "index.html")
+            # Check if route exists (match @app.route(path) with flexible quoting)
+            escaped = re.escape(path)
+            pattern = rf"@app\.route\s*\(\s*['\"]{escaped}['\"]"
+            if not re.search(pattern, init_content):
+                routes_to_add.append((path, template))
+
+        if not routes_to_add:
+            return files
+
+        # Generate route code to insert before "with app.app_context()"
+        insert_lines = []
+        for path, template in routes_to_add:
+            fn_name = re.sub(r"[^a-zA-Z0-9_]", "_", path.strip("/")) or "page"
+            insert_lines.append(f"    @app.route('{path}')")
+            insert_lines.append(f"    def {fn_name}():")
+            insert_lines.append(f"        return render_template('{template}')")
+            insert_lines.append("")
+
+        insert_block = "\n".join(insert_lines)
+        marker = "with app.app_context():"
+        if marker in init_content:
+            init_content = init_content.replace(
+                marker,
+                insert_block + "    " + marker,
+                1,
+            )
+        else:
+            init_content = init_content.rstrip() + "\n\n    " + insert_block
+
+        new_files = list(files)
+        new_files[init_idx] = CodeFile(
+            path=files[init_idx].path,
+            content=init_content,
+            language=files[init_idx].language,
+            purpose=files[init_idx].purpose,
+            dependencies=files[init_idx].dependencies,
+        )
+        logger.info(f"Added {len(routes_to_add)} missing frontend routes to app/__init__.py")
+        return new_files
 
     def _generate_readme(self, requirements: Requirements) -> str:
         """Generate README content."""
