@@ -6,6 +6,8 @@ from datetime import datetime
 
 from config.settings import Settings
 from src.services.llm_service import LLMService
+from src.services.model_registry import ModelRegistry
+from src.services.model_selector import ModelSelector
 from src.utils.logger import setup_logger, get_logger, set_correlation, clear_correlation
 from src.utils.prompt_loader import PromptLoader
 from src.utils.file_utils import ensure_dir, write_json
@@ -17,6 +19,7 @@ from .data_models import (
     CodeRepository,
     ValidatedProject,
     ValidationStatus,
+    BDDTestCase,
 )
 
 # Import agents
@@ -61,6 +64,14 @@ class Orchestrator:
         self.settings = settings
         self.llm_service = LLMService.from_settings(settings)
         self.prompt_loader = PromptLoader(settings.prompts_dir)
+
+        # Model discovery & selection
+        self.model_registry = ModelRegistry.load(settings.models_registry_path)
+        self.model_selector = ModelSelector(
+            registry=self.model_registry,
+            default_model=getattr(settings, "openai_model", "gpt-4o"),
+            default_vlm_model=getattr(settings, "openai_vlm_model", "gpt-4o"),
+        )
 
         # Set up logging
         self.logger = setup_logger(
@@ -165,6 +176,17 @@ class Orchestrator:
         finally:
             clear_correlation()
 
+    def _llm_for_stage(self, stage: int, requires_vision: bool = False) -> LLMService:
+        """Return an LLMService configured with the model selected for a pipeline stage."""
+        entry = self.model_selector.select(stage=stage, requires_vision=requires_vision)
+        if entry.id == self.llm_service.model and (entry.base_url is None or entry.base_url == self.llm_service.base_url):
+            return self.llm_service
+        return self.llm_service.with_model(
+            model_id=entry.id,
+            base_url=entry.base_url,
+            max_tokens=entry.max_tokens or None,
+        )
+
     def execute_stage_1(self, context: ExecutionContext, interactive: bool = False) -> Requirements:
         """
         Execute Stage 1: Requirements gathering.
@@ -178,8 +200,9 @@ class Orchestrator:
         """
         self.logger.info("Stage 1: Interaction Agent")
 
-        # Use Interaction Agent to parse requirements
-        agent = InteractionAgent(self.llm_service)
+        llm = self._llm_for_stage(1)
+        self.logger.info(f"  - Model: {llm.model}")
+        agent = InteractionAgent(llm)
 
         if interactive:
             # Run interactive mode with clarification questions
@@ -208,29 +231,35 @@ class Orchestrator:
         if requirements is None:
             raise ValueError("Stage 2 requires non-empty requirements in context")
 
+        llm = self._llm_for_stage(2)
+        self.logger.info(f"  - Model: {llm.model}")
+
         # Flow Simulation Agent (Stage 2 Agent 0)
-        flow_agent = FlowSimulationAgent(self.llm_service)
+        flow_agent = FlowSimulationAgent(llm)
         flow_simulation = flow_agent.execute(requirements)
         self.logger.info("  - Flow simulation completed")
 
         # Task Division Agent
-        task_agent = TaskDivisionAgent(self.llm_service)
+        task_agent = TaskDivisionAgent(llm)
         tasks = task_agent.execute(requirements, flow_simulation)
         self.logger.info(f"  - Created {len(tasks)} tasks")
 
         # Algorithm Analysis Agent
-        algo_agent = AlgorithmAnalysisAgent(self.llm_service)
+        algo_agent = AlgorithmAnalysisAgent(llm)
         algorithms = algo_agent.execute(tasks)
         self.logger.info(f"  - Analyzed {len(algorithms)} algorithms")
 
         # Scheme Planning Agent
-        scheme_agent = SchemePlanningAgent(self.llm_service)
+        scheme_agent = SchemePlanningAgent(llm)
         file_structure, interface_specs, api_specs, pyi_stubs = scheme_agent.execute(
             requirements, tasks, flow_simulation
         )
 
         if not file_structure:
-            self.logger.warning("SchemePlanningAgent returned empty file_structure")
+            self.logger.error(
+                "SchemePlanningAgent returned empty file_structure; "
+                "Stage 3 will have nothing to generate. Check LLM connectivity and prompt."
+            )
 
         self.logger.info(
             f"  - Planned {len(file_structure)} files with {len(interface_specs)} interface specs"
@@ -248,6 +277,10 @@ class Orchestrator:
                     continue
                 dependencies.add(lib_normalized)
 
+        # BDD test-driven: synthesize BDD test cases from requirements + api_specs
+        bdd_test_cases = self._synthesize_bdd_tests(requirements, api_specs, llm=llm)
+        self.logger.info(f"  - Synthesized {len(bdd_test_cases)} BDD test cases (test-driven)")
+
         # Create engineering plan
         plan = EngineeringPlan(
             tasks=tasks,
@@ -257,11 +290,80 @@ class Orchestrator:
             dependencies=sorted(dependencies),
             architecture_notes=f"Web application: {requirements.title}",
             api_specs=api_specs,
-            pyi_stubs=pyi_stubs
+            pyi_stubs=pyi_stubs,
+            bdd_test_cases=bdd_test_cases,
         )
 
         self.logger.info("Stage 2 complete: Engineering plan created")
         return plan
+
+    def _synthesize_bdd_tests(self, requirements: Requirements, api_specs: dict, llm: LLMService = None) -> list:
+        """Synthesize BDD test cases from requirements + API specs using LLM (test-driven)."""
+        import json as _json
+
+        features_text = "\n".join(
+            f"- {f.name}: {f.description}" for f in requirements.features[:10]
+        )
+        api_text = _json.dumps(api_specs, indent=2, ensure_ascii=False)[:2000] if api_specs else "None"
+
+        try:
+            prompt = self.prompt_loader.format(
+                "bdd_synthesis",
+                title=requirements.title,
+                description=requirements.description or "",
+                features=features_text,
+                api_specs=api_text,
+            )
+        except Exception:
+            prompt = (
+                f"Generate BDD test cases as a JSON array for: {requirements.title}\n"
+                f"Features: {features_text}\nAPI specs: {api_text}\n"
+                "Return JSON array with test_id, feature, scenario, given, when, then, test_code."
+            )
+
+        _llm = llm or self.llm_service
+        try:
+            raw = _llm.generate(prompt, max_tokens=4000)
+            raw = raw.strip()
+            if raw.startswith("```"):
+                raw = raw.split("\n", 1)[-1].rsplit("```", 1)[0]
+            cases_data = _json.loads(raw)
+            if not isinstance(cases_data, list):
+                cases_data = []
+        except Exception as e:
+            self.logger.warning(f"BDD synthesis LLM call failed, using rule-based fallback: {e}")
+            cases_data = []
+
+        bdd_tests = []
+        for c in cases_data[:15]:
+            try:
+                bdd_tests.append(BDDTestCase(
+                    test_id=c.get("test_id", f"test_{len(bdd_tests)+1}"),
+                    feature=c.get("feature", ""),
+                    scenario=c.get("scenario", ""),
+                    given=c.get("given", ""),
+                    when=c.get("when", ""),
+                    then=c.get("then", ""),
+                    test_code=c.get("test_code", ""),
+                    status="pending",
+                ))
+            except Exception:
+                continue
+
+        if not bdd_tests:
+            for i, feature in enumerate(requirements.features[:5], 1):
+                bdd_tests.append(BDDTestCase(
+                    test_id=f"test_{i}",
+                    feature=feature.name,
+                    scenario=f"User can {feature.name.lower()}",
+                    given="The application is running",
+                    when=f"User performs {feature.name.lower()}",
+                    then="The application responds correctly",
+                    test_code=f"def test_{feature.name.lower().replace(' ', '_')}():\n    pass",
+                    status="pending",
+                ))
+
+        return bdd_tests
 
     def execute_stage_3(self, context: ExecutionContext) -> CodeRepository:
         """
@@ -281,18 +383,21 @@ class Orchestrator:
         if not context.engineering_plan.file_structure:
             raise ValueError("Stage 3 requires a non-empty file_structure in EngineeringPlan")
 
+        llm = self._llm_for_stage(3)
+        self.logger.info(f"  - Model: {llm.model}")
+
         # Code Generation Agent (with optional memory/mining via settings)
-        code_agent = CodeGenerationAgent(self.llm_service, settings=self.settings)
+        code_agent = CodeGenerationAgent(llm, settings=self.settings)
         repository = code_agent.execute(context)
 
         self.logger.info(f"Stage 3 complete: Generated {len(repository.files)} files")
 
         # Code Memory Agent: save snippets when ENABLE_CODE_MEMORY
-        memory_agent = CodeMemoryAgent(self.llm_service, settings=self.settings)
+        memory_agent = CodeMemoryAgent(llm, settings=self.settings)
         memory_agent.execute(context, repository)
 
         # Code Mining Agent: runs per-task in CodeGenerationAgent; this logs status
-        mining_agent = CodeMiningAgent(self.llm_service, settings=self.settings)
+        mining_agent = CodeMiningAgent(llm, settings=self.settings)
         mining_agent.execute(context)
 
         return repository
@@ -309,15 +414,18 @@ class Orchestrator:
         """
         self.logger.info("Stage 4: Code Fix with LangChain Agent")
 
+        llm = self._llm_for_stage(4)
+        self.logger.info(f"  - Model: {llm.model}")
+
         # Full-cycle Testing Agent - saves files and generates tests
-        testing_agent = FullCycleTestingAgent(self.llm_service)
+        testing_agent = FullCycleTestingAgent(llm)
         test_result = testing_agent.execute(context)
 
         self.logger.info(f"  - Initial test: {len(test_result.errors)} errors")
 
         # Use CodeFixAgent to fix code (replaces run_and_fix_loop)
         from src.agents.stage4_validation.validation_agents import CodeFixAgent
-        code_fix_agent = CodeFixAgent(self.llm_service)
+        code_fix_agent = CodeFixAgent(llm)
 
         generated_path = context.project_path / "generated"
         code_fix_agent.execute(generated_path)
@@ -330,7 +438,7 @@ class Orchestrator:
         from src.agents.stage4_validation.validation_agents import FrontendTestingAgent
         if test_result.logic_passed:
             self.logger.info("  - Running frontend API testing...")
-            frontend_agent = FrontendTestingAgent(self.llm_service)
+            frontend_agent = FrontendTestingAgent(llm)
             frontend_errors = frontend_agent.execute(context.project_path / "generated", port=5555)
             if frontend_errors:
                 test_result.errors.extend(frontend_errors)
@@ -341,7 +449,7 @@ class Orchestrator:
 
         # Optional: if still errors/warnings, try FineTuningAgent (syntax/import/entry-point fixes on repository)
         if (test_result.errors or test_result.warnings) and not test_result.logic_passed:
-            fine_tuning_agent = FineTuningAgent(self.llm_service)
+            fine_tuning_agent = FineTuningAgent(llm)
             repository, fixed = fine_tuning_agent.execute(context, test_result)
             if fixed:
                 context.code_repository = repository
@@ -350,9 +458,33 @@ class Orchestrator:
                 self.logger.info(f"  - After FineTuning: {len(test_result.errors)} errors, logic_passed={test_result.logic_passed}")
 
         # Visual Verification Agent (optional, controlled by settings flag)
+        # Uses a vision-capable model when available
         if getattr(self.settings, "enable_visual_verification", False):
-            visual_agent = VisualVerificationAgent(self.llm_service)
-            visual_agent.execute(context)
+            vlm_llm = self._llm_for_stage(4, requires_vision=True)
+            self.logger.info(f"  - VLM Model: {vlm_llm.model}")
+            visual_agent = VisualVerificationAgent(vlm_llm)
+            visual_result = visual_agent.execute(context)
+            # Store visual feedback into test_result for downstream use (P4/P5)
+            test_result.visual_feedback = {
+                "alignment_score": visual_result.get("alignment_score", 0.0),
+                "missing_elements": visual_result.get("missing_elements", []),
+                "issues": visual_result.get("issues", []),
+                "layout_feedback": visual_result.get("layout_feedback", ""),
+            }
+            from src.core.data_models import VisualVerificationResult
+            try:
+                test_result.visual_verification = VisualVerificationResult(
+                    screenshot_path=visual_result.get("screenshots", [""])[0] if visual_result.get("screenshots") else "",
+                    requirement_text=context.requirements.title if context.requirements else "",
+                    alignment_score=visual_result.get("alignment_score", 0.0),
+                    layout_feedback=visual_result.get("layout_feedback", ""),
+                    missing_elements=visual_result.get("missing_elements", []),
+                    issues=visual_result.get("issues", []),
+                    passed=visual_result.get("passed", False),
+                )
+            except Exception:
+                pass
+            self.logger.info(f"  - Visual alignment_score={visual_result.get('alignment_score', 0.0)}")
         else:
             self.logger.info("Visual verification disabled by settings; skipping UI analysis")
 
@@ -413,28 +545,36 @@ class Orchestrator:
         context.requirements = requirements
         context.update_stage(1)
 
-        self._save_artifact(artifacts_dir, "01_requirements.json", requirements.model_dump(mode="json"))
+        try:
+            self._save_artifact(artifacts_dir, "01_requirements.json", requirements.model_dump(mode="json"))
 
-        _report(25, "Stage 2: Planning")
-        context.update_stage(2)
-        engineering_plan = self.execute_stage_2(context)
-        context.engineering_plan = engineering_plan
-        self._save_artifact(artifacts_dir, "02_engineering_plan.json", engineering_plan.model_dump(mode="json"))
+            _report(25, "Stage 2: Planning")
+            context.update_stage(2)
+            engineering_plan = self.execute_stage_2(context)
+            context.engineering_plan = engineering_plan
+            self._save_artifact(artifacts_dir, "02_engineering_plan.json", engineering_plan.model_dump(mode="json"))
 
-        _report(50, "Stage 3: Code Generation")
-        context.update_stage(3)
-        code_repository = self.execute_stage_3(context)
-        context.code_repository = code_repository
-        self._save_artifact(artifacts_dir, "03_code_repository.json", code_repository.model_dump(mode="json"))
+            _report(50, "Stage 3: Code Generation")
+            context.update_stage(3)
+            code_repository = self.execute_stage_3(context)
+            context.code_repository = code_repository
+            self._save_artifact(artifacts_dir, "03_code_repository.json", code_repository.model_dump(mode="json"))
 
-        _report(75, "Stage 4: Validation & Testing")
-        context.update_stage(4)
-        validated_project = self.execute_stage_4(context)
-        self._save_artifact(artifacts_dir, "context.json", context.to_dict())
+            _report(75, "Stage 4: Validation & Testing")
+            context.update_stage(4)
+            validated_project = self.execute_stage_4(context)
+            self._save_artifact(artifacts_dir, "context.json", context.to_dict())
 
-        self.logger.info(f"run_from_stage_2 complete for {project_id}")
-        clear_correlation()
-        return validated_project
+            self.logger.info(f"run_from_stage_2 complete for {project_id}")
+            return validated_project
+
+        except Exception as e:
+            self.logger.error(f"run_from_stage_2 failed for {project_id}: {e}", exc_info=True)
+            context.add_error(str(e))
+            self._save_artifact(artifacts_dir, "context.json", context.to_dict())
+            raise
+        finally:
+            clear_correlation()
 
     def run_first_time(self, project_id: str, requirements: Requirements) -> ValidatedProject:
         """

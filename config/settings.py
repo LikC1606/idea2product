@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     project_root: Path = Path(__file__).parent.parent
     data_dir: Path = Path(__file__).parent.parent / "data"
 
+    # LLM Reliability Configuration
+    max_retries: int = 3
+    llm_timeout_seconds: int = 120
+
     # Execution Configuration
     sandbox_timeout: int = 30
     max_fix_attempts: int = 2
@@ -50,6 +54,11 @@ class Settings(BaseSettings):
         #     os.environ[key] = value
 
     # Derived paths
+    @property
+    def models_registry_path(self) -> Path:
+        """Path to the model registry JSON file."""
+        return self.project_root / "config" / "models_registry.json"
+
     @property
     def prompts_dir(self) -> Path:
         """Directory containing agent prompt templates."""

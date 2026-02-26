@@ -22,6 +22,37 @@ Idea2Product takes a plain-text description of what you want to build and automa
 
 ---
 
+## Quick Reproduce (3 Steps)
+
+1. **Install** (≈2 min)
+
+   ```bash
+   git clone https://github.com/yourusername/idea2product.git
+   cd idea2product
+   python -m venv venv
+   # Linux/Mac: source venv/bin/activate
+   # Windows: venv\Scripts\activate
+   pip install -r requirements.txt
+   pip install -e .
+   ```
+
+2. **Configure** (≈1 min)
+
+   ```bash
+   cp .env.example .env
+   # Edit .env: set OPENAI_API_KEY=sk-your-key
+   ```
+
+3. **Run** (≈1–5 min, depends on LLM)
+
+   ```bash
+   python -m src.cli create "Build a todo list app"
+   ```
+
+**Expected output**: Project saved to `data/projects/<project_id>/generated/`, runnable via `python app.py` in that directory.
+
+---
+
 ## Prerequisites
 
 - **Python 3.9+**
@@ -89,6 +120,15 @@ OPENAI_VLM_MODEL=gpt-4o
 | `ENABLE_CODE_MINING` | `false` | Enable GitHub code search |
 | `ENABLE_VISUAL_VERIFICATION` | `false` | Enable GPT-4o Vision UI checks |
 | `ENABLE_BDD_TESTING` | `true` | Generate and run BDD smoke tests |
+
+### Model Registry (optional)
+
+When `config/models_registry.json` exists, the system selects models per pipeline stage instead of using a single fixed model. The registry defines:
+
+- **models**: `id`, `provider`, `capabilities` (text, json, vision, code, long_context), `roles` (primary, fallback, vision), `cost_tier`
+- **stage_routing**: Maps each stage (1–4) and vision tasks to `preferred_role` and `required_capabilities`
+
+If the registry is missing or empty, the system falls back to `OPENAI_MODEL` and `OPENAI_VLM_MODEL` from `.env`, matching the original behavior.
 
 ---
 
@@ -219,6 +259,35 @@ print(f"Tests passed: {result.test_results.logic_passed}")
 
 ---
 
+## Step-by-Step Reproduction
+
+Follow this path from CLI to generated app:
+
+1. **Run the create command**
+   ```bash
+   python -m src.cli create "Build a todo list app"
+   ```
+
+2. **Watch the logs** — You will see Stage 1–4 progress:
+   - Stage 1: "Interaction Agent" → Requirements extracted
+   - Stage 2: Flow simulation, Task division, Algorithm analysis, Scheme planning
+   - Stage 3: "Code Generation" → Files written to `generated/`
+   - Stage 4: Testing, Code fix, Fine-tuning, optional Visual verification
+
+3. **Find the output** — Project is saved under:
+   - `data/projects/<project_id>/artifacts/` — JSON artifacts (requirements, plan, context)
+   - `data/projects/<project_id>/generated/` — Runnable Flask app
+
+4. **Verify**
+   ```bash
+   cd data/projects/<project_id>/generated
+   pip install -r requirements.txt
+   python app.py
+   ```
+   Open `http://localhost:5000` in your browser.
+
+---
+
 ## Running Generated Applications
 
 After generation, your application is saved under `data/projects/<project_id>/generated/`. To run it:
@@ -299,6 +368,47 @@ mypy src/                 # Type checking
 
 ## Architecture Details
 
+### Agent Mapping (plan.txt alignment)
+
+| Stage | Agent | plan.txt | Input | Output | Key File |
+|-------|-------|----------|-------|--------|----------|
+| 1 | InteractionAgent | 交互智能体 | user_requirement | Requirements | `interaction_agent.py` |
+| 2 | FlowSimulationAgent | (流程模拟) | Requirements | flow_simulation | `planning_agents.py` |
+| 2 | TaskDivisionAgent | 任务拆解智能体 | Requirements, flow | List[Task] | `planning_agents.py` |
+| 2 | AlgorithmAnalysisAgent | 算法解析智能体 | Tasks | algorithms | `planning_agents.py` |
+| 2 | SchemePlanningAgent | 方案规划智能体 | Requirements, tasks, flow | file_structure, api_specs, pyi_stubs | `planning_agents.py` |
+| 3 | CodeGenerationAgent | 代码生成智能体 | EngineeringPlan | CodeRepository | `code_generation_agents.py` |
+| 3 | CodeMemoryAgent | 代码记忆智能体 | Context, repository | (side effect) symbol_table | `code_generation_agents.py` |
+| 3 | CodeMiningAgent | 代码挖掘智能体 | Context | (injected into gen) | `code_generation_agents.py` |
+| 4 | FullCycleTestingAgent | 全链路测试智能体 | Context | TestResult | `validation_agents.py` |
+| 4 | CodeFixAgent | (run-fix loop) | generated path | (disk changes) | `validation_agents.py` |
+| 4 | FrontendTestingAgent | (API tests) | generated path | frontend_errors | `validation_agents.py` |
+| 4 | FineTuningAgent | 微调优化智能体 | Context, TestResult | fixed repository | `validation_agents.py` |
+| 4 | VisualVerificationAgent | 视觉验收 | Context | alignment_score, issues | `validation_agents.py` |
+
+### Data Flow
+
+```mermaid
+flowchart LR
+    subgraph Stage1 [Stage 1]
+        Req[user_requirement] --> IA[InteractionAgent] --> R[Requirements]
+    end
+    subgraph Stage2 [Stage 2]
+        R --> FS[FlowSimulation] --> TD[TaskDivision] --> AA[AlgorithmAnalysis] --> SP[SchemePlanning]
+        SP --> EP[EngineeringPlan]
+    end
+    subgraph Stage3 [Stage 3]
+        EP --> CG[CodeGeneration] --> CR[CodeRepository]
+        CM[CodeMemory]
+        CN[CodeMining]
+    end
+    subgraph Stage4 [Stage 4]
+        CR --> FC[FullCycleTesting] --> CF[CodeFix] --> FT[FineTuning]
+        FT --> VP[ValidatedProject]
+        VV[VisualVerification]
+    end
+```
+
 ### Pipeline Stages
 
 **Stage 1 - Requirements Gathering**
@@ -359,6 +469,16 @@ OPENAI_API_KEY=dummy
 
 ---
 
+## Reproducibility Checklist
+
+| Before running | After running |
+|----------------|---------------|
+| Python 3.9+ installed | `data/projects/<id>/generated/` exists |
+| `.env` exists and `OPENAI_API_KEY` is set | `python app.py` starts the generated app |
+| Network can reach OpenAI (or custom base_url) | `pytest tests/ -v` passes |
+
+---
+
 ## Troubleshooting
 
 ### API Errors
@@ -378,6 +498,13 @@ OPENAI_API_KEY=dummy
 - Make sure `.env` exists and has a valid `OPENAI_API_KEY` before running any command
 - On Windows, if you see encoding errors, the CLI automatically handles UTF-8 encoding
 - The `data/` directory can grow large over time; delete old projects with `python -m src.cli list` to find them
+
+### Reproduction Failures
+
+- **`ModuleNotFoundError: No module named 'src'`** — Run `pip install -e .` from the project root so the package is installed in editable mode
+- **`401 Unauthorized`** — `.env` is missing or `OPENAI_API_KEY` is invalid. Ensure you copied `.env.example` to `.env` and set a valid key
+- **Empty or minimal generated code** — Use a more specific requirement (e.g. "Build a todo app with add, delete, and complete" instead of "Build an app")
+- **Tests fail with `pytest tests/`** — Ensure you are in the project root and have run `pip install -r requirements.txt`; unit tests use mocks and do not need an API key
 
 ---
 

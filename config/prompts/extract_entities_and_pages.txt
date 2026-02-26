@@ -1,0 +1,27 @@
+从以下应用需求中，识别所有数据实体和前端页面。
+
+Title: $title
+Description: $description
+Features: $features
+
+请返回以下JSON格式：
+{
+    "entities": [
+        {
+            "name": "实体名称",
+            "fields": ["id(int)", "name(str)", "created_at(datetime)"],
+            "crud_operations": ["create", "read", "update", "delete"],
+            "relations": ["belongs_to OtherEntity"]
+        }
+    ],
+    "pages": [
+        {
+            "name": "页面名称",
+            "url": "/path",
+            "related_entities": ["Entity1"],
+            "interactions": ["查看列表", "提交表单"]
+        }
+    ]
+}
+
+Return ONLY valid JSON.

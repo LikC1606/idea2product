@@ -17,22 +17,41 @@ class MockLLMService:
     def generate(self, prompt: str, **kwargs) -> str:
         return "User opens app, sees list, can add/delete items. Flow: / -> /list -> /add."
 
-    def generate_json(self, prompt: str):
-        # TaskDivisionAgent expects list of dicts
-        if "OUTPUT FORMAT (JSON array)" in prompt or "task_files" not in prompt:
+    def generate_json(self, prompt: str, **kwargs):
+        # Entity/page extraction (Phase 1 of two-phase generation)
+        if "识别所有数据实体和前端页面" in prompt:
+            return {
+                "entities": [{"name": "Todo", "fields": ["id(int)", "title(str)", "done(bool)"], "crud_operations": ["create", "read", "delete"], "relations": []}],
+                "pages": [{"name": "主页", "url": "/", "related_entities": ["Todo"], "interactions": ["查看列表", "添加", "删除"]}],
+            }
+        # Flow structure extraction
+        if "提取结构化信息" in prompt:
+            return {
+                "pages": [{"url": "/", "name": "主页", "description": "待办列表"}],
+                "entities": [{"name": "Todo", "fields": ["id(int)", "title(str)"], "relations": []}],
+                "key_interactions": ["添加待办", "删除待办"],
+            }
+        # ReviewAgent task review
+        if "审查以下 Stage 2" in prompt:
+            return {"issues": [], "refined_tasks": []}
+        # TaskDivisionAgent main prompt
+        if "OUTPUT FORMAT (JSON array)" in prompt:
             return [
-                {"id": "T1", "name": "Create data model", "description": "Todo model with title, done", "type": "database", "priority": 5, "estimated_complexity": "low"},
-                {"id": "T2", "name": "Create API", "description": "CRUD API for todos", "type": "backend", "priority": 5, "estimated_complexity": "medium"},
-                {"id": "T3", "name": "Create frontend", "description": "List and add UI", "type": "frontend", "priority": 4, "estimated_complexity": "low"},
+                {"id": "T1", "name": "Create data model", "description": "Todo model with title, done", "type": "database", "priority": 5, "estimated_complexity": "low", "dependencies": []},
+                {"id": "T2", "name": "Create API", "description": "CRUD API for todos", "type": "backend", "priority": 5, "estimated_complexity": "medium", "dependencies": ["T1"]},
+                {"id": "T3", "name": "Create frontend", "description": "List and add UI", "type": "frontend", "priority": 4, "estimated_complexity": "low", "dependencies": ["T2"]},
             ]
-        # AlgorithmAnalysisAgent expects dict keyed by task_id
+        # AlgorithmAnalysisAgent
         if "implementation_approach" in prompt:
             return {
                 "T1": {"implementation_approach": "SQLAlchemy model", "notes": ""},
                 "T2": {"implementation_approach": "Flask Blueprint with routes", "notes": ""},
                 "T3": {"implementation_approach": "HTML templates with fetch", "notes": ""},
             }
-        # SchemePlanningAgent expects task_files, api_specs, pyi_stubs
+        # ReviewAgent API review
+        if "审查以下生成的API规范" in prompt:
+            return {"issues": [], "refined_api_specs": {}}
+        # SchemePlanningAgent
         return {
             "task_files": {
                 "T1": [{"path": "app/models/todo.py", "layer": "base", "purpose": "Todo model", "dependencies": []}],
@@ -110,7 +129,7 @@ def test_scheme_planning_agent_return_signature(mock_llm, sample_requirements):
 def test_scheme_planning_agent_exception_returns_stable_signature(mock_llm, sample_requirements):
     """SchemePlanningAgent exception path must return 4-tuple."""
     class FailingLLM:
-        def generate_json(self, prompt):
+        def generate_json(self, prompt, **kwargs):
             raise ValueError("Simulated failure")
 
     agent = SchemePlanningAgent(FailingLLM())

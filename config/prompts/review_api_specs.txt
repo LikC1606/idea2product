@@ -1,0 +1,45 @@
+你是API审查专家。请审查以下生成的API规范。
+
+## 原始需求
+Title: $title
+Features: $features
+
+## 任务列表
+$tasks_str
+
+## 初步生成的API规范
+$initial_api_specs
+
+## 审查要点
+
+1. **关联模型一致性**：
+   - 博客创建API是否包含author_id（当前登录用户ID）？
+   - 评论创建API是否包含author_id和blog_id？
+
+2. **字段一致性**：
+   - API请求字段是否与数据模型字段一致？
+   - 任务描述中提到的字段是否都在API规范中体现？
+
+3. **完整性**：
+   - CRUD操作是否完整？
+   - 是否有遗漏的API端点？
+
+4. **类型正确性**：
+   - 字段类型是否正确（str, int, bool, list等）？
+
+## 输出格式
+{
+    "issues": [
+        {
+            "endpoint": "/api/blogs POST",
+            "issue_type": "missing_field|inconsistent_field|wrong_type|...",
+            "description": "问题描述",
+            "suggestion": "修正建议"
+        }
+    ],
+    "refined_api_specs": {
+        // 修正后的完整API规范
+    }
+}
+
+如果API规范没有问题，issues可以为空数组，但 refined_api_specs 必须返回完整内容。

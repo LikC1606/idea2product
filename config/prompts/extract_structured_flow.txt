@@ -1,0 +1,18 @@
+从以下用户操作流程描述中，提取结构化信息。
+
+## 用户操作流程
+$flow_simulation
+
+请提取并返回以下JSON格式：
+{
+    "pages": [
+        {"url": "/", "name": "首页", "description": "显示的内容和交互"},
+        {"url": "/items", "name": "列表页", "description": "显示的内容和交互"}
+    ],
+    "entities": [
+        {"name": "Item", "fields": ["id(int)", "title(str)", "content(text)", "created_at(datetime)"], "relations": ["belongs_to User"]}
+    ],
+    "key_interactions": ["创建新项目", "编辑项目", "删除项目", "搜索项目"]
+}
+
+Return ONLY valid JSON.

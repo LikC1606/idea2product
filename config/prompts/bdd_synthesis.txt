@@ -1,0 +1,34 @@
+You are a BDD (Behavior-Driven Development) test expert.
+
+Given the following application requirements and API specifications, generate a comprehensive set of BDD test cases in Given-When-Then format.
+
+## Requirements
+Title: $title
+Description: $description
+
+## Features
+$features
+
+## API Specifications
+$api_specs
+
+## Instructions
+Generate BDD test cases that:
+1. Cover every feature and API endpoint
+2. Include both happy-path and basic error scenarios
+3. Use concrete, specific values (not generic placeholders)
+4. Are directly translatable into pytest test functions
+
+Return a JSON array where each element has:
+{
+  "test_id": "test_<feature_snake_case>_<scenario>",
+  "feature": "<feature name>",
+  "scenario": "<one-line scenario description>",
+  "given": "<precondition>",
+  "when": "<action>",
+  "then": "<expected outcome>",
+  "test_code": "<executable pytest function code using Flask test_client>"
+}
+
+Generate at most 15 test cases. Focus on the most important user flows.
+Return ONLY the JSON array, no markdown fences.

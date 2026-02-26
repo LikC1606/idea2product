@@ -163,6 +163,59 @@ def search_similar_snippet(query: str) -> str:
         return f"Search failed: {e}"
 
 
+@tool
+def get_module_signatures(module_name: str) -> str:
+    """Get interface signatures (functions, classes) for a module from the symbol table.
+    Use this to discover available functions/classes in other modules before calling them.
+
+    Args:
+        module_name: Module name, e.g. 'app.models.user' or 'app.routes.auth'
+    """
+    global _code_memory_service, _project_path
+    if _code_memory_service:
+        try:
+            symbols = _code_memory_service.get_symbols_by_module(module_name, project_id="current")
+            if symbols:
+                lines = [f"# Signatures for {module_name}"]
+                for s in symbols:
+                    sig = s.signature or s.symbol_name
+                    lines.append(f"  {s.symbol_type}: {sig}")
+                return "\n".join(lines)
+        except Exception as e:
+            logger.debug(f"Symbol table lookup failed: {e}")
+
+    if not _project_path:
+        return f"No signatures available for {module_name}"
+
+    mod_path = module_name.replace(".", "/") + ".py"
+    full_path = _project_path / mod_path
+    if not full_path.exists():
+        return f"Module {module_name} not found"
+
+    try:
+        import ast as _ast
+        source = full_path.read_text(encoding="utf-8")
+        tree = _ast.parse(source)
+        sigs = []
+        for node in _ast.iter_child_nodes(tree):
+            if isinstance(node, _ast.FunctionDef):
+                args = ", ".join(a.arg for a in node.args.args)
+                ret = ""
+                if node.returns:
+                    ret = f" -> {_ast.unparse(node.returns)}"
+                sigs.append(f"def {node.name}({args}){ret}")
+            elif isinstance(node, _ast.ClassDef):
+                bases = ", ".join(_ast.unparse(b) for b in node.bases) if node.bases else ""
+                sigs.append(f"class {node.name}({bases})")
+                for item in node.body:
+                    if isinstance(item, _ast.FunctionDef):
+                        args = ", ".join(a.arg for a in item.args.args)
+                        sigs.append(f"  def {item.name}({args})")
+        return "\n".join(sigs)[:3000] if sigs else f"No public signatures found in {module_name}"
+    except Exception as e:
+        return f"Could not parse {module_name}: {e}"
+
+
 def get_tools(project_path: Path, code_memory_service=None) -> List:
     """获取所有工具实例。"""
     global _project_path, _code_memory_service
@@ -175,6 +228,7 @@ def get_tools(project_path: Path, code_memory_service=None) -> List:
         write_file,
         modify_file,
         run_app,
+        get_module_signatures,
     ]
     if code_memory_service:
         tools.append(search_similar_snippet)

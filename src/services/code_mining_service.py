@@ -292,7 +292,8 @@ class CodeMiningService:
         """
         Search GitHub and adapt code to match interface.
 
-        This is a convenience method that combines search and adaptation.
+        Combines search and adaptation: when actual file content can be fetched,
+        it adapts signatures to match the project's interface_spec.
 
         Args:
             query: Search query
@@ -303,18 +304,33 @@ class CodeMiningService:
             List of adapted code snippets with metadata
         """
         results = []
+        has_interface = bool(interface_spec.get("functions") or interface_spec.get("classes"))
 
-        # Search for relevant code
         search_results = self.search_github(query, language)
 
         for repo in search_results:
-            # Try to find relevant Python files
-            # In a full implementation, we would search for specific files
-            # For now, we return the repo info for manual review
+            adapted_code = None
+            status = "found"
+            full_name = repo.get("full_name", "")
+
+            if has_interface and full_name:
+                # Try common Flask file paths to fetch actual code
+                candidate_paths = ["app.py", "app/__init__.py", "routes.py", "views.py", "models.py"]
+                for cpath in candidate_paths:
+                    content = self.get_file_content(full_name, cpath)
+                    if content and len(content) > 50:
+                        try:
+                            adapted_code = self.adapt_code_to_interface(content, interface_spec)
+                            status = "adapted"
+                        except Exception as e:
+                            logger.debug(f"Adaptation failed for {full_name}/{cpath}: {e}")
+                            adapted_code = None
+                        break
+
             results.append({
                 "repo": repo,
-                "adapted_code": None,
-                "status": "found"
+                "adapted_code": adapted_code,
+                "status": status,
             })
 
         return results

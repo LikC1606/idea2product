@@ -7,6 +7,7 @@ from src.core.data_models import Requirements, Feature
 from src.core.context import ExecutionContext
 from src.services.llm_service import LLMService
 from src.utils.logger import get_logger
+from src.core.response_schemas import ExtractedRequirements, RequirementAnalysis, validate_response
 from .requirement_analysis_prompt import get_requirement_analysis_prompt
 
 logger = get_logger(__name__)
@@ -80,10 +81,10 @@ Respond with valid JSON only.
 
         try:
             result = self.llm_service.generate_json(prompt)
+            validated = validate_response(result, ExtractedRequirements)
 
-            # Convert to Requirements model
             features = []
-            for i, f in enumerate(result.get("features", []), 1):
+            for i, f in enumerate(validated.features, 1):
                 features.append(Feature(
                     id=f.get("id", f"f{i}"),
                     name=f["name"],
@@ -92,12 +93,12 @@ Respond with valid JSON only.
                 ))
 
             requirements = Requirements(
-                title=result.get("title", "Generated Application"),
-                description=result.get("description", user_requirement),
+                title=validated.title,
+                description=validated.description or user_requirement,
                 features=features,
-                constraints=result.get("constraints", []),
-                target_users=result.get("target_users"),
-                data_requirements=result.get("data_requirements")
+                constraints=validated.constraints,
+                target_users=validated.target_users,
+                data_requirements=validated.data_requirements,
             )
 
             logger.info(f"Extracted {len(features)} features from requirement")
@@ -105,7 +106,6 @@ Respond with valid JSON only.
 
         except Exception as e:
             logger.warning(f"LLM extraction failed, using fallback: {e}")
-            # Fallback: create basic requirements from user string
             return self._fallback_parse(user_requirement)
 
     def _fallback_parse(self, requirement: str) -> Requirements:

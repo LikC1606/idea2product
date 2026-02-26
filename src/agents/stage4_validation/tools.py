@@ -214,8 +214,8 @@ def get_fix_tools(project_path: str, port: int = 5555):
         env["PORT"] = str(port)
         env["FLASK_ENV"] = "testing"
 
+        proc = None
         try:
-            # Start app
             proc = subprocess.Popen(
                 ["python", entry_file],
                 cwd=str(base),
@@ -226,10 +226,8 @@ def get_fix_tools(project_path: str, port: int = 5555):
             )
             _process["proc"] = proc
 
-            # Wait for startup
             time.sleep(4)
 
-            # Check if still running
             if proc.poll() is not None:
                 stdout, stderr = proc.communicate()
                 error_msg = stderr[:2000] if stderr else stdout[:2000]
@@ -238,7 +236,6 @@ def get_fix_tools(project_path: str, port: int = 5555):
                     "message": f"App exited immediately:\n{error_msg}"
                 })
 
-            # Try to connect
             try:
                 import requests as req
                 response = req.get(f"http://localhost:{port}/", timeout=5)
@@ -259,6 +256,8 @@ def get_fix_tools(project_path: str, port: int = 5555):
                 })
 
         except Exception as e:
+            if proc is not None and proc.poll() is None:
+                proc.terminate()
             return json.dumps({
                 "status": "error",
                 "message": f"Failed to start app: {str(e)}"

@@ -5,7 +5,6 @@ import shutil
 from pathlib import Path
 from typing import List, Dict
 
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage
 from langchain.agents import create_agent
 
@@ -67,13 +66,21 @@ class CodeGenerationAgent:
         # 构建上下文（只传文件列表）
         context_md = self._build_context_md(files)
 
+        # Build BDD constraints from engineering plan (test-driven)
+        bdd_constraints = ""
+        bdd_cases = getattr(plan, 'bdd_test_cases', []) or []
+        if bdd_cases:
+            bdd_constraints = "\n## BDD Test Cases (your code MUST satisfy these)\n"
+            for bc in bdd_cases[:10]:
+                bdd_constraints += f"- **{bc.feature}**: Given {bc.given}, When {bc.when}, Then {bc.then}\n"
+            bdd_constraints += "\nEnsure your implementation passes all the above test scenarios.\n"
+
         # Step 2: 按任务顺序处理
         for task in plan.tasks:
             logger.info(f"Processing task {task.id}: {task.name}")
-            # 可选：对 backend/database 任务注入 code mining 结果
             mining_context = ""
             if self.settings and getattr(self.settings, "enable_code_mining", False):
-                mining_context = self._get_mining_context(task)
+                mining_context = self._get_mining_context(task, skeleton=skeleton)
 
             files = self._process_task_with_tools(
                 task=task,
@@ -86,7 +93,13 @@ class CodeGenerationAgent:
                 api_specs=api_specs,
                 skeleton=skeleton,
                 mining_context=mining_context,
+                bdd_constraints=bdd_constraints,
             )
+
+            # Incremental symbol table update after each task
+            if code_memory:
+                self._update_symbol_table(code_memory, project_path, context.project_id)
+
             # 更新上下文
             context_md = self._build_context_md(files)
 
@@ -145,26 +158,61 @@ class CodeGenerationAgent:
         logger.info(f"Loaded {len(files)} framework files")
         return files
 
-    def _get_mining_context(self, task) -> str:
-        """Fetch external code examples for backend/database tasks."""
+    def _get_mining_context(self, task, skeleton: "CodeSkeleton" = None) -> str:
+        """Fetch external code examples for backend/database tasks with interface adaptation."""
         from src.services.code_mining_service import CodeMiningService
         task_type = getattr(task.type, "value", str(task.type)) if hasattr(task, "type") else ""
         if task_type not in ("backend", "database"):
             return ""
+
+        # Build real interface_spec from skeleton for this task
+        interface_spec = {"functions": [], "classes": []}
+        if skeleton:
+            task_files = getattr(task, "related_files", []) or []
+            task_name_lower = task.name.lower().replace(" ", "_")
+            for iface in skeleton.interfaces:
+                mod_lower = iface.module_name.lower()
+                is_related = any(tf in mod_lower for tf in task_files) or task_name_lower in mod_lower
+                if is_related or not task_files:
+                    for fn in iface.functions:
+                        interface_spec["functions"].append({
+                            "name": fn.get("name"),
+                            "params": fn.get("params", []),
+                            "return_type": fn.get("return_type", "Any"),
+                        })
+                    for cls in iface.classes:
+                        interface_spec["classes"].append({
+                            "name": cls.get("name"),
+                            "bases": cls.get("bases", []),
+                        })
+
         query = f"flask {task.name} {getattr(task, 'description', '')[:50]}"
         try:
             svc = CodeMiningService(
                 github_token=getattr(self.settings, "github_token", None),
                 search_limit=getattr(self.settings, "github_search_limit", 3),
             )
-            results = svc.search_and_adapt(query, {"functions": [], "classes": []})
+            results = svc.search_and_adapt(query, interface_spec)
             if not results:
                 return ""
             out = "\n## External Code References (adapt to your project)\n"
             for r in results[:2]:
-                if r.get("repo") and r.get("repo", {}).get("url"):
-                    out += f"- {r['repo'].get('full_name', '')}: {r['repo'].get('url', '')}\n"
-            return out[:500] if out else ""
+                repo = r.get("repo") or {}
+                if repo.get("url"):
+                    out += f"- {repo.get('full_name', '')}: {repo.get('url', '')}\n"
+                adapted = r.get("adapted_code")
+                if adapted:
+                    out += f"  Adapted snippet:\n```python\n{adapted[:600]}\n```\n"
+
+            # Add interface constraint context so LLM knows what to implement
+            if interface_spec["functions"] or interface_spec["classes"]:
+                out += "\nRequired interfaces for this task:\n"
+                for fn in interface_spec["functions"][:5]:
+                    out += f"  - def {fn['name']}({', '.join(fn.get('params', []))}) -> {fn.get('return_type', 'Any')}\n"
+                for cls in interface_spec["classes"][:3]:
+                    out += f"  - class {cls['name']}\n"
+
+            return out[:800] if out else ""
         except Exception as e:
             logger.debug(f"Code mining skipped: {e}")
             return ""
@@ -175,7 +223,8 @@ class CodeGenerationAgent:
                                 pyi_stubs: Dict = None,
                                 api_specs: Dict = None,
                                 skeleton: CodeSkeleton = None,
-                                mining_context: str = "") -> List[CodeFile]:
+                                mining_context: str = "",
+                                bdd_constraints: str = "") -> List[CodeFile]:
         """使用 LangChain Agent，让 LLM 自己选择看哪些文件"""
 
         # 读取框架规范
@@ -259,6 +308,7 @@ class CodeGenerationAgent:
 {skeleton_info}
 {api_info}
 {mining_context}
+{bdd_constraints}
 
 ## Task to Complete
 Name: {task.name}
@@ -297,6 +347,7 @@ Description: {task.description}
 
 ## Important Requirements
 1. You MUST use tools to explore the project - start by listing files to see what's there
+   - When you need to call functions from another module, use get_module_signatures(module_name) first to discover the available interfaces
 2. Database initialization rule:
    - CRITICAL: db = SQLAlchemy() MUST be defined ONLY in app/__init__.py
    - All model files (app/models/*.py) MUST import db from app: from app import db
@@ -333,19 +384,7 @@ Reply with "TASK_COMPLETE" when you have finished the task."""
         try:
             logger.info(f"  Agent processing task {task.id}...")
 
-            # 获取 base_url
-            base_url = None
-            if hasattr(self.llm_service.client, 'base_url'):
-                base_url = str(self.llm_service.client.base_url)
-
-            # 创建 LLM
-            llm = ChatOpenAI(
-                model="gpt-4o",
-                temperature=0,
-                max_tokens=8000,
-                api_key=self.llm_service.client.api_key,
-                base_url=base_url
-            )
+            llm = self.llm_service.create_langchain_llm(temperature=0, max_tokens=8000)
 
             # 创建 Agent
             agent = create_agent(
@@ -376,7 +415,7 @@ Remember to use tools (list_files, read_file, write_file, modify_file) to intera
             logger.info(f"  Task {task.id} completed")
 
         except Exception as e:
-            logger.warning(f"  Agent error: {e}")
+            logger.warning(f"  Agent error on task {task.id} ({task.name}): {e}", exc_info=True)
 
         # 更新 files 列表
         files = self._scan_generated_files(project_path)
@@ -404,6 +443,44 @@ Remember to use tools (list_files, read_file, write_file, modify_file) to intera
 
         logger.info(f"  Scanned {len(files)} files from project")
         return files
+
+    def _update_symbol_table(self, code_memory, project_path: Path, project_id: str) -> None:
+        """Parse generated .py files and update the symbol table incrementally."""
+        import ast as _ast
+        from src.core.data_models import SymbolTableEntry
+
+        for py_file in project_path.rglob("*.py"):
+            if "__pycache__" in str(py_file):
+                continue
+            try:
+                source = py_file.read_text(encoding="utf-8")
+                tree = _ast.parse(source)
+                module_name = str(py_file.relative_to(project_path)).replace("/", ".").replace("\\", ".").removesuffix(".py")
+                for node in _ast.iter_child_nodes(tree):
+                    if isinstance(node, _ast.FunctionDef):
+                        args = ", ".join(a.arg for a in node.args.args)
+                        ret = ""
+                        if node.returns:
+                            ret = f" -> {_ast.unparse(node.returns)}"
+                        code_memory.add_symbol(SymbolTableEntry(
+                            symbol_name=node.name,
+                            symbol_type="function",
+                            module=module_name,
+                            signature=f"def {node.name}({args}){ret}",
+                            docstring=_ast.get_docstring(node) or "",
+                            line_number=node.lineno,
+                        ), project_id=project_id or "current")
+                    elif isinstance(node, _ast.ClassDef):
+                        code_memory.add_symbol(SymbolTableEntry(
+                            symbol_name=node.name,
+                            symbol_type="class",
+                            module=module_name,
+                            signature=f"class {node.name}",
+                            docstring=_ast.get_docstring(node) or "",
+                            line_number=node.lineno,
+                        ), project_id=project_id or "current")
+            except Exception:
+                continue
 
     def _build_context_md(self, files: List[CodeFile]) -> str:
         """构建上下文 - 只传文件列表"""
@@ -500,16 +577,22 @@ class CodeMemoryAgent:
 
 
 class CodeMiningAgent:
-    """Code Mining Agent - retrieves external code from GitHub (used during CodeGeneration)."""
+    """Status/logging wrapper for code mining.
+
+    The actual mining logic lives in ``CodeGenerationAgent._get_mining_context``
+    which calls ``CodeMiningService.search_and_adapt`` per-task.  This agent is
+    invoked by the orchestrator solely to report mining status in the pipeline
+    logs; it does **not** call the LLM or perform any mining itself.
+    """
 
     def __init__(self, llm_service: LLMService, settings=None):
         self.llm_service = llm_service
         self.settings = settings
 
     def execute(self, context: ExecutionContext) -> dict:
-        """Mining is invoked inside CodeGenerationAgent per-task; this is a no-op placeholder."""
+        """Log mining status. Actual work happens in CodeGenerationAgent."""
         if self.settings and getattr(self.settings, "enable_code_mining", False):
-            logger.info("CodeMiningAgent: mining runs per-task during code generation")
+            logger.info("CodeMiningAgent: mining ran per-task during code generation")
         else:
-            logger.info("CodeMiningAgent: skipped (enable_code_mining=False)")
+            logger.debug("CodeMiningAgent: skipped (enable_code_mining=False)")
         return {}

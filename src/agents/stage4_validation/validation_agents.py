@@ -14,6 +14,7 @@ from src.core.data_models import (
     TestResult, BDDTestCase, TestError, ErrorType, ValidationStatus
 )
 from src.core.context import ExecutionContext
+from openai import APIError, RateLimitError
 from src.services.llm_service import LLMService
 from src.utils.logger import get_logger
 
@@ -36,8 +37,11 @@ class FullCycleTestingAgent:
 
         logger.info("Running full-cycle tests")
 
-        # Generate BDD test cases
-        bdd_tests = self._generate_bdd_tests(requirements)
+        # Read BDD test cases from engineering plan (test-driven) or fallback to rule-based
+        plan_bdd = []
+        if context.engineering_plan and getattr(context.engineering_plan, 'bdd_test_cases', None):
+            plan_bdd = context.engineering_plan.bdd_test_cases
+        bdd_tests = plan_bdd if plan_bdd else self._generate_bdd_tests(requirements)
 
         # Save files to disk
         generated_path = project_path / "generated"
@@ -126,8 +130,8 @@ class FullCycleTestingAgent:
 
         logger.info(f"Starting {entry_file} on port {port}...")
 
+        proc = None
         try:
-            # 启动 Flask 应用
             proc = subprocess.Popen(
                 ["python", entry_file],
                 cwd=str(project_path),
@@ -136,10 +140,8 @@ class FullCycleTestingAgent:
                 text=True
             )
 
-            # 等待服务器启动
             time.sleep(3)
 
-            # 检查进程是否还在运行
             if proc.poll() is not None:
                 stdout, stderr = proc.communicate()
                 errors.append(TestError(
@@ -151,7 +153,6 @@ class FullCycleTestingAgent:
                 ))
                 return errors
 
-            # 尝试用 curl 访问首页
             try:
                 result = subprocess.run(
                     ["curl", "-s", "-o", "NUL", "-w", "%{http_code}", f"http://localhost:{port}/"],
@@ -180,8 +181,7 @@ class FullCycleTestingAgent:
                 ))
 
         finally:
-            # 终止进程
-            if proc.poll() is None:
+            if proc is not None and proc.poll() is None:
                 proc.terminate()
                 try:
                     proc.wait(timeout=3)
@@ -280,12 +280,12 @@ class FullCycleTestingAgent:
         import time
         import signal
 
-        port = 5555  # 使用固定端口避免冲突
+        port = 5555
 
         logger.info(f"Starting {entry_file} on port {port}...")
 
+        proc = None
         try:
-            # 启动 Flask 应用
             proc = subprocess.Popen(
                 ["python", entry_file],
                 cwd=str(project_path),
@@ -294,10 +294,8 @@ class FullCycleTestingAgent:
                 text=True
             )
 
-            # 等待服务器启动
             time.sleep(3)
 
-            # 检查进程是否还在运行
             if proc.poll() is not None:
                 stdout, stderr = proc.communicate()
                 errors.append(TestError(
@@ -309,7 +307,6 @@ class FullCycleTestingAgent:
                 ))
                 return errors
 
-            # 尝试访问首页
             try:
                 response = requests.get(f"http://localhost:{port}/", timeout=5)
                 logger.info(f"GET / -> {response.status_code}")
@@ -332,8 +329,7 @@ class FullCycleTestingAgent:
                 ))
 
         finally:
-            # 终止进程
-            if proc.poll() is None:
+            if proc is not None and proc.poll() is None:
                 proc.terminate()
                 try:
                     proc.wait(timeout=3)
@@ -679,19 +675,22 @@ class FullCycleTestingAgent:
             lines.append(f"        pytest.fail(f'API {{path}} failed: {{e}}')")
             lines.append("")
 
-        # Feature-based smoke tests
-        for t in bdd_tests[:3]:
+        # Feature-based smoke tests (use LLM-generated test_code when available)
+        for t in bdd_tests[:5]:
             safe_id = re.sub(r"[^a-zA-Z0-9]", "_", t.test_id)[:40]
-            lines.append(f"def test_bdd_{safe_id}():")
-            lines.append(f'    """{t.scenario}: {t.given} -> {t.when} -> {t.then}"""')
-            lines.append("    try:")
-            lines.append("        from app import create_app")
-            lines.append("        app = create_app()")
-            lines.append("        with app.test_client() as client:")
-            lines.append("            r = client.get('/')")
-            lines.append("            assert r.status_code in (200, 302)")
-            lines.append("    except Exception as e:")
-            lines.append(f"        pytest.fail(str(e))")
+            if t.test_code and "def " in t.test_code and len(t.test_code) > 30:
+                lines.append(t.test_code)
+            else:
+                lines.append(f"def test_bdd_{safe_id}():")
+                lines.append(f'    """{t.scenario}: {t.given} -> {t.when} -> {t.then}"""')
+                lines.append("    try:")
+                lines.append("        from app import create_app")
+                lines.append("        app = create_app()")
+                lines.append("        with app.test_client() as client:")
+                lines.append("            r = client.get('/')")
+                lines.append("            assert r.status_code in (200, 302)")
+                lines.append("    except Exception as e:")
+                lines.append(f"        pytest.fail(str(e))")
             lines.append("")
 
         content = "\n".join(lines)
@@ -994,8 +993,8 @@ class FineTuningAgent:
                 # Try to fix import errors
                 repository = self._fix_import_error(repository, error)
                 fixed = True
-            elif error.error_type in [ErrorType.RUNTIME, ErrorType.RUNTIME]:
-                # Try to fix test failures
+            elif error.error_type in [ErrorType.RUNTIME, ErrorType.LOGIC]:
+                # Try to fix runtime/logic test failures
                 repository = self._fix_test_error(repository, error)
                 fixed = True
 
@@ -1005,6 +1004,12 @@ class FineTuningAgent:
                 repository = self._fix_missing_entry_point(repository)
                 fixed = True
 
+        # Visual feedback repair: if alignment_score < 0.7, apply visual fixes
+        visual_fb = getattr(test_result, "visual_feedback", None)
+        if visual_fb and visual_fb.get("alignment_score", 1.0) < 0.7:
+            repository = self._fix_visual_issues(repository, visual_fb, context)
+            fixed = True
+
         if fixed:
             logger.info("Applied fixes to code")
 
@@ -1012,10 +1017,11 @@ class FineTuningAgent:
 
     def _fix_syntax_error(self, repository: CodeRepository, error: TestError) -> CodeRepository:
         """Fix syntax errors in code."""
+        import ast
+
         for i, f in enumerate(repository.files):
             if f.path == error.file_path:
                 logger.info(f"Fixing syntax error in {f.path}")
-                # Use LLM to fix the syntax error
                 prompt = f"""Fix the syntax error in this Python file:
 
 File: {f.path}
@@ -1028,8 +1034,6 @@ Return the corrected code only, no explanations.
 """
                 try:
                     fixed_code = self.llm_service.generate(prompt, max_tokens=2000)
-                    # Verify it parses
-                    import ast
                     ast.parse(fixed_code)
                     repository.files[i] = CodeFile(
                         path=f.path,
@@ -1039,41 +1043,93 @@ Return the corrected code only, no explanations.
                         dependencies=f.dependencies
                     )
                     logger.info(f"Fixed syntax error in {f.path}")
+                except (APIError, RateLimitError) as e:
+                    logger.error(f"LLM API error fixing syntax in {f.path}: {e}")
+                except SyntaxError:
+                    logger.warning(f"LLM-generated fix still has syntax errors in {f.path}")
                 except Exception as e:
-                    logger.warning(f"Could not fix syntax error: {e}")
+                    logger.warning(f"Could not fix syntax error in {f.path}: {e}")
                 break
 
         return repository
 
+    _KNOWN_STUBS: Dict[str, str] = {
+        "config": (
+            '"""Configuration module."""\n\n'
+            "class Config:\n"
+            "    SECRET_KEY = 'dev-secret-key'\n"
+            "    DEBUG = True\n"
+            "    SQLALCHEMY_DATABASE_URI = 'sqlite:///app.db'\n"
+        ),
+        "models": (
+            '"""Models placeholder."""\n\n'
+            "from flask_sqlalchemy import SQLAlchemy\n\n"
+            "db = SQLAlchemy()\n"
+        ),
+        "schemas": (
+            '"""Schemas placeholder."""\n'
+        ),
+        "extensions": (
+            '"""Extensions placeholder."""\n\n'
+            "from flask_sqlalchemy import SQLAlchemy\n\n"
+            "db = SQLAlchemy()\n"
+        ),
+        "database": (
+            '"""Database module."""\n\n'
+            "from flask_sqlalchemy import SQLAlchemy\n\n"
+            "db = SQLAlchemy()\n\n"
+            "def init_db(app):\n"
+            "    db.init_app(app)\n"
+            "    with app.app_context():\n"
+            "        db.create_all()\n"
+        ),
+    }
+
     def _fix_import_error(self, repository: CodeRepository, error: TestError) -> CodeRepository:
-        """Fix import errors by generating missing modules."""
-        # Extract missing module from error message
-        # e.g., "Missing module: app.config" -> generate config.py
-        if "Missing module:" in error.error_message:
-            module_name = error.error_message.split("Missing module:")[-1].strip()
-            logger.info(f"Attempting to fix missing module: {module_name}")
+        """Fix import errors by generating missing modules.
 
-            # Generate stub for missing module
-            module_path = module_name.replace('.', '/') + '.py'
+        Uses known stub templates for common module names, and falls back to
+        LLM generation for unknown modules.
+        """
+        if "Missing module:" not in error.error_message:
+            return repository
 
-            # Check if we can generate a simple stub
-            if 'config' in module_name.lower():
-                stub_content = '''"""Configuration module."""
+        module_name = error.error_message.split("Missing module:")[-1].strip()
+        logger.info(f"Attempting to fix missing module: {module_name}")
 
-class Config:
-    SECRET_KEY = 'dev-secret-key'
-    DEBUG = True
-    SQLALCHEMY_DATABASE_URI = 'sqlite:///app.db'
-'''
-                # Add to repository
-                repository.files.append(CodeFile(
-                    path=module_path,
-                    content=stub_content,
-                    language='python',
-                    purpose='Auto-generated config',
-                    dependencies=[]
-                ))
-                logger.info(f"Generated stub for {module_path}")
+        module_path = module_name.replace('.', '/') + '.py'
+
+        if any(f.path == module_path for f in repository.files):
+            logger.debug(f"Module {module_path} already exists in repository")
+            return repository
+
+        stub_content = None
+        module_base = module_name.rsplit(".", 1)[-1].lower()
+        for keyword, template in self._KNOWN_STUBS.items():
+            if keyword in module_base:
+                stub_content = template
+                break
+
+        if stub_content is None:
+            try:
+                prompt = (
+                    f"Generate a minimal Python stub module for '{module_name}' "
+                    f"that would be imported in a Flask application. "
+                    f"Return ONLY the Python code, no explanations."
+                )
+                stub_content = self.llm_service.generate(prompt, max_tokens=500)
+            except Exception as e:
+                logger.warning(f"LLM stub generation failed for {module_name}: {e}")
+                stub_content = f'"""{module_name} placeholder."""\n'
+
+        repository.files.append(CodeFile(
+            path=module_path,
+            content=stub_content,
+            language='python',
+            purpose=f'Auto-generated stub for {module_name}',
+            dependencies=[],
+        ))
+        logger.info(f"Generated stub for {module_path}")
 
         return repository
 
@@ -1205,8 +1261,10 @@ If the file doesn't need changes, return the original content unchanged.
                             logger.warning(f"LLM fix resulted in syntax error: {e}")
                         break
 
+        except (APIError, RateLimitError) as e:
+            logger.error(f"LLM API error fixing test error in {error.file_path}: {e}")
         except Exception as e:
-            logger.warning(f"Could not fix error using LLM: {e}")
+            logger.warning(f"Could not fix test error in {error.file_path}: {e}")
 
         return repository
 
@@ -1245,6 +1303,81 @@ if __name__ == '__main__':
         return repository
 
 
+    def _fix_visual_issues(self, repository: CodeRepository, visual_fb: dict, context: ExecutionContext) -> CodeRepository:
+        """Use LLM to fix visual/UI issues identified by VisualVerificationAgent."""
+        missing = visual_fb.get("missing_elements", [])
+        issues = visual_fb.get("issues", [])
+        layout_feedback = visual_fb.get("layout_feedback", "")
+        alignment_score = visual_fb.get("alignment_score", 0.0)
+
+        if not missing and not issues:
+            return repository
+
+        # Collect HTML/CSS/JS files for context
+        frontend_files = []
+        for f in repository.files:
+            if f.path.endswith(('.html', '.css', '.js')):
+                frontend_files.append(f"=== {f.path} ===\n{f.content}")
+
+        if not frontend_files:
+            return repository
+
+        fe_context = "\n\n".join(frontend_files)[:8000]
+
+        requirements_text = ""
+        if context.requirements:
+            requirements_text = f"App: {context.requirements.title}\nFeatures: {', '.join(f.name for f in context.requirements.features[:5])}"
+
+        prompt = f"""Fix the visual/UI issues in this Flask web application.
+
+## Visual Analysis Results
+- Alignment score: {alignment_score} (needs to be >= 0.7)
+- Layout feedback: {layout_feedback}
+- Missing UI elements: {', '.join(missing) if missing else 'None'}
+- Issues found: {', '.join(issues) if issues else 'None'}
+
+## Requirements
+{requirements_text}
+
+## Current Frontend Files
+{fe_context}
+
+Fix the HTML/CSS/JS to address ALL the missing elements and issues listed above.
+Return the fixed files in format:
+=== FILENAME ===
+<fixed content>
+
+Only include files that need changes."""
+
+        try:
+            fixed_content = self.llm_service.generate(prompt, max_tokens=6000)
+
+            import re
+            file_pattern = r'=== ([^\n]+) ===\n(.*?)(?=====|$)'
+            matches = re.findall(file_pattern, fixed_content, re.DOTALL)
+
+            for filename, content in matches:
+                filename = filename.strip()
+                for i, f in enumerate(repository.files):
+                    if f.path == filename:
+                        repository.files[i] = CodeFile(
+                            path=f.path,
+                            content=content.strip(),
+                            language=f.language,
+                            purpose=f.purpose,
+                            dependencies=f.dependencies,
+                        )
+                        logger.info(f"Fixed visual issues in {filename}")
+                        break
+
+        except (APIError, RateLimitError) as e:
+            logger.error(f"LLM API error fixing visual issues: {e}")
+        except Exception as e:
+            logger.warning(f"Could not fix visual issues: {e}", exc_info=True)
+
+        return repository
+
+
 class FrontendTestingAgent:
     """Stage 4 Agent: Test APIs by reading frontend code using LangChain Agent."""
 
@@ -1253,7 +1386,6 @@ class FrontendTestingAgent:
 
     def execute(self, project_path: Path, port: int = 5555) -> List[TestError]:
         """Test APIs by analyzing frontend code with LangChain Agent."""
-        from langchain_openai import ChatOpenAI
         from langchain.agents import create_agent
 
         from .tools import get_testing_tools
@@ -1276,21 +1408,8 @@ class FrontendTestingAgent:
         errors = []
 
         try:
-            # Get base URL
-            base_url = None
-            if hasattr(self.llm_service.client, 'base_url'):
-                base_url = str(self.llm_service.client.base_url)
+            llm = self.llm_service.create_langchain_llm(temperature=0, max_tokens=8000)
 
-            # Create LLM
-            llm = ChatOpenAI(
-                model="gpt-4o",
-                temperature=0,
-                max_tokens=8000,
-                api_key=self.llm_service.client.api_key,
-                base_url=base_url
-            )
-
-            # Get tools
             tools = get_testing_tools(str(project_path), port)
 
             # Build system prompt
@@ -1379,9 +1498,9 @@ Start by exploring the templates directory."""
             logger.error("No entry point found")
             return None
 
-        # Set port environment
         env = {"PORT": str(port), "FLASK_ENV": "testing"}
 
+        proc = None
         try:
             proc = subprocess.Popen(
                 ["python", entry_file],
@@ -1392,10 +1511,8 @@ Start by exploring the templates directory."""
                 text=True
             )
 
-            # Wait for startup
             time.sleep(4)
 
-            # Check if still running
             if proc.poll() is not None:
                 stdout, stderr = proc.communicate()
                 logger.error(f"App exited: {stderr[:200]}")
@@ -1406,6 +1523,8 @@ Start by exploring the templates directory."""
 
         except Exception as e:
             logger.error(f"Failed to start app: {e}")
+            if proc is not None and proc.poll() is None:
+                proc.terminate()
             return None
 
     def _stop_app(self, proc):
@@ -1426,28 +1545,15 @@ class CodeFixAgent:
     def __init__(self, llm_service: LLMService):
         self.llm_service = llm_service
 
-    def execute(self, project_path: Path) -> CodeRepository:
-        """Use LangChain Agent to fix code until it runs."""
-        from langchain_openai import ChatOpenAI
+    def execute(self, project_path: Path) -> "Optional[CodeRepository]":
+        """Fix code on disk until it runs. Returns None; files are modified in-place."""
         from langchain.agents import create_agent
 
         from .tools import get_fix_tools
 
         logger.info("Starting CodeFixAgent to fix code...")
 
-        # Get base URL
-        base_url = None
-        if hasattr(self.llm_service.client, 'base_url'):
-            base_url = str(self.llm_service.client.base_url)
-
-        # Create LLM
-        llm = ChatOpenAI(
-            model="gpt-4o",
-            temperature=0,
-            max_tokens=8000,
-            api_key=self.llm_service.client.api_key,
-            base_url=base_url
-        )
+        llm = self.llm_service.create_langchain_llm(temperature=0, max_tokens=8000)
 
         # Get tools
         tools = get_fix_tools(str(project_path), port=5555)
@@ -1506,10 +1612,11 @@ Start by running try_run() to see what error occurs."""
             else:
                 logger.warning("CodeFixAgent: May not have fixed all issues")
 
+        except (APIError, RateLimitError) as e:
+            logger.error(f"CodeFixAgent LLM API error: {e}")
         except Exception as e:
-            logger.error(f"CodeFixAgent error: {e}")
+            logger.error(f"CodeFixAgent error: {e}", exc_info=True)
 
-        # Return None (files are already modified on disk)
         return None
 
 
@@ -1712,9 +1819,8 @@ Return a JSON object with these fields.
 """
 
         try:
-            # Try to use vision model
-            if hasattr(self.llm_service, 'generate_image'):
-                result = self.llm_service.generate_image(prompt, str(screenshot_path))
+            if hasattr(self.llm_service, 'analyze_image'):
+                result = self.llm_service.analyze_image(str(screenshot_path), prompt)
                 return self._parse_vlm_result(result)
             else:
                 return self._fallback_vlm_analysis(screenshot_path, requirements)

@@ -152,6 +152,7 @@ class EngineeringPlan(BaseModel):
     architecture_notes: str = Field(..., description="Overall architecture description")
     api_specs: Dict[str, Any] = Field(default_factory=dict, description="API specifications for frontend-backend connection")
     pyi_stubs: Dict[str, str] = Field(default_factory=dict, description="Python .pyi stub files with type definitions")
+    bdd_test_cases: List["BDDTestCase"] = Field(default_factory=list, description="BDD test cases synthesized from requirements (test-driven)")
     created_at: datetime = Field(default_factory=datetime.now)
 
 
@@ -297,6 +298,7 @@ class TestResult(BaseModel):
 
     # Visual verification
     visual_verification: Optional[VisualVerificationResult] = Field(None, description="Visual verification results")
+    visual_feedback: Optional[Dict[str, Any]] = Field(None, description="Structured visual feedback for repair loop (alignment_score, missing_elements, issues)")
 
     # Overall
     execution_time: float = Field(..., description="Execution time in seconds")

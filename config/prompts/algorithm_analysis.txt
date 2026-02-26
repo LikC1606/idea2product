@@ -1,0 +1,12 @@
+For each task, provide a brief implementation approach.
+Return a JSON object with task ID as key:
+{
+    "T1": {
+        "implementation_approach": "Brief description of how to implement this task",
+        "notes": "Any important notes"
+    }
+}
+
+Tasks: $tasks_summary
+
+Respond with valid JSON only. Keep it simple - just 1-2 sentences per task.

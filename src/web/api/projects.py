@@ -28,6 +28,9 @@ from src.services.llm_service import LLMService
 from src.agents.stage1_requirements.interaction_agent import InteractionAgent
 from src.web.services import chat_service
 from src.web.services.preview_service import preview_service
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 bp = Blueprint("projects", __name__, url_prefix="/api/projects")
 
@@ -92,7 +95,8 @@ def post_chat(project_id):
         agent = InteractionAgent(llm_service)
         reply = agent.reply_in_chat(messages)
     except Exception as e:
-        reply = f"收到你的需求，正在后台生成中。({e})"
+        logger.warning(f"Chat reply failed for {project_id}, queuing generation anyway: {e}")
+        reply = "收到你的需求，正在后台生成中。AI 回复暂时不可用，但生成流程已启动。"
 
     chat_service.append_message(settings, project_id, "assistant", reply)
 

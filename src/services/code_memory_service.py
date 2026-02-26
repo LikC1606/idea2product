@@ -36,164 +36,141 @@ class CodeMemoryService:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
         conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+        try:
+            cursor = conn.cursor()
 
-        # Code snippets table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS code_snippets (
-                id TEXT PRIMARY KEY,
-                function_name TEXT NOT NULL,
-                description TEXT,
-                code TEXT NOT NULL,
-                language TEXT NOT NULL,
-                tags TEXT,
-                usage_count INTEGER DEFAULT 0,
-                project_id TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS code_snippets (
+                    id TEXT PRIMARY KEY,
+                    function_name TEXT NOT NULL,
+                    description TEXT,
+                    code TEXT NOT NULL,
+                    language TEXT NOT NULL,
+                    tags TEXT,
+                    usage_count INTEGER DEFAULT 0,
+                    project_id TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
 
-        # Symbol table (new for Interface-First strategy)
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS symbol_table (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                symbol_name TEXT NOT NULL,
-                symbol_type TEXT NOT NULL,
-                module TEXT NOT NULL,
-                signature TEXT,
-                docstring TEXT,
-                line_number INTEGER,
-                project_id TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(symbol_name, module, project_id)
-            )
-        """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS symbol_table (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    symbol_name TEXT NOT NULL,
+                    symbol_type TEXT NOT NULL,
+                    module TEXT NOT NULL,
+                    signature TEXT,
+                    docstring TEXT,
+                    line_number INTEGER,
+                    project_id TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(symbol_name, module, project_id)
+                )
+            """)
 
-        # Full-text search virtual table
-        cursor.execute("""
-            CREATE VIRTUAL TABLE IF NOT EXISTS code_search
-            USING fts5(function_name, description, tags)
-        """)
+            cursor.execute("""
+                CREATE VIRTUAL TABLE IF NOT EXISTS code_search
+                USING fts5(function_name, description, tags)
+            """)
 
-        conn.commit()
-        conn.close()
+            conn.commit()
+        finally:
+            conn.close()
         logger.info(f"Code memory database initialized at {self.db_path}")
 
     def add_snippet(self, snippet: CodeSnippet) -> None:
-        """
-        Add a code snippet to memory.
-
-        Args:
-            snippet: CodeSnippet to store
-        """
+        """Add a code snippet to memory."""
         conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+        try:
+            cursor = conn.cursor()
 
-        cursor.execute("""
-            INSERT OR REPLACE INTO code_snippets
-            (id, function_name, description, code, language, tags, usage_count, project_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            snippet.id,
-            snippet.function_name,
-            snippet.description,
-            snippet.code,
-            snippet.language,
-            ",".join(snippet.tags),
-            snippet.usage_count,
-            snippet.project_id,
-        ))
+            cursor.execute("""
+                INSERT OR REPLACE INTO code_snippets
+                (id, function_name, description, code, language, tags, usage_count, project_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                snippet.id,
+                snippet.function_name,
+                snippet.description,
+                snippet.code,
+                snippet.language,
+                ",".join(snippet.tags),
+                snippet.usage_count,
+                snippet.project_id,
+            ))
 
-        # Update FTS table
-        cursor.execute("""
-            INSERT OR REPLACE INTO code_search (rowid, function_name, description, tags)
-            SELECT rowid, function_name, description, tags FROM code_snippets WHERE id = ?
-        """, (snippet.id,))
+            cursor.execute("""
+                INSERT OR REPLACE INTO code_search (rowid, function_name, description, tags)
+                SELECT rowid, function_name, description, tags FROM code_snippets WHERE id = ?
+            """, (snippet.id,))
 
-        conn.commit()
-        conn.close()
+            conn.commit()
+        finally:
+            conn.close()
         logger.debug(f"Added snippet: {snippet.id}")
 
     def search_snippets(self, query: str, limit: int = 5) -> List[CodeSnippet]:
-        """
-        Search for code snippets using full-text search.
-
-        Args:
-            query: Search query
-            limit: Maximum number of results
-
-        Returns:
-            List of matching code snippets
-        """
+        """Search for code snippets using full-text search."""
         conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
+        try:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
 
-        cursor.execute("""
-            SELECT s.* FROM code_snippets s
-            JOIN code_search cs ON s.rowid = cs.rowid
-            WHERE code_search MATCH ?
-            ORDER BY usage_count DESC
-            LIMIT ?
-        """, (query, limit))
+            cursor.execute("""
+                SELECT s.* FROM code_snippets s
+                JOIN code_search cs ON s.rowid = cs.rowid
+                WHERE code_search MATCH ?
+                ORDER BY usage_count DESC
+                LIMIT ?
+            """, (query, limit))
 
-        rows = cursor.fetchall()
-        conn.close()
+            rows = cursor.fetchall()
+        finally:
+            conn.close()
 
         return [self._row_to_snippet(row) for row in rows]
 
     def add_symbol(self, symbol: SymbolTableEntry, project_id: str) -> None:
-        """
-        Add a symbol to the symbol table (Interface-First support).
-
-        Args:
-            symbol: SymbolTableEntry to store
-            project_id: Project identifier
-        """
+        """Add a symbol to the symbol table (Interface-First support)."""
         conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+        try:
+            cursor = conn.cursor()
 
-        cursor.execute("""
-            INSERT OR REPLACE INTO symbol_table
-            (symbol_name, symbol_type, module, signature, docstring, line_number, project_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (
-            symbol.symbol_name,
-            symbol.symbol_type,
-            symbol.module,
-            symbol.signature,
-            symbol.docstring,
-            symbol.line_number,
-            project_id,
-        ))
+            cursor.execute("""
+                INSERT OR REPLACE INTO symbol_table
+                (symbol_name, symbol_type, module, signature, docstring, line_number, project_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                symbol.symbol_name,
+                symbol.symbol_type,
+                symbol.module,
+                symbol.signature,
+                symbol.docstring,
+                symbol.line_number,
+                project_id,
+            ))
 
-        conn.commit()
-        conn.close()
+            conn.commit()
+        finally:
+            conn.close()
         logger.debug(f"Added symbol: {symbol.symbol_name} in {symbol.module}")
 
     def get_symbols_by_module(self, module: str, project_id: str) -> List[SymbolTableEntry]:
-        """
-        Get all symbols for a specific module (Interface-First support).
-
-        Args:
-            module: Module name
-            project_id: Project identifier
-
-        Returns:
-            List of symbol table entries
-        """
+        """Get all symbols for a specific module (Interface-First support)."""
         conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
+        try:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
 
-        cursor.execute("""
-            SELECT * FROM symbol_table
-            WHERE module = ? AND project_id = ?
-            ORDER BY line_number
-        """, (module, project_id))
+            cursor.execute("""
+                SELECT * FROM symbol_table
+                WHERE module = ? AND project_id = ?
+                ORDER BY line_number
+            """, (module, project_id))
 
-        rows = cursor.fetchall()
-        conn.close()
+            rows = cursor.fetchall()
+        finally:
+            conn.close()
 
         return [self._row_to_symbol(row) for row in rows]
 

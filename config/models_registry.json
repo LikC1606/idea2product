@@ -1,0 +1,27 @@
+{
+  "models": [
+    {
+      "id": "gpt-4o",
+      "provider": "openai",
+      "capabilities": ["text", "json", "vision", "long_context", "code"],
+      "roles": ["primary", "vision"],
+      "cost_tier": "high",
+      "max_tokens": 8000
+    },
+    {
+      "id": "gpt-4o-mini",
+      "provider": "openai",
+      "capabilities": ["text", "json", "code"],
+      "roles": ["fallback"],
+      "cost_tier": "low",
+      "max_tokens": 4096
+    }
+  ],
+  "stage_routing": {
+    "1": {"preferred_role": "primary", "required_capabilities": ["text"]},
+    "2": {"preferred_role": "primary", "required_capabilities": ["json"]},
+    "3": {"preferred_role": "primary", "required_capabilities": ["code", "long_context"]},
+    "4": {"preferred_role": "primary", "required_capabilities": ["text"]},
+    "4_vision": {"preferred_role": "vision", "required_capabilities": ["vision"]}
+  }
+}

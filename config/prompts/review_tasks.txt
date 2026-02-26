@@ -1,0 +1,63 @@
+你是代码审查专家。请审查以下 Stage 2 生成的任务列表。
+
+## 原始需求
+Title: $title
+Description: $description
+Features:
+$features_str
+
+## 初步生成的任务列表
+$initial_tasks
+
+## 审查要点
+请从以下通用维度审查（适用于任何类型的应用）：
+
+1. **功能覆盖**：逐条对照上面的 Features 列表，检查每个 feature 是否被至少一个任务覆盖。
+   - 列出每个 feature 对应的任务 ID
+   - 标记未被覆盖的 feature
+
+2. **实体完整性**：从需求中识别所有数据实体（如用户、订单、商品等），检查：
+   - 每个实体是否有对应的后端任务（模型 + API）
+   - 实体之间的关联关系是否在描述中体现（如外键关联）
+
+3. **CRUD 完整性**：对于每个数据实体，检查是否包含必要的增删改查操作。
+
+4. **前后端对应**：
+   - 每个需要用户交互的 feature 是否有对应的前端任务
+   - 前端任务是否正确声明了对后端任务的依赖
+
+5. **依赖关系检查**：
+   - dependencies 是否形成有向无环图（无循环依赖）
+   - 是否有遗漏的依赖（如前端任务缺少对后端任务的依赖）
+
+6. **一致性**：
+   - 任务描述与需求是否匹配
+   - 任务之间是否有遗漏或重复
+
+## 输出格式
+请返回以下JSON格式：
+
+{
+    "issues": [
+        {
+            "task_id": "T1",
+            "issue_type": "missing_feature|inconsistency|missing_field|missing_dependency|...",
+            "description": "问题描述",
+            "suggestion": "修正建议"
+        }
+    ],
+    "refined_tasks": [
+        {
+            "id": "T1",
+            "name": "任务名称",
+            "description": "修正后的描述，包含所有必要字段",
+            "type": "backend|frontend|database|testing|deployment",
+            "priority": 1-5,
+            "estimated_complexity": "low|medium|high",
+            "dependencies": ["T0"]
+        }
+    ]
+}
+
+如果任务列表没有问题，issues 可以为空数组，但 refined_tasks 必须返回完整列表。
+请确保 refined_tasks 是完整且正确的JSON数组。

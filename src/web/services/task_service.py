@@ -63,8 +63,8 @@ class TaskService:
             path = self._status_path(project_id)
             path.parent.mkdir(parents=True, exist_ok=True)
             write_json(path, serializable)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to persist task status for {project_id}: {e}")
 
     def _restore_persisted_tasks(self):
         """On startup, scan projects_dir and reload last-known task status."""
