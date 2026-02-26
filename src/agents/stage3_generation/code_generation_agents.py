@@ -264,34 +264,24 @@ class CodeGenerationAgent:
 Name: {task.name}
 Description: {task.description}
 
-## 【IMPORTANT】必须严格遵循 API 规范
-{api_info}
+## 【CRITICAL】前端代码必须严格遵循 api_specs
+前端发送数据时，必须严格按照 api_specs 中定义的 request 字段和类型生成代码：
 
-你必须严格按照上述 API 规范生成代码：
-- API 端点路径必须完全匹配（如 /api/posts, /api/posts/<id>）
-- 请求格式（request）必须完全匹配，不能添加额外字段
-- 响应格式（response）必须完全匹配
+1. **字段名必须完全一致**：
+   - api_specs 定义了 `author_id: "int"`，前端就必须发送 `author_id`
+   - 不能省略任何必填字段！
 
-## 【CRITICAL】字段类型必须严格匹配
-api_specs 中的每个字段类型必须严格遵守：
-
-1. **类型转换规则**：
+2. **字段类型必须完全一致**：
    - `"bool"` → JavaScript `true`/`false`（不是字符串 "true"/"false"）
-   - `"int"` → JavaScript 数字（不是字符串）
-   - `"str"` → JavaScript 字符串
-   - `"array"` 或 `["str"]` → JavaScript 数组（不是逗号分隔的字符串）
-   - `"float"` → JavaScript 数字
+   - `"int"` → JavaScript 数字（如 `parseInt(value)` 或 `Number(value)`）
+   - `"array"` 或 `["str"]` → JavaScript 数组（如 `["tag1", "tag2"]`）
 
-2. **表单数据转换**：
-   - HTML 表单输入的值都是字符串，需要根据 api_specs 的类型进行转换
-   - 数字字段：用 `Number()` 或 `parseInt()` 转换
-   - 布尔字段：用 `value === "true"` 或 `value === "false"` 转换
-   - 数组字段：用 `value.split(',').map(...)` 转换
+3. **【强制】关联 ID（如 author_id）必须从 session 获取**：
+   - 如果 api_specs 的 request 中需要 author_id，后端从 session 获取
+   - 前端不需要传递 author_id，后端自己从 session['user_id'] 读取
+   - 例如：创建博客时，后端用 session.get('user_id') 获取当前用户ID
 
-3. **【重要】关联 ID 处理**：
-   - 如果 API 需要 user_id、author_id、category_id 等关联 ID
-   - 前端必须从 session/cookie 获取当前用户信息
-   - 示例：调用获取当前用户的 API，然后使用其中的 id 字段
+4. 数据格式：所有 API 用 JSON，禁止用 FormData
 
 ## 【CRITICAL】Session 认证实现
 如果 api_specs 中的 endpoint 有 session_info 说明，必须按要求实现：
@@ -302,7 +292,8 @@ api_specs 中的每个字段类型必须严格遵守：
 
 3. **确保 app/__init__.py 设置了 secret_key**：app.secret_key = 'your-secret-key'
 
-## 【禁止】不要添加 api_specs 中没有的字段**
+## API Endpoints
+{api_info}
 
 ## Important Requirements
 1. You MUST use tools to explore the project - start by listing files to see what's there
@@ -326,7 +317,11 @@ api_specs 中的每个字段类型必须严格遵守：
    - MUST match the frontend_routes specified above!
    - IMPORTANT: Frontend routes ONLY render templates, do NOT pass data! All data should be fetched via JavaScript API calls in the template
 5. Generate ACTUAL working HTML with forms, buttons, and API calls - not placeholder text!
-6. Use list_files() to see available files, read_file() to read them, write_file() to create/modify
+6. **【强制】在修改任何文件之前，必须先阅读文件内容**：
+   - 先用 list_files() 查看所有文件
+   - 再用 read_file() 读取目标文件的内容
+   - 了解现有代码结构后再修改，不能直接覆盖！
+   - 特别注意 app/__init__.py 等入口文件的结构
 7. CRITICAL: Do NOT worry about whether packages are installed in the current environment.
    Do NOT output messages like "please run pip install" or "dependencies not installed".
    Just write the code with the correct imports. Dependencies will be installed separately.

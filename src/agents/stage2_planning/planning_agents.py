@@ -582,6 +582,9 @@ YOUR JOB:
 8. **Session存储说明**：如果API需要跨请求保持状态（如用户登录、购物车等），必须在api_specs的endpoint中说明session的设置情况
    - 例如：登录API需要说明 session['user_id'] = user.id
    - 每个endpoint的session_info字段说明这个操作会设置什么session变量
+9. **【重要】session变量获取**：如果API需要获取当前用户信息（如author_id），必须从session读取，不需要前端传递
+   - session_info 中用 gets 字段说明需要从 session 获取什么变量
+   - 例如：创建博客时 author_id 从 session['user_id'] 获取，不需要前端传递
 
 File assignment guidelines:
 - Frontend task: templates/*.html, static/*
@@ -604,7 +607,8 @@ Output format (JSON):
         "description": "前后端连接方式描述",
         "endpoints": [
             {{"path": "/api/notes", "method": "GET", "description": "获取笔记列表", "response": "[{{id, content, created_at}}]"}},
-            {{"path": "/api/auth/login", "method": "POST", "description": "用户登录", "request": "{{username, password}}", "response": "{{message, user}}", "session_info": {{"sets": "session['user_id'] = user.id", "description": "登录成功后保存用户ID到session"}}}}
+            {{"path": "/api/auth/login", "method": "POST", "description": "用户登录", "request": "{{username, password}}", "response": "{{message, user}}", "session_info": {{"sets": "session['user_id'] = user.id", "description": "登录成功后保存用户ID到session"}}}},
+            {{"path": "/api/posts", "method": "POST", "description": "创建博客", "request": "{{title, content}}", "response": "{{id, title}}", "session_info": {{"gets": "session['user_id'] as author_id", "description": "从session获取当前用户ID作为author_id"}}}}
         ],
         "frontend_routes": {{
             "/": {{"template": "index.html", "description": "主页显示笔记列表"}},
@@ -626,7 +630,8 @@ IMPORTANT:
 - pyi_stubs: 为每个Python文件生成类型存根（.pyi格式），让Stage 3知道每个文件的接口 - 必须详细
 - api_specs: 描述前后端如何连接，前端调用哪个URL，后端返回什么格式 - 必须完整
 - frontend_routes: 列出所有前端页面路由 - 不能遗漏
-- session_info: 如果endpoint会设置session，必须说明session变量名和值（如 session['user_id'] = user.id）
+- session_info: 如果endpoint会设置session，必须说明session变量名和值（如 session['user_id'] = user.id）；如果需要从session获取变量，用gets说明（如 session['user_id'] as author_id）
+- 前端不需要传递author_id等关联ID，后端从session获取
 
 Return ONLY valid JSON.
 """
