@@ -469,6 +469,37 @@ OPENAI_API_KEY=dummy
 
 ---
 
+## Deploy as Public Website
+
+Deploy Idea2Product so anyone can use Build Studio in a browser.
+
+### Render (recommended, free tier)
+
+1. Go to [render.com](https://render.com) and sign in with GitHub.
+2. Click **New** → **Web Service**.
+3. Connect your repository (`idea2product`).
+4. Render reads `render.yaml`; ensure **Build Command** and **Start Command** match (or leave defaults).
+5. Add **Environment Variable**: `OPENAI_API_KEY` = your API key.
+6. Click **Create Web Service**. After deploy, you get a URL like `https://idea2product-xxx.onrender.com`.
+
+**Note**: Free tier sleeps after 15 minutes of no traffic; the first request after sleep may take ~1 minute to wake.
+
+### Railway
+
+1. Go to [railway.app](https://railway.app) and sign in with GitHub.
+2. **New Project** → **Deploy from GitHub repo** → select `idea2product`.
+3. Railway uses the `Procfile`; no extra config needed.
+4. **Variables** → add `OPENAI_API_KEY`.
+5. Deploy; Railway assigns a public URL.
+
+### Important for public deployment
+
+- Set `OPENAI_API_KEY` as an environment variable (never commit it).
+- Free tiers usually have ephemeral disk: generated projects may be lost on restart.
+- The `gunicorn --timeout 300` in `render.yaml` / `Procfile` helps avoid timeouts during long code generation.
+
+---
+
 ## Reproducibility Checklist
 
 | Before running | After running |

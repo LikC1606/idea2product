@@ -12,6 +12,7 @@ langchain-core>=0.3.0
 # Web framework
 flask>=3.0.0
 flask-cors>=4.0.0
+gunicorn>=21.0.0
 
 # CLI
 click>=8.1.0

@@ -1,0 +1,17 @@
+# Render.com deployment config
+# Deploy: connect this repo at https://dashboard.render.com
+services:
+  - type: web
+    name: idea2product
+    runtime: python
+    buildCommand: pip install -r requirements.txt && pip install -e .
+    startCommand: gunicorn -w 1 -b 0.0.0.0:$PORT --timeout 300 src.web.app:app
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_BASE_URL
+        value: https://api.openai.com/v1
+      - key: OPENAI_MODEL
+        value: gpt-4o
+      - key: PYTHON_VERSION
+        value: "3.11"
