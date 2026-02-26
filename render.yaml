@@ -5,7 +5,7 @@ services:
     name: idea2product
     runtime: python
     buildCommand: pip install -r requirements.txt && pip install -e .
-    startCommand: gunicorn -w 1 -b 0.0.0.0:$PORT --timeout 300 src.web.app:app
+    startCommand: python -m gunicorn -w 1 -b 0.0.0.0:$PORT --timeout 300 src.web.app:app
     envVars:
       - key: OPENAI_API_KEY
         sync: false
