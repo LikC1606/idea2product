@@ -1,9 +1,11 @@
 """Configuration management for Idea2Product."""
 
 import os
+import sys
 from pathlib import Path
 from typing import Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import ValidationError
 from functools import lru_cache
 
 
@@ -22,6 +24,11 @@ class Settings(BaseSettings):
     github_token: Optional[str] = None
     github_search_limit: int = 5
 
+    # Hugging Face Configuration (Optional, for algorithm analysis)
+    enable_hf_model_search: bool = False
+    hf_search_limit: int = 5
+    hf_token: Optional[str] = None
+
     # System Configuration
     log_level: str = "INFO"
     project_root: Path = Path(__file__).parent.parent
@@ -33,7 +40,12 @@ class Settings(BaseSettings):
 
     # Execution Configuration
     sandbox_timeout: int = 30
+    use_fast_model_for_light_stages: bool = True
+    use_unified_task_division: bool = True
+    skip_task_review_when_count_low: int = 3
+    enable_parallel_task_generation: bool = False
     max_fix_attempts: int = 2
+    random_seed: Optional[int] = None  # If set, seeds random/numpy for reproducibility
     enable_code_memory: bool = False
     enable_code_mining: bool = False
     enable_visual_verification: bool = True
@@ -94,6 +106,30 @@ class Settings(BaseSettings):
         self.templates_dir.mkdir(parents=True, exist_ok=True)
 
 
+def validate_settings(settings: Settings) -> None:
+    """
+    Validate critical settings. Raises SystemExit with clear message on failure.
+    """
+    if not (settings.openai_api_key or "").strip():
+        print("Error: OPENAI_API_KEY is required. Set it in .env or environment.", file=sys.stderr)
+        print("  Example: OPENAI_API_KEY=sk-...", file=sys.stderr)
+        sys.exit(1)
+    if not settings.prompts_dir.exists():
+        print(f"Error: Prompts directory not found: {settings.prompts_dir}", file=sys.stderr)
+        sys.exit(1)
+    if not settings.templates_dir.exists():
+        print(f"Error: Templates directory not found: {settings.templates_dir}", file=sys.stderr)
+        sys.exit(1)
+    try:
+        settings.data_dir.mkdir(parents=True, exist_ok=True)
+        test_file = settings.data_dir / ".write_test"
+        test_file.touch()
+        test_file.unlink()
+    except OSError as e:
+        print(f"Error: Cannot write to data directory {settings.data_dir}: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
 def get_settings() -> Settings:
     """Get cached settings instance."""
     return _get_settings_cached()
@@ -102,6 +138,16 @@ def get_settings() -> Settings:
 @lru_cache()
 def _get_settings_cached() -> Settings:
     """Internal cached settings instance."""
-    settings = Settings()
+    try:
+        settings = Settings()
+    except ValidationError as e:
+        print("Error: Invalid configuration:", file=sys.stderr)
+        for err in e.errors():
+            loc = ".".join(str(x) for x in err.get("loc", []))
+            msg = err.get("msg", "")
+            print(f"  - {loc}: {msg}", file=sys.stderr)
+        print("\nCheck .env and environment variables.", file=sys.stderr)
+        sys.exit(1)
     settings.ensure_directories()
+    validate_settings(settings)
     return settings

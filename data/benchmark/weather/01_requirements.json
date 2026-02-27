@@ -1,0 +1,11 @@
+{
+  "title": "Weather Widget",
+  "description": "Shows current temperature for a city",
+  "features": [
+    {"id": "f1", "name": "Show temperature", "description": "Display current temp", "priority": 1},
+    {"id": "f2", "name": "City input", "description": "User can enter city", "priority": 1}
+  ],
+  "constraints": [],
+  "target_users": null,
+  "data_requirements": null
+}

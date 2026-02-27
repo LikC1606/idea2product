@@ -1,0 +1,6 @@
+{
+  "tasks": [
+    {"id": "T1", "name": "Weather API", "description": "Backend to fetch weather", "type": "backend", "dependencies": [], "priority": 5, "estimated_complexity": "medium"},
+    {"id": "T2", "name": "Weather UI", "description": "Display temp and city input", "type": "frontend", "dependencies": ["T1"], "priority": 4, "estimated_complexity": "low"}
+  ]
+}

@@ -31,8 +31,8 @@ def temp_settings():
 
 @pytest.fixture
 def app_with_temp_settings(temp_settings):
-    """Patch Settings and clear task service cache so handlers use temp dir."""
-    with patch("src.web.api.projects.Settings", return_value=temp_settings):
+    """Patch get_settings and clear task service cache so handlers use temp dir."""
+    with patch("src.web.api.projects.get_settings", return_value=temp_settings):
         # Clear cached task service so next request gets TaskService(temp_settings)
         import src.web.api.projects as projects_module
         if hasattr(projects_module._get_task_service, "_instance"):

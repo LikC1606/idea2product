@@ -1,0 +1,52 @@
+根据以下需求，一次性输出：数据实体、前端页面、任务列表。
+
+Requirements:
+Title: $title
+Description: $description
+Features: $features
+$flow_section
+$template_hint
+
+OUTPUT FORMAT (single JSON object):
+{
+    "entities": [
+        {
+            "name": "实体名称",
+            "fields": ["id(int)", "name(str)", "created_at(datetime)"],
+            "crud_operations": ["create", "read", "update", "delete"],
+            "relations": ["belongs_to OtherEntity"]
+        }
+    ],
+    "pages": [
+        {
+            "name": "页面名称",
+            "url": "/path",
+            "related_entities": ["Entity1"],
+            "interactions": ["查看列表", "提交表单"]
+        }
+    ],
+    "tasks": [
+        {
+            "id": "T1",
+            "name": "任务名称",
+            "description": "详细描述，包含所有字段和API",
+            "type": "backend|frontend|database|testing|deployment",
+            "priority": 1-5,
+            "estimated_complexity": "low|medium|high",
+            "dependencies": []
+        }
+    ]
+}
+
+任务拆分要求：
+1. 每个任务要能独立完成，不过于复杂
+2. 所有任务的总和要能完整实现所有功能
+3. 任务按依赖排序：先底层、后上层
+4. 前端页面拆分：每个单独的HTML页面应是独立任务
+5. **数据库模型和对应的API必须放在同一个任务中**
+6. **同一个实体的CRUD操作必须放在同一个任务中**
+7. **description必须包含所有字段名称，不能模糊**
+
+dependencies 要求：无依赖填 []，形成 DAG 无循环。
+
+Return ONLY valid JSON object.

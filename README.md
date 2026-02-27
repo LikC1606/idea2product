@@ -36,6 +36,8 @@ Idea2Product takes a plain-text description of what you want to build and automa
    pip install -e .
    ```
 
+   For exact reproducibility, use `requirements-pinned.txt` instead. See [docs/REPRODUCIBILITY.md](docs/REPRODUCIBILITY.md).
+
 2. **Configure** (≈1 min)
 
    ```bash

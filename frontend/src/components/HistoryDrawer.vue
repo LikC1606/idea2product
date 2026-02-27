@@ -1,4 +1,6 @@
 <script setup>
+import EmptyState from './EmptyState.vue'
+
 defineProps({
   open: Boolean,
   projects: Array,
@@ -13,15 +15,23 @@ defineEmits(['select-project'])
     :class="{ open }"
     role="navigation"
     aria-label="Project history"
+    :aria-hidden="!open"
   >
     <div class="history-drawer-inner">
       <div class="history-title">Projects</div>
-      <div class="history-list">
+      <EmptyState
+        v-if="!projects?.length"
+        icon="📋"
+        title="No projects yet"
+        description="Create a new project to get started."
+      />
+      <div v-else class="history-list">
         <button
           v-for="p in projects"
           :key="p.project_id"
           type="button"
           class="history-item"
+          :aria-current="p.project_id === activeProjectId ? 'true' : undefined"
           :class="{
             active: p.project_id === activeProjectId,
             [p.status || 'idle']: true,
@@ -30,7 +40,7 @@ defineEmits(['select-project'])
           @click="$emit('select-project', p.project_id)"
         >
           <span class="status-badge" :class="p.status || 'idle'"></span>
-          {{ p.requirement ? p.requirement.substring(0, 40) : p.project_id }}
+          <span class="item-text">{{ (p.requirement || p.project_id || '').substring(0, 38) }}</span>
         </button>
       </div>
     </div>
@@ -41,41 +51,44 @@ defineEmits(['select-project'])
 .history-drawer {
   width: 0;
   overflow: hidden;
-  background: var(--bg-panel);
+  background: var(--bg-elevated);
   border-right: 1px solid var(--border);
-  transition: width 0.2s ease;
+  transition: width var(--transition-normal);
   flex-shrink: 0;
+  box-shadow: 2px 0 12px rgba(0, 0, 0, 0.2);
+  will-change: width;
 }
 
 .history-drawer.open {
-  width: 260px;
+  width: 280px;
 }
 
 .history-drawer-inner {
-  width: 260px;
+  width: 280px;
   height: 100%;
   overflow-y: auto;
-  padding: var(--spacing-12) 0;
+  padding: var(--spacing-16) 0;
 }
 
 .history-title {
-  padding: 4px var(--spacing-16) var(--spacing-12);
-  font-size: 0.82rem;
+  padding: var(--spacing-12) var(--spacing-16) var(--spacing-16);
+  font-size: 0.8rem;
   font-weight: 600;
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
 }
 
 .history-list {
   display: flex;
   flex-direction: column;
+  gap: 2px;
 }
 
 .history-item {
   width: 100%;
-  padding: var(--spacing-8) var(--spacing-16);
-  font-size: 0.82rem;
+  padding: 12px 20px;
+  font-size: 0.875rem;
   color: var(--text-secondary);
   cursor: pointer;
   white-space: nowrap;
@@ -85,7 +98,12 @@ defineEmits(['select-project'])
   border-left: 3px solid transparent;
   background: none;
   text-align: left;
-  transition: all 0.15s;
+  transition: all var(--transition-fast);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 var(--spacing-8);
+  border-radius: var(--radius-md);
 }
 
 .history-item:hover {
@@ -93,19 +111,28 @@ defineEmits(['select-project'])
   color: var(--text-primary);
 }
 
+.history-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
 .history-item.active {
   border-left-color: var(--accent);
   color: var(--accent);
-  background: var(--bg-surface);
+  background: var(--accent-muted);
+}
+
+.item-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .status-badge {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
-  margin-right: 6px;
-  vertical-align: middle;
+  box-shadow: 0 0 6px currentColor;
 }
 
 .status-badge.idle {
@@ -113,7 +140,8 @@ defineEmits(['select-project'])
 }
 
 .status-badge.processing {
-  background: var(--yellow);
+  background: var(--accent);
+  animation: pulse 1.5s ease-in-out infinite;
 }
 
 .status-badge.completed {
@@ -122,5 +150,22 @@ defineEmits(['select-project'])
 
 .status-badge.failed {
   background: var(--red);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .history-drawer {
+    transition: none;
+  }
+  .history-item {
+    transition: none;
+  }
+  .status-badge.processing {
+    animation: none;
+  }
 }
 </style>

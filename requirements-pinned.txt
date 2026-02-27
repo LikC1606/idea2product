@@ -1,0 +1,31 @@
+# Pinned versions for reproducibility.
+# Regenerate with: pip install -r requirements.txt && pip freeze > requirements-pinned.txt
+# For exact reproducibility, use: pip install -r requirements-pinned.txt
+
+openai==1.55.3
+pydantic==2.10.3
+pydantic-settings==2.6.1
+python-dotenv==1.0.1
+langchain==0.3.9
+langchain-openai==0.2.8
+langchain-core==0.3.28
+flask==3.0.3
+flask-cors==5.0.0
+gunicorn==23.0.0
+click==8.1.8
+rich==13.9.4
+astroid==3.3.1
+aiofiles==24.1.0
+requests==2.32.3
+httpx==0.28.1
+filelock==3.16.1
+huggingface_hub==0.26.2
+Pillow==11.0.0
+selenium==4.27.1
+pytest==8.3.4
+pytest-asyncio==0.25.2
+pytest-cov==6.0.0
+pytest-bdd==8.0.2
+black==24.10.0
+ruff==0.8.4
+mypy==1.13.0

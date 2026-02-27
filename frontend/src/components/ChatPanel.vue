@@ -11,21 +11,26 @@ const props = defineProps({
   showWelcome: Boolean,
   buildingStage: String,
   buildingVisible: Boolean,
+  projectId: String,
+  generating: Boolean,
 })
 
-const emit = defineEmits(['send', 'quick-send'])
+const emit = defineEmits(['send', 'quick-send', 'generate'])
+
+const canGenerate = computed(() => {
+  if (!props.projectId || !props.messages?.length) return false
+  return props.messages.some((m) => m.role === 'user')
+})
 
 const inputEl = ref(null)
 const messagesEl = ref(null)
 
 const QUICK_CHIPS = [
-  'Build a todo list app with add, delete, and mark as done',
-  'Build a blog with create, edit, delete posts and comments',
-  'Build a Markdown note-taking app with live preview',
-  'Build a weather dashboard that shows forecasts',
+  { text: 'Build a todo list app with add, delete, and mark as done', label: 'Todo App' },
+  { text: 'Build a blog with create, edit, delete posts and comments', label: 'Blog' },
+  { text: 'Build a Markdown note-taking app with live preview', label: 'Notes App' },
+  { text: 'Build a weather dashboard that shows forecasts', label: 'Weather' },
 ]
-
-const chipLabels = ['Todo App', 'Blog', 'Notes App', 'Weather']
 
 marked.setOptions({
   breaks: true,
@@ -63,11 +68,12 @@ function handleKeydown(e) {
 }
 
 function doSend() {
-  const text = inputEl.value?.trim()
+  const el = inputEl.value  // ref value = textarea DOM element
+  const text = el?.value?.trim()
   if (!text || props.sending) return
-  inputEl.value = ''
+  if (el) el.value = ''
   emit('send', text)
-  nextTick(() => inputEl.focus())
+  nextTick(() => el?.focus())
 }
 
 function quickSend(text) {
@@ -82,8 +88,7 @@ onMounted(() => {
   })
 })
 
-// Scroll to bottom when messages change
-import { watch } from 'vue'
+import { watch, computed } from 'vue'
 watch(
   () => props.messages?.length,
   () => {
@@ -97,23 +102,20 @@ watch(
 </script>
 
 <template>
-  <div class="panel-chat">
-    <div ref="messagesEl" class="chat-messages">
+  <div class="panel-chat" role="region" aria-label="Chat">
+    <div ref="messagesEl" class="chat-messages" role="log" aria-label="Chat messages">
       <div v-if="showWelcome" class="welcome">
-        <h2>Idea2Product</h2>
-        <p>
-          Describe the app you want to build. The AI will generate it in the
-          background.<br />Keep chatting to refine your requirements.
-        </p>
+        <h2>What would you like to build?</h2>
+        <p>Describe your app idea. Add details in the chat, then click Generate when ready.</p>
         <div class="quick-chips">
           <button
             v-for="(chip, i) in QUICK_CHIPS"
             :key="i"
             type="button"
             class="chip"
-            @click="quickSend(chip)"
+            @click="quickSend(chip.text)"
           >
-            {{ chipLabels[i] }}
+            {{ chip.label }}
           </button>
         </div>
       </div>
@@ -144,26 +146,43 @@ watch(
       >
         <span class="spinner"></span>
         <span>{{ buildingStage || 'Building...' }}</span>
+        <span class="stage-dots">
+          <span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+        </span>
       </div>
     </div>
 
     <div class="chat-input-area">
-      <textarea
-        ref="inputEl"
-        placeholder="Describe the app you want..."
-        rows="1"
-        :disabled="sending"
-        aria-label="Chat message input"
-        @keydown="handleKeydown"
-      ></textarea>
+      <div class="input-row">
+        <textarea
+          ref="inputEl"
+          placeholder="Describe the app you want to build..."
+          rows="1"
+          :disabled="sending"
+          aria-label="Chat message input"
+          @keydown="handleKeydown"
+        ></textarea>
+        <button
+          type="button"
+          class="send-btn"
+          aria-label="Send message"
+          :disabled="sending"
+          @click="doSend"
+        >
+          <span class="send-icon">↑</span>
+        </button>
+      </div>
       <button
+        v-if="canGenerate"
         type="button"
-        class="send-btn"
-        aria-label="Send message"
-        :disabled="sending"
-        @click="doSend"
+        class="generate-btn"
+        :class="{ 'generating': generating }"
+        :disabled="generating"
+        aria-label="Generate app"
+        @click="emit('generate')"
       >
-        &#x2191;
+        <span v-if="generating" class="btn-spinner"></span>
+        {{ generating ? 'Generating...' : 'Generate' }}
       </button>
     </div>
   </div>
@@ -173,35 +192,56 @@ watch(
 .panel-chat {
   width: 420px;
   min-width: 320px;
+  max-width: 100%;
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--border);
   background: var(--bg-panel);
 }
 
+@media (max-width: 1024px) {
+  .panel-chat {
+    width: 360px;
+    min-width: 280px;
+  }
+}
+
+@media (max-width: 768px) {
+  .panel-chat {
+    width: 100%;
+    min-width: 0;
+    max-height: 45vh;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+}
+
 .chat-messages {
   flex: 1;
   overflow-y: auto;
-  padding: var(--spacing-16);
+  padding: var(--spacing-24);
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-12);
+  gap: var(--spacing-16);
 }
 
 .msg {
-  max-width: 92%;
-  padding: 10px 14px;
-  border-radius: var(--radius-md);
-  line-height: 1.55;
+  max-width: 90%;
+  padding: 14px 18px;
+  border-radius: var(--radius-lg);
+  line-height: 1.6;
   font-size: 0.9rem;
   word-break: break-word;
+  transition: opacity var(--transition-fast);
 }
 
 .msg.user {
   align-self: flex-end;
-  background: var(--accent);
-  color: var(--bg-secondary);
-  border-bottom-right-radius: 2px;
+  background: linear-gradient(135deg, var(--accent) 0%, #7c3aed 100%);
+  color: white;
+  box-shadow: var(--shadow-md);
+  border-bottom-right-radius: 4px;
   white-space: pre-wrap;
 }
 
@@ -209,7 +249,9 @@ watch(
   align-self: flex-start;
   background: var(--bg-surface);
   color: var(--text-primary);
-  border-bottom-left-radius: 2px;
+  border: 1px solid var(--border);
+  border-bottom-left-radius: 4px;
+  box-shadow: var(--shadow-sm);
 }
 
 .msg.assistant :deep(p) {
@@ -226,18 +268,19 @@ watch(
 }
 
 .msg.assistant :deep(code) {
-  background: rgba(0, 0, 0, 0.25);
-  padding: 1px 5px;
-  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.35);
+  padding: 2px 6px;
+  border-radius: 4px;
   font-size: 0.84rem;
 }
 
 .msg.assistant :deep(pre) {
-  background: rgba(0, 0, 0, 0.3);
-  padding: 10px;
-  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.4);
+  padding: 12px;
+  border-radius: 8px;
   overflow-x: auto;
-  margin: 6px 0;
+  margin: 8px 0;
+  border: 1px solid var(--border);
 }
 
 .msg.assistant :deep(pre code) {
@@ -248,10 +291,11 @@ watch(
 
 .msg.system {
   align-self: center;
-  background: transparent;
+  background: var(--bg-surface);
   color: var(--text-muted);
   font-size: 0.8rem;
-  text-align: center;
+  padding: 8px 16px;
+  border-radius: var(--radius-md);
 }
 
 .welcome {
@@ -260,131 +304,237 @@ watch(
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: var(--spacing-32);
+  padding: var(--spacing-40);
   text-align: center;
 }
 
 .welcome h2 {
-  font-size: 1.4rem;
-  margin-bottom: 8px;
-  color: var(--accent);
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin-bottom: var(--spacing-12);
+  color: var(--text-primary);
 }
 
 .welcome p {
   color: var(--text-secondary);
-  margin-bottom: 24px;
-  font-size: 0.9rem;
-  line-height: 1.5;
+  margin-bottom: var(--spacing-32);
+  font-size: 0.95rem;
+  line-height: 1.6;
+  max-width: 320px;
 }
 
 .quick-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--spacing-8);
+  gap: var(--spacing-12);
   justify-content: center;
 }
 
 .chip {
-  padding: var(--spacing-8) 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 18px;
   background: var(--bg-surface);
   border: 1px solid var(--border);
-  border-radius: 20px;
+  border-radius: var(--radius-lg);
   cursor: pointer;
-  font-size: 0.82rem;
+  font-size: 0.875rem;
   color: var(--text-secondary);
-  transition: all 0.15s;
+  transition: all var(--transition-fast);
 }
 
 .chip:hover {
+  background: var(--bg-hover);
   border-color: var(--accent);
   color: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.chip:active {
+  transform: translateY(0);
+}
+
+.chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .building-banner {
   align-self: center;
-  background: rgba(249, 226, 175, 0.08);
-  border: 1px solid rgba(249, 226, 175, 0.2);
-  color: var(--yellow);
-  padding: 6px 16px;
-  border-radius: 20px;
-  font-size: 0.78rem;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.12) 0%, rgba(124, 58, 237, 0.08) 100%);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  color: var(--accent);
+  padding: 10px 20px;
+  border-radius: var(--radius-xl);
+  font-size: 0.82rem;
+  font-weight: 500;
   display: none;
-  gap: 6px;
+  gap: 12px;
   align-items: center;
+  box-shadow: 0 0 20px var(--accent-glow);
 }
 
 .building-banner.show {
   display: flex;
+  animation: bannerPulse 2s ease-in-out infinite;
+}
+
+@keyframes bannerPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.85; }
 }
 
 .building-banner .spinner {
-  width: 12px;
-  height: 12px;
-  border: 2px solid rgba(249, 226, 175, 0.3);
-  border-top-color: var(--yellow);
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(99, 102, 241, 0.3);
+  border-top-color: var(--accent);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
 
+.stage-dots {
+  display: flex;
+  gap: 4px;
+  margin-left: 4px;
+}
+
+.stage-dots .dot {
+  width: 4px;
+  height: 4px;
+  background: var(--accent);
+  border-radius: 50%;
+  opacity: 0.5;
+  animation: dotPulse 1.2s ease-in-out infinite;
+}
+
+.stage-dots .dot:nth-child(2) { animation-delay: 0.15s; }
+.stage-dots .dot:nth-child(3) { animation-delay: 0.3s; }
+.stage-dots .dot:nth-child(4) { animation-delay: 0.45s; }
+
+@keyframes dotPulse {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.2); }
+}
+
 @keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
+  to { transform: rotate(360deg); }
 }
 
 .typing-indicator {
   display: flex;
-  gap: 4px;
-  padding: 10px 14px;
+  gap: 6px;
+  padding: 14px 18px;
+  background: var(--bg-surface);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  width: fit-content;
 }
 
 .typing-indicator span {
-  width: 7px;
-  height: 7px;
+  width: 8px;
+  height: 8px;
   background: var(--text-muted);
   border-radius: 50%;
   animation: bounce 0.6s infinite alternate;
 }
 
-.typing-indicator span:nth-child(2) {
-  animation-delay: 0.2s;
-}
-
-.typing-indicator span:nth-child(3) {
-  animation-delay: 0.4s;
-}
+.typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+.typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
 
 @keyframes bounce {
-  to {
-    transform: translateY(-5px);
-    opacity: 0.4;
-  }
+  to { transform: translateY(-4px); opacity: 0.5; }
 }
 
 .chat-input-area {
-  padding: var(--spacing-12) var(--spacing-16);
+  padding: var(--spacing-16) var(--spacing-24);
   border-top: 1px solid var(--border);
   display: flex;
-  gap: var(--spacing-8);
+  flex-direction: column;
+  gap: var(--spacing-12);
+  background: var(--bg-elevated);
+}
+
+.input-row {
+  display: flex;
+  gap: var(--spacing-12);
+}
+
+.generate-btn {
+  padding: 10px 20px;
+  border-radius: var(--radius-md);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  background: linear-gradient(135deg, var(--accent) 0%, #7c3aed 100%);
+  color: white;
+  border: none;
+  align-self: flex-start;
+  box-shadow: 0 2px 8px var(--accent-glow);
+}
+
+.generate-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px var(--accent-glow);
+}
+
+.generate-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.generate-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.generate-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.generate-btn.generating {
+  pointer-events: none;
+}
+
+.generate-btn .btn-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-right: 8px;
+  vertical-align: middle;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 .chat-input-area textarea {
   flex: 1;
   background: var(--bg-surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   color: var(--text-primary);
-  padding: 10px 12px;
+  padding: 14px 18px;
   font-size: 0.9rem;
   font-family: inherit;
   resize: none;
-  min-height: 42px;
-  max-height: 120px;
+  min-height: 48px;
+  max-height: 140px;
+  transition: all var(--transition-fast);
 }
 
 .chat-input-area textarea:focus {
   outline: none;
   border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-muted);
 }
 
 .chat-input-area textarea::placeholder {
@@ -392,26 +542,64 @@ watch(
 }
 
 .send-btn {
-  width: 42px;
-  height: 42px;
+  width: 48px;
+  height: 48px;
   border: none;
-  border-radius: var(--radius-md);
-  background: var(--accent);
-  color: var(--bg-secondary);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(135deg, var(--accent) 0%, #7c3aed 100%);
+  color: white;
   cursor: pointer;
-  font-size: 1.2rem;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  transition: all var(--transition-fast);
+  box-shadow: 0 2px 8px var(--accent-glow);
 }
 
-.send-btn:hover {
-  background: var(--accent-hover);
+.send-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px var(--accent-glow);
+}
+
+.send-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.send-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .send-btn:disabled {
-  opacity: 0.4;
-  cursor: default;
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.send-icon {
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chip,
+  .building-banner,
+  .generate-btn,
+  .send-btn,
+  .typing-indicator span,
+  .stage-dots .dot {
+    animation: none !important;
+    transition: none;
+  }
+  .chip:hover {
+    transform: none;
+  }
+  .generate-btn:hover:not(:disabled),
+  .send-btn:hover:not(:disabled) {
+    transform: none;
+  }
+  .building-banner.show {
+    animation: none;
+  }
 }
 </style>

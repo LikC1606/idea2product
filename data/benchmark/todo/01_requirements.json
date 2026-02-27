@@ -1,0 +1,12 @@
+{
+  "title": "Todo App",
+  "description": "A simple todo list with add, delete, and mark complete",
+  "features": [
+    {"id": "f1", "name": "Add todo", "description": "Add new items", "priority": 1},
+    {"id": "f2", "name": "Delete todo", "description": "Remove items", "priority": 2},
+    {"id": "f3", "name": "Complete todo", "description": "Mark items as done", "priority": 2}
+  ],
+  "constraints": [],
+  "target_users": null,
+  "data_requirements": null
+}

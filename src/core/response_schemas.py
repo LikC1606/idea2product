@@ -41,6 +41,8 @@ class ApiReviewResponse(BaseModel):
 class AlgorithmEntry(BaseModel):
     implementation_approach: str = "Standard implementation"
     notes: Optional[str] = None
+    hf_models: Optional[List[str]] = None
+    hf_usage_notes: Optional[str] = None
 
 
 class RequirementAnalysis(BaseModel):

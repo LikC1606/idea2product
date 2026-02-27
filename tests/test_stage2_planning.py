@@ -1,8 +1,8 @@
-"""Test Stage 2 - Planning Agents (TaskDivision, SchemePlanning) with mocked LLM."""
+"""Test Stage 2 - Planning Agents (TaskDivision, SchemePlanning, AlgorithmAnalysis) with mocked LLM."""
 
 import pytest
 
-from src.core.data_models import Requirements, Feature, Task, TaskType, FileSpec
+from src.core.data_models import Requirements, Feature, Task, TaskType, TaskComplexity, FileSpec, Algorithm
 from src.agents.stage2_planning.planning_agents import (
     TaskDivisionAgent,
     SchemePlanningAgent,
@@ -34,7 +34,18 @@ class MockLLMService:
         # ReviewAgent task review
         if "审查以下 Stage 2" in prompt:
             return {"issues": [], "refined_tasks": []}
-        # TaskDivisionAgent main prompt
+        # TaskDivisionAgent unified prompt (entities + pages + tasks in one call)
+        if "一次性输出" in prompt and "数据实体" in prompt:
+            return {
+                "entities": [{"name": "Todo", "fields": ["id(int)", "title(str)", "done(bool)"], "crud_operations": ["create", "read", "delete"], "relations": []}],
+                "pages": [{"name": "主页", "url": "/", "related_entities": ["Todo"], "interactions": ["查看列表", "添加", "删除"]}],
+                "tasks": [
+                    {"id": "T1", "name": "Create data model", "description": "Todo model with title, done", "type": "database", "priority": 5, "estimated_complexity": "low", "dependencies": []},
+                    {"id": "T2", "name": "Create API", "description": "CRUD API for todos", "type": "backend", "priority": 5, "estimated_complexity": "medium", "dependencies": ["T1"]},
+                    {"id": "T3", "name": "Create frontend", "description": "List and add UI", "type": "frontend", "priority": 4, "estimated_complexity": "low", "dependencies": ["T2"]},
+                ],
+            }
+        # TaskDivisionAgent two-phase main prompt
         if "OUTPUT FORMAT (JSON array)" in prompt:
             return [
                 {"id": "T1", "name": "Create data model", "description": "Todo model with title, done", "type": "database", "priority": 5, "estimated_complexity": "low", "dependencies": []},
@@ -42,7 +53,7 @@ class MockLLMService:
                 {"id": "T3", "name": "Create frontend", "description": "List and add UI", "type": "frontend", "priority": 4, "estimated_complexity": "low", "dependencies": ["T2"]},
             ]
         # AlgorithmAnalysisAgent
-        if "implementation_approach" in prompt:
+        if "implementation_approach" in prompt and "task_files" not in prompt:
             return {
                 "T1": {"implementation_approach": "SQLAlchemy model", "notes": ""},
                 "T2": {"implementation_approach": "Flask Blueprint with routes", "notes": ""},
@@ -124,6 +135,43 @@ def test_scheme_planning_agent_return_signature(mock_llm, sample_requirements):
     if files:
         assert isinstance(files[0], FileSpec)
         assert files[0].path
+
+
+def test_algorithm_analysis_agent_without_hf(mock_llm):
+    """AlgorithmAnalysisAgent returns Algorithm per task when HF is disabled."""
+    agent = AlgorithmAnalysisAgent(mock_llm, hf_model_service=None)
+    tasks = [
+        Task(id="T1", name="Model", description="Data model", type=TaskType.DATABASE, estimated_complexity=TaskComplexity.LOW),
+        Task(id="T2", name="API", description="API routes", type=TaskType.BACKEND, estimated_complexity=TaskComplexity.MEDIUM),
+    ]
+    result = agent.execute(tasks)
+    assert isinstance(result, dict)
+    assert "T1" in result
+    assert "T2" in result
+    for alg in result.values():
+        assert isinstance(alg, Algorithm)
+        assert alg.implementation_approach
+        assert alg.hf_models is None or alg.hf_models == []
+
+
+def test_algorithm_analysis_agent_accepts_hf_models_in_response(mock_llm):
+    """AlgorithmAnalysisAgent parses hf_models and hf_usage_notes from LLM."""
+    class HFLLM:
+        def generate_json(self, prompt, **kwargs):
+            return {
+                "T1": {
+                    "implementation_approach": "Use transformers pipeline",
+                    "notes": "",
+                    "hf_models": ["cardiffnlp/twitter-roberta-base-sentiment-latest"],
+                    "hf_usage_notes": "Use pipeline('sentiment-analysis', model=...)",
+                },
+            }
+    agent = AlgorithmAnalysisAgent(HFLLM(), hf_model_service=None)
+    tasks = [Task(id="T1", name="Sentiment", description="sentiment analysis", type=TaskType.BACKEND, estimated_complexity=TaskComplexity.MEDIUM)]
+    result = agent.execute(tasks)
+    assert result["T1"].hf_models == ["cardiffnlp/twitter-roberta-base-sentiment-latest"]
+    assert "pipeline" in (result["T1"].hf_usage_notes or "")
+    assert "transformers" in result["T1"].libraries
 
 
 def test_scheme_planning_agent_exception_returns_stable_signature(mock_llm, sample_requirements):

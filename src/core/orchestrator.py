@@ -30,6 +30,7 @@ from src.agents.stage2_planning.planning_agents import (
     AlgorithmAnalysisAgent,
     SchemePlanningAgent,
 )
+from src.services.hf_model_service import HfModelService
 from src.agents.stage3_generation.code_generation_agents import (
     CodeGenerationAgent,
     CodeMemoryAgent,
@@ -79,6 +80,20 @@ class Orchestrator:
             log_level=settings.log_level,
         )
 
+    def _apply_random_seed(self) -> None:
+        """Apply random seed for reproducibility if configured."""
+        seed = getattr(self.settings, "random_seed", None)
+        if seed is not None:
+            import random
+
+            random.seed(seed)
+            try:
+                import numpy as np
+
+                np.random.seed(seed)
+            except ImportError:
+                pass
+
     def run(self, user_requirement: str, interactive: bool = False) -> ValidatedProject:
         """
         Run the complete workflow from requirement to validated project.
@@ -96,6 +111,8 @@ class Orchestrator:
         self.logger.info("=" * 60)
         self.logger.info(f"Starting Idea2Product workflow (interactive={interactive})")
         self.logger.info("=" * 60)
+
+        self._apply_random_seed()
 
         # Create execution context
         context = ExecutionContext(user_requirement=user_requirement)
@@ -128,7 +145,11 @@ class Orchestrator:
             self.logger.info("STAGE 1: Requirements Gathering")
             self.logger.info("=" * 60)
             context.update_stage(1)
-            requirements = self.execute_stage_1(context, interactive=interactive)
+            try:
+                requirements = self.execute_stage_1(context, interactive=interactive)
+            except Exception as e:
+                self._save_artifact(artifacts_dir, "context.json", context.to_dict())
+                raise
             context.requirements = requirements
             self._save_artifact(artifacts_dir, "01_requirements.json", requirements.model_dump(mode="json"))
 
@@ -137,7 +158,12 @@ class Orchestrator:
             self.logger.info("STAGE 2: Technical Planning")
             self.logger.info("=" * 60)
             context.update_stage(2)
-            engineering_plan = self.execute_stage_2(context)
+            try:
+                engineering_plan = self.execute_stage_2(context)
+            except Exception as e:
+                context.add_error(f"Stage 2 failed: {e}")
+                self._save_artifact(artifacts_dir, "context.json", {**context.to_dict(), "partial_failure": True, "failed_stage": 2})
+                raise
             context.engineering_plan = engineering_plan
             self._save_artifact(artifacts_dir, "02_engineering_plan.json", engineering_plan.model_dump(mode="json"))
 
@@ -146,7 +172,12 @@ class Orchestrator:
             self.logger.info("STAGE 3: Code Generation")
             self.logger.info("=" * 60)
             context.update_stage(3)
-            code_repository = self.execute_stage_3(context)
+            try:
+                code_repository = self.execute_stage_3(context)
+            except Exception as e:
+                context.add_error(f"Stage 3 failed: {e}")
+                self._save_artifact(artifacts_dir, "context.json", {**context.to_dict(), "partial_failure": True, "failed_stage": 3})
+                raise
             context.code_repository = code_repository
             self._save_artifact(artifacts_dir, "03_code_repository.json", code_repository.model_dump(mode="json"))
 
@@ -155,7 +186,12 @@ class Orchestrator:
             self.logger.info("STAGE 4: Validation & Testing")
             self.logger.info("=" * 60)
             context.update_stage(4)
-            validated_project = self.execute_stage_4(context)
+            try:
+                validated_project = self.execute_stage_4(context)
+            except Exception as e:
+                context.add_error(f"Stage 4 failed: {e}")
+                self._save_artifact(artifacts_dir, "context.json", {**context.to_dict(), "partial_failure": True, "failed_stage": 4})
+                raise
 
             # Save final context
             self._save_artifact(artifacts_dir, "context.json", context.to_dict())
@@ -176,9 +212,10 @@ class Orchestrator:
         finally:
             clear_correlation()
 
-    def _llm_for_stage(self, stage: int, requires_vision: bool = False) -> LLMService:
-        """Return an LLMService configured with the model selected for a pipeline stage."""
-        entry = self.model_selector.select(stage=stage, requires_vision=requires_vision)
+    def _llm_for_stage(self, stage: int, requires_vision: bool = False, use_fast: bool = False) -> LLMService:
+        """Return an LLMService configured for a pipeline stage. use_fast=True prefers gpt-4o-mini when enabled."""
+        prefer_fast = use_fast and getattr(self.settings, "use_fast_model_for_light_stages", True)
+        entry = self.model_selector.select(stage=stage, requires_vision=requires_vision, prefer_fast=prefer_fast)
         if entry.id == self.llm_service.model and (entry.base_url is None or entry.base_url == self.llm_service.base_url):
             return self.llm_service
         return self.llm_service.with_model(
@@ -200,7 +237,7 @@ class Orchestrator:
         """
         self.logger.info("Stage 1: Interaction Agent")
 
-        llm = self._llm_for_stage(1)
+        llm = self._llm_for_stage(1, use_fast=True)
         self.logger.info(f"  - Model: {llm.model}")
         agent = InteractionAgent(llm)
 
@@ -231,26 +268,40 @@ class Orchestrator:
         if requirements is None:
             raise ValueError("Stage 2 requires non-empty requirements in context")
 
-        llm = self._llm_for_stage(2)
-        self.logger.info(f"  - Model: {llm.model}")
+        llm_primary = self._llm_for_stage(2)
+        llm_fast = self._llm_for_stage(2, use_fast=True)
+        self.logger.info(f"  - Model: {llm_primary.model} (fast for flow/algo: {llm_fast.model})")
 
-        # Flow Simulation Agent (Stage 2 Agent 0)
-        flow_agent = FlowSimulationAgent(llm)
+        # Flow Simulation Agent (Stage 2 Agent 0) - use fast model
+        flow_agent = FlowSimulationAgent(llm_fast)
         flow_simulation = flow_agent.execute(requirements)
         self.logger.info("  - Flow simulation completed")
 
-        # Task Division Agent
-        task_agent = TaskDivisionAgent(llm)
+        # Task Division Agent - use primary (complex JSON structure)
+        task_agent = TaskDivisionAgent(llm_primary)
         tasks = task_agent.execute(requirements, flow_simulation)
         self.logger.info(f"  - Created {len(tasks)} tasks")
 
-        # Algorithm Analysis Agent
-        algo_agent = AlgorithmAnalysisAgent(llm)
+        # Algorithm Analysis Agent (optional HF model search)
+        hf_service = None
+        if getattr(self.settings, "enable_hf_model_search", False):
+            try:
+                hf_service = HfModelService(
+                    token=getattr(self.settings, "hf_token", None),
+                    search_limit=getattr(self.settings, "hf_search_limit", 5),
+                )
+            except Exception as e:
+                self.logger.warning(f"HF model service init failed, continuing without: {e}")
+        algo_agent = AlgorithmAnalysisAgent(
+            llm_fast,
+            hf_model_service=hf_service,
+            hf_search_limit=getattr(self.settings, "hf_search_limit", 5),
+        )
         algorithms = algo_agent.execute(tasks)
         self.logger.info(f"  - Analyzed {len(algorithms)} algorithms")
 
-        # Scheme Planning Agent
-        scheme_agent = SchemePlanningAgent(llm)
+        # Scheme Planning Agent - use primary (critical for code gen)
+        scheme_agent = SchemePlanningAgent(llm_primary)
         file_structure, interface_specs, api_specs, pyi_stubs = scheme_agent.execute(
             requirements, tasks, flow_simulation
         )
@@ -278,7 +329,7 @@ class Orchestrator:
                 dependencies.add(lib_normalized)
 
         # BDD test-driven: synthesize BDD test cases from requirements + api_specs
-        bdd_test_cases = self._synthesize_bdd_tests(requirements, api_specs, llm=llm)
+        bdd_test_cases = self._synthesize_bdd_tests(requirements, api_specs, llm=llm_primary)
         self.logger.info(f"  - Synthesized {len(bdd_test_cases)} BDD test cases (test-driven)")
 
         # Create engineering plan
@@ -537,6 +588,8 @@ class Orchestrator:
         Creates/uses project_path = projects_dir / project_id and writes all artifacts there.
         If progress_callback(progress_pct, stage_name) is provided, it is called at each stage start.
         """
+        self._apply_random_seed()
+
         def _report(progress: int, stage: str) -> None:
             if progress_callback:
                 try:

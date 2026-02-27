@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional, List
 
 from config.settings import Settings
-from src.utils.file_utils import read_json, write_json
+from src.utils.file_utils import read_json, read_json_safe, write_json
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -78,7 +78,9 @@ class TaskService:
             if not status_file.exists():
                 continue
             try:
-                data = read_json(status_file)
+                data = read_json_safe(status_file)
+                if not data:
+                    continue
                 pid = data.get("project_id", proj_dir.name)
                 if data.get("status") == "processing":
                     data["status"] = "failed"
@@ -215,13 +217,19 @@ class TaskService:
             orchestrator = Orchestrator(self.settings)
 
             req_path = self.settings.projects_dir / project_id / "artifacts" / "01_requirements.json"
-            is_incremental = req_path.exists()
+            existing_data = read_json_safe(req_path)
+            is_incremental = existing_data is not None
 
             if is_incremental:
                 self._update(project_id, progress=10, stage="Merging requirements")
-                existing_data = read_json(req_path)
-                from src.core.data_models import Requirements
-                existing_req = Requirements(**existing_data)
+                try:
+                    from src.core.data_models import Requirements
+                    existing_req = Requirements(**existing_data)
+                except Exception as e:
+                    logger.warning(f"Invalid requirements.json for {project_id}, falling back to first-time: {e}")
+                    is_incremental = False
+
+            if is_incremental:
                 last_user_msg = ""
                 for m in reversed(messages):
                     if m.get("role") == "user":

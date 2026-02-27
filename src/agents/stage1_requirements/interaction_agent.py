@@ -2,11 +2,12 @@
 
 import json
 from dataclasses import dataclass, field
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Iterator
 from src.core.data_models import Requirements, Feature
 from src.core.context import ExecutionContext
 from src.services.llm_service import LLMService
 from src.utils.logger import get_logger
+from pydantic import ValidationError
 from src.core.response_schemas import ExtractedRequirements, RequirementAnalysis, validate_response
 from .requirement_analysis_prompt import get_requirement_analysis_prompt
 
@@ -81,6 +82,8 @@ Respond with valid JSON only.
 
         try:
             result = self.llm_service.generate_json(prompt)
+            if not isinstance(result, dict):
+                return self._fallback_parse(user_requirement)
             validated = validate_response(result, ExtractedRequirements)
 
             features = []
@@ -104,6 +107,9 @@ Respond with valid JSON only.
             logger.info(f"Extracted {len(features)} features from requirement")
             return requirements
 
+        except ValidationError as e:
+            logger.warning(f"Requirements schema mismatch: {e.errors()}, using fallback")
+            return self._fallback_parse(user_requirement)
         except Exception as e:
             logger.warning(f"LLM extraction failed, using fallback: {e}")
             return self._fallback_parse(user_requirement)
@@ -185,6 +191,8 @@ Respond with valid JSON only.
 
         try:
             result = self.llm_service.generate_json(prompt)
+            if not isinstance(result, dict):
+                raise ValueError("Expected dict")
             needs = result.get("needs_clarification", False)
             logger.info(f"Analysis complete. Needs clarification: {needs}")
             return result
@@ -281,10 +289,16 @@ Return a JSON array (no markdown fences):
         try:
             result = self.llm_service.generate_json(prompt)
             questions = []
-
-            items = result if isinstance(result, list) else result.get("questions", [])
+            if isinstance(result, list):
+                items = result
+            elif isinstance(result, dict):
+                items = result.get("questions", [])
+            else:
+                items = []
 
             for i, q in enumerate(items, 1):
+                if not isinstance(q, dict):
+                    continue
                 questions.append(ClarificationQuestion(
                     id=q.get("id", f"q{i}"),
                     category=q.get("category", "functional"),
@@ -515,9 +529,12 @@ Respond with valid JSON only.
 """
         try:
             result = self.llm_service.generate_json(prompt)
-
+            if not isinstance(result, dict):
+                return self._fallback_from_clarifications(requirement, clarifications)
             features = []
             for i, f in enumerate(result.get("features", []), 1):
+                if not isinstance(f, dict):
+                    continue
                 features.append(Feature(
                     id=f.get("id", f"f{i}"),
                     name=f.get("name", f"Feature {i}"),
@@ -603,6 +620,31 @@ the system will automatically generate the app in the background. Keep replies c
             logger.warning(f"reply_in_chat failed: {e}")
             return "已收到。我会根据当前对话在后台生成或更新应用，你可以在右侧查看代码和预览。"
 
+    def reply_in_chat_stream(self, messages: List[Dict[str, str]]) -> Iterator[str]:
+        """
+        Stream an assistant reply given conversation history.
+        Yields chunks of text for SSE streaming.
+        """
+        if not messages:
+            yield "请描述你想要的应用或功能，我会根据你的描述在后台生成产品。你可以随时补充需求，我会在已有基础上改进。"
+            return
+        system = """You are a friendly requirements analyst. The user is describing an app they want to build.
+Have a natural conversation to clarify their needs. When you have enough information, you can suggest they're ready;
+the system will automatically generate the app in the background. Keep replies concise. Use the same language as the user."""
+        # Build OpenAI-format messages (only user/assistant for context)
+        openai_messages = [{"role": "system", "content": system}]
+        for m in messages[-20:]:
+            role = m.get("role", "user")
+            if role not in ("user", "assistant"):
+                continue
+            openai_messages.append({"role": role, "content": m.get("content", "") or ""})
+        try:
+            for chunk in self.llm_service.stream_messages(openai_messages):
+                yield chunk
+        except Exception as e:
+            logger.warning(f"reply_in_chat_stream failed: {e}")
+            yield "已收到。我会根据当前对话在后台生成或更新应用，你可以在右侧查看代码和预览。"
+
     def conversation_to_requirements(self, messages: List[Dict[str, str]]) -> Requirements:
         """
         Turn full conversation history into a single Requirements object (for first-time generate).
@@ -622,26 +664,38 @@ Output JSON only:
     "features": [{{"id": "f1", "name": "...", "description": "...", "priority": 1}}],
     "constraints": [],
     "target_users": "...",
-    "data_requirements": "..."
+    "data_requirements": "...",
+    "design_mode": "modern|minimal|dashboard|null"
 }}
+
+design_mode: optional. Use "minimal" for sparse/clean UI, "dashboard" for data-heavy layouts, "modern" or null for default.
 """
         try:
             result = self.llm_service.generate_json(prompt)
+            if not isinstance(result, dict):
+                raise ValueError("Expected dict")
             features = []
             for i, f in enumerate(result.get("features", []), 1):
+                if not isinstance(f, dict):
+                    continue
                 features.append(Feature(
                     id=f.get("id", f"f{i}"),
                     name=f.get("name", f"Feature {i}"),
                     description=f.get("description", ""),
                     priority=f.get("priority", 3)
                 ))
+            dm = result.get("design_mode")
+            if dm and dm not in ("modern", "minimal", "dashboard"):
+                dm = None
+
             return Requirements(
                 title=result.get("title", "Generated Application"),
                 description=result.get("description", ""),
                 features=features,
                 constraints=result.get("constraints", []),
                 target_users=result.get("target_users"),
-                data_requirements=result.get("data_requirements")
+                data_requirements=result.get("data_requirements"),
+                design_mode=dm,
             )
         except Exception as e:
             logger.warning(f"conversation_to_requirements failed: {e}")
@@ -675,21 +729,30 @@ Incorporate the new request into features or description. Do not remove existing
 Respond with valid JSON only."""
         try:
             result = self.llm_service.generate_json(prompt)
+            if not isinstance(result, dict):
+                return existing
             features = []
             for i, f in enumerate(result.get("features", []), 1):
+                if not isinstance(f, dict):
+                    continue
                 features.append(Feature(
                     id=f.get("id", f"f{i}"),
                     name=f.get("name", f"Feature {i}"),
                     description=f.get("description", ""),
                     priority=f.get("priority", 3)
                 ))
+            dm = result.get("design_mode")
+            if dm and dm not in ("modern", "minimal", "dashboard"):
+                dm = existing.design_mode
+
             return Requirements(
                 title=result.get("title", existing.title),
                 description=result.get("description", existing.description),
                 features=features,
                 constraints=result.get("constraints", existing.constraints),
                 target_users=result.get("target_users") or existing.target_users,
-                data_requirements=result.get("data_requirements") or existing.data_requirements
+                data_requirements=result.get("data_requirements") or existing.data_requirements,
+                design_mode=dm or existing.design_mode,
             )
         except Exception as e:
             logger.warning(f"merge_requirements failed: {e}")

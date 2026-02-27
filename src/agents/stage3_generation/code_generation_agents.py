@@ -87,6 +87,7 @@ class CodeGenerationAgent:
                 task=task,
                 files=files,
                 requirements=requirements,
+                plan=plan,
                 context_md=context_md,
                 tools=tools,
                 project_path=project_path,
@@ -222,7 +223,7 @@ class CodeGenerationAgent:
             return ""
 
     def _process_task_with_tools(self, task, files: List[CodeFile], requirements: Requirements,
-                                context_md: str, tools, project_path: Path,
+                                plan: EngineeringPlan, context_md: str, tools, project_path: Path,
                                 max_iterations: int = 100,
                                 pyi_stubs: Dict = None,
                                 api_specs: Dict = None,
@@ -240,17 +241,39 @@ class CodeGenerationAgent:
             except:
                 pass
 
-        # 构建 pyi_stubs 信息
+        # 构建 pyi_stubs 信息（任务级过滤：只传相关文件）
+        task_relevant_paths = self._get_task_relevant_files(task, plan)
+        filtered_pyi = pyi_stubs or {}
+        if task_relevant_paths:
+            normalized_relevant = {p.replace("\\", "/") for p in task_relevant_paths}
+            filtered_pyi = {k: v for k, v in (pyi_stubs or {}).items()
+                           if k.replace("\\", "/") in normalized_relevant
+                           or any(pr in k or k in pr for pr in normalized_relevant)}
+        if not filtered_pyi:
+            filtered_pyi = pyi_stubs or {}
+
         pyi_info = ""
-        if pyi_stubs:
+        if filtered_pyi:
             pyi_info = "\n## Type Definitions (.pyi stubs)\n"
-            for path, stub in pyi_stubs.items():
+            for path, stub in filtered_pyi.items():
                 pyi_info += f"\n### {path}\n```\n{stub}\n```\n"
 
-        # Build structured skeleton constraint (Interface-First)
+        # Build structured skeleton constraint (Interface-First), task-filtered
         skeleton_info = ""
         if skeleton:
             try:
+                interfaces_to_use = skeleton.interfaces
+                if task_relevant_paths:
+                    norm_rel = {p.replace("\\", "/").replace(".py", "").rstrip("/") for p in task_relevant_paths}
+                    mod_as_path = lambda m: m.replace(".", "/")
+                    interfaces_to_use = [
+                        i for i in skeleton.interfaces
+                        if mod_as_path(i.module_name) in norm_rel
+                        or any(nr in mod_as_path(i.module_name) or mod_as_path(i.module_name) in nr for nr in norm_rel)
+                    ]
+                if not interfaces_to_use:
+                    interfaces_to_use = skeleton.interfaces
+
                 skel_dict = {
                     "interfaces": [
                         {
@@ -259,7 +282,7 @@ class CodeGenerationAgent:
                                          for f in i.functions],
                             "classes": [{"name": c.get("name"), "bases": c.get("bases", [])} for c in i.classes],
                         }
-                        for i in skeleton.interfaces
+                        for i in interfaces_to_use
                     ],
                     "dependency_graph": {
                         "nodes": skeleton.dependency_graph.nodes,
@@ -303,6 +326,84 @@ class CodeGenerationAgent:
                     description = info.get("description", "") if isinstance(info, dict) else ""
                     api_info += f"- {path} -> render_template('{template}'): {description}\n"
 
+            ui_guidelines = api_specs.get("ui_guidelines")
+            if ui_guidelines and isinstance(ui_guidelines, dict):
+                api_info += "\nUI Guidelines (MUST follow):\n"
+                for k, v in ui_guidelines.items():
+                    if v:
+                        api_info += f"- {k}: {v}\n"
+
+        # UI Design Spec from Stage 2 - implement exactly per spec
+        ui_design_spec = api_specs.get("ui_design_spec") if api_specs else None
+        ui_design_spec_context = ""
+        if ui_design_spec and isinstance(ui_design_spec, dict):
+            parts = ["\n## UI Design Spec (MUST implement exactly - designed in Stage 2)\n"]
+            if ui_design_spec.get("content_max_width"):
+                parts.append(f"- content_max_width: {ui_design_spec['content_max_width']}")
+            if ui_design_spec.get("layout_structure"):
+                parts.append(f"- layout_structure: {ui_design_spec['layout_structure']}")
+            if ui_design_spec.get("layout_rules"):
+                parts.append(f"- layout_rules: {ui_design_spec['layout_rules']}")
+            page_layouts = ui_design_spec.get("page_layouts") or {}
+            if page_layouts:
+                parts.append("\nPage layouts (implement per route):")
+                for route_path, layout in page_layouts.items():
+                    if isinstance(layout, dict):
+                        parts.append(f"\n  {route_path}:")
+                        sections = layout.get("sections") or []
+                        for s in sections:
+                            sid = s.get("id", "")
+                            desc = s.get("description", "")
+                            parts.append(f"    - {sid}: {desc}")
+                        es = layout.get("empty_state")
+                        if es and isinstance(es, dict):
+                            msg = es.get("message", "")
+                            cta = es.get("cta", "")
+                            show = es.get("show_when", "")
+                            parts.append(f"    empty_state: message=\"{msg}\" cta=\"{cta}\" show_when=\"{show}\"")
+                        ls = layout.get("loading_state")
+                        if ls and isinstance(ls, dict):
+                            t = ls.get("type", "")
+                            d = ls.get("description", "")
+                            parts.append(f"    loading_state: type={t} - {d}")
+            product_rules = ui_design_spec.get("product_grade_rules")
+            if product_rules and isinstance(product_rules, list):
+                parts.append("\nproduct_grade_rules:")
+                for r in product_rules:
+                    parts.append(f"  - {r}")
+            ui_design_spec_context = "\n".join(parts)
+
+        # Frontend UI section: implement per ui_design_spec if present, else generic rules
+        page_layouts = (ui_design_spec or {}).get("page_layouts") if isinstance(ui_design_spec, dict) else None
+        if page_layouts and isinstance(page_layouts, dict) and len(page_layouts) > 0:
+            frontend_ui_section = """1. IMPLEMENT the UI exactly as specified in "UI Design Spec" above - it was designed in Stage 2.
+2. Follow page_layouts.sections for page structure; empty_state and loading_state for those components.
+3. Use content_max_width and layout_rules for layout; product_grade_rules for interaction.
+4. Generated frontend MUST include: <link rel="stylesheet" href="/static/css/base.css"> before any custom CSS.
+5. Extend base.css in static/css/style.css only - do NOT override base design tokens unless ui_guidelines specify."""
+        else:
+            frontend_ui_section = """1. Use CSS variables for colors (--primary, --surface, --text) for consistency
+2. Forms: proper spacing, focus states, clear error feedback
+3. Lists/cards: adequate padding, hover states, responsive grid
+4. Buttons: distinct primary/secondary, disabled state
+5. Avoid inline styles; use a dedicated static/css/style.css or per-page <style>
+6. Follow ui_guidelines from api_specs if provided (theme, colors, layout)
+7. Generated frontend MUST include: <link rel="stylesheet" href="/static/css/base.css"> before any custom CSS
+8. Extend base.css in static/css/style.css only - do NOT override base design tokens unless ui_guidelines specify"""
+
+        # Algorithm / implementation guidance from Stage 2
+        algorithm_context = ""
+        algorithms = getattr(plan, "algorithms", {}) or {}
+        algorithm = algorithms.get(task.id) if isinstance(task.id, str) else None
+        if algorithm:
+            algorithm_context = "\n## Algorithm / Implementation Guidance (for this task)\n"
+            algorithm_context += f"{algorithm.implementation_approach or ''}\n"
+            if getattr(algorithm, "hf_models", None) and getattr(algorithm, "hf_usage_notes", None):
+                algorithm_context += f"\nHF Model usage: {algorithm.hf_usage_notes}\n"
+            libs = getattr(algorithm, "libraries", []) or []
+            if libs:
+                algorithm_context += f"Libraries: {', '.join(libs)}\n"
+
         # 构建 system prompt
         system_prompt = f"""You are a Flask development expert. Your job is to complete the given task by reading files, modifying them, and creating new ones.
 
@@ -311,8 +412,10 @@ class CodeGenerationAgent:
 {pyi_info}
 {skeleton_info}
 {api_info}
+{ui_design_spec_context}
 {mining_context}
 {bdd_constraints}
+{algorithm_context}
 
 ## CRITICAL Naming Conventions (NEVER violate)
 - Package name: ALWAYS use "app" (NOT myapp, application, or any variant)
@@ -354,8 +457,19 @@ Description: {task.description}
 ## API Endpoints
 {api_info}
 
+## Code Quality Requirements
+1. Error handling: Use try/except for file I/O, JSON parsing, and external API calls; return appropriate HTTP status on failure
+2. Type hints: Add type hints to all function parameters and return values
+3. Docstrings: Add docstrings to public functions and classes (one-line for simple, multi-line for complex)
+4. Input validation: Validate request JSON keys and types before use; return 400 with clear message on invalid input
+5. Avoid: bare except, print() for debugging, hardcoded magic strings
+
+## Frontend UI Requirements
+{frontend_ui_section}
+
 ## Important Requirements
 1. You MUST use tools to explore the project - start by listing files to see what's there
+   - After creating or modifying a .py file, call validate_syntax(file_path) to verify. If it reports an error, fix the code before proceeding.
    - When you need to call functions from another module, use get_module_signatures(module_name) first to discover the available interfaces
 2. Database initialization rule:
    - CRITICAL: db = SQLAlchemy() MUST be defined ONLY in app/__init__.py
@@ -385,7 +499,7 @@ Description: {task.description}
    - 再用 read_file() 读取目标文件的内容
    - 了解现有代码结构后再修改，不能直接覆盖！
    - 特别注意 app/__init__.py 等入口文件的结构
-8. CRITICAL: Do NOT worry about whether packages are installed in the current environment.
+9. CRITICAL: Do NOT worry about whether packages are installed in the current environment.
    Do NOT output messages like "please run pip install" or "dependencies not installed".
    Just write the code with the correct imports. Dependencies will be installed separately.
    Your ONLY job is to write correct Python/HTML/CSS/JS code files using the tools.
@@ -410,13 +524,41 @@ Reply with "TASK_COMPLETE" when you have finished the task."""
             if api_specs and api_specs.get("frontend_routes"):
                 routes = list(api_specs["frontend_routes"].keys())[:5]
                 frontend_routes_hint = f"\nApp title: {requirements.title}. Frontend routes: {routes}. When editing index.html, links MUST use these paths (e.g. first non-root route for main nav)."
+                # Single-page hint for simple CRUD apps
+                title_lower = (requirements.title or "").lower()
+                is_simple = len(routes) <= 1 or any(kw in title_lower for kw in ("todo", "task list", "notes", "简单"))
+                if is_simple:
+                    frontend_routes_hint += " SINGLE-PAGE: index.html should contain the full UI (add form + list + delete/mark-done buttons). Use fetch() to call API. No separate /new or /edit pages needed."
+
+            # Build task-relevant files list and key file excerpts
+            task_relevant_files = self._get_task_relevant_files(task, plan)
+            task_files_hint = ""
+            if task_relevant_files:
+                task_files_hint = f"\nFiles relevant to this task (read these first): {', '.join(task_relevant_files[:10])}"
+                # Include excerpts for up to 2 key .py files
+                excerpts = []
+                for rel_path in task_relevant_files[:3]:
+                    if not rel_path.endswith(".py"):
+                        continue
+                    fp = project_path / rel_path
+                    if fp.exists():
+                        try:
+                            content = fp.read_text(encoding="utf-8")
+                            preview = "\n".join(content.splitlines()[:80])
+                            excerpts.append(f"\n--- {rel_path} (current, first ~80 lines) ---\n{preview}")
+                        except Exception:
+                            pass
+                if excerpts:
+                    task_files_hint += "\n\nKey file previews:" + "".join(excerpts)[:2500]
+
             user_message = f"""Current project structure:
 {context_md[:1000] if context_md else "No files yet"}
 {frontend_routes_hint}
+{task_files_hint}
 
 Start by listing files to see the current state, then complete the task: {task.description}
 
-Remember to use tools (list_files, read_file, write_file, modify_file) to interact with the project."""
+Remember to use tools (list_files, read_file, write_file, modify_file, validate_syntax) to interact with the project."""
 
             # 运行 Agent
             result = agent.invoke(
@@ -428,6 +570,27 @@ Remember to use tools (list_files, read_file, write_file, modify_file) to intera
             if result and "messages" in result:
                 final_msg = result["messages"][-1]
                 logger.info(f"  Task {task.id} output: {final_msg.content[:200]}")
+
+            # Post-task syntax validation and retry (max 1 retry)
+            syntax_errors = self._validate_all_python_syntax(project_path)
+            retry_count = 0
+            while syntax_errors and retry_count < 1:
+                err_summary = "\n".join(f"- {fp}: {err}" for fp, err in syntax_errors[:5])
+                fix_msg = f"""Fix the following Python syntax errors. Use read_file, modify_file, and validate_syntax to fix each file.
+
+{err_summary}
+
+Fix one file at a time, then call validate_syntax to verify."""
+                logger.info(f"  Task {task.id}: {len(syntax_errors)} syntax errors, attempting fix...")
+                try:
+                    agent.invoke(
+                        {"messages": [HumanMessage(content=fix_msg)]},
+                        {"recursion_limit": 20}
+                    )
+                except Exception as fix_e:
+                    logger.warning(f"  Syntax fix attempt failed: {fix_e}")
+                syntax_errors = self._validate_all_python_syntax(project_path)
+                retry_count += 1
 
             logger.info(f"  Task {task.id} completed")
 
@@ -498,6 +661,34 @@ Remember to use tools (list_files, read_file, write_file, modify_file) to intera
                         ), project_id=project_id or "current")
             except Exception:
                 continue
+
+    def _validate_all_python_syntax(self, project_path: Path) -> List[tuple]:
+        """Validate syntax of all .py files. Returns [(file_path, error_msg), ...]."""
+        import ast as _ast
+        errors = []
+        for py_file in project_path.rglob("*.py"):
+            if "__pycache__" in str(py_file):
+                continue
+            try:
+                rel = str(py_file.relative_to(project_path))
+                source = py_file.read_text(encoding="utf-8")
+                _ast.parse(source)
+            except SyntaxError as e:
+                errors.append((rel, f"Line {e.lineno}: {e.msg}"))
+            except Exception:
+                continue
+        return errors
+
+    def _get_task_relevant_files(self, task, plan: EngineeringPlan) -> List[str]:
+        """Get list of file paths relevant to this task."""
+        paths = set()
+        paths.update(getattr(task, "files_to_add", []) or [])
+        paths.update(getattr(task, "files_to_modify", []) or [])
+        for spec in getattr(plan, "file_structure", []) or []:
+            related = getattr(spec, "related_tasks", []) or []
+            if task.id in related:
+                paths.add(getattr(spec, "path", "") or "")
+        return [p for p in sorted(paths) if p]
 
     def _build_context_md(self, files: List[CodeFile]) -> str:
         """构建上下文 - 只传文件列表"""

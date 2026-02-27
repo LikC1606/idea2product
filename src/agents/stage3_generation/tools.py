@@ -123,6 +123,34 @@ def modify_file(file_path: str, old_content: str, new_content: str) -> str:
 
 
 @tool
+def validate_syntax(file_path: str) -> str:
+    """Validate Python syntax of a file. Call this after creating or modifying .py files.
+
+    Args:
+        file_path: Path to the Python file (e.g. app/models/note.py)
+    """
+    if not _project_path:
+        return "Error: project_path not set"
+
+    full_path = _project_path / file_path
+    if not full_path.exists():
+        return f"Error: File not found: {file_path}"
+
+    if full_path.suffix != ".py":
+        return f"Skipped: {file_path} is not a Python file"
+
+    try:
+        import ast as _ast
+        source = full_path.read_text(encoding="utf-8")
+        _ast.parse(source)
+        return "OK"
+    except SyntaxError as e:
+        return f"Error: Line {e.lineno}: {e.msg}"
+    except Exception as e:
+        return f"Error: {e}"
+
+
+@tool
 def run_app() -> str:
     """运行应用并检查是否有错误。"""
     if not _project_path:
@@ -227,6 +255,7 @@ def get_tools(project_path: Path, code_memory_service=None) -> List:
         read_file,
         write_file,
         modify_file,
+        validate_syntax,
         run_app,
         get_module_signatures,
     ]

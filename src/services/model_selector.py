@@ -25,6 +25,7 @@ class ModelSelector:
         stage: int,
         task_type: Optional[str] = None,
         requires_vision: bool = False,
+        prefer_fast: bool = False,
     ) -> ModelEntry:
         """
         Select a model for a given pipeline stage.
@@ -39,6 +40,12 @@ class ModelSelector:
         """
         if self.registry.is_empty():
             return self._default_entry(requires_vision)
+
+        if prefer_fast and not requires_vision:
+            fast = self.registry.get_by_role("fallback")
+            if fast:
+                logger.debug(f"Stage {stage}: using fast model {fast.id}")
+                return fast
 
         route = self.registry.get_stage_route(stage, requires_vision=requires_vision)
         if route is None:

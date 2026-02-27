@@ -86,7 +86,15 @@ def _compute_code_quality(settings, project_id: str = "") -> float:
             gen_path = candidates[0] if candidates else None
         if not gen_path or not gen_path.exists():
             return None
+        return _compute_code_quality_impl(gen_path)
+    except Exception:
+        return None
 
+
+def _compute_code_quality_impl(gen_path: Path) -> float:
+    """Internal: compute ruff score for a path."""
+    import subprocess
+    try:
         py_files = list(gen_path.rglob("*.py"))
         if not py_files:
             return None
@@ -227,15 +235,122 @@ def run_single_chat(task: dict, settings) -> dict:
     return result
 
 
+def run_offline(_settings) -> list:
+    """Run offline evaluation using golden artifacts in data/benchmark/. No LLM calls."""
+    from src.core.data_models import Task, TaskType, TaskComplexity, Requirements, Feature
+
+    benchmark_dir = Path(__file__).parent.parent.parent / "data" / "benchmark"
+    results = []
+    for task in BENCHMARK_TASKS:
+        task_id = task["id"]
+        task_dir = benchmark_dir / task_id
+        result = {
+            "task_id": task_id,
+            "requirement": task["requirement"][:80] + "..." if len(task["requirement"]) > 80 else task["requirement"],
+            "mode": "offline",
+            "success": False,
+            "task_division_eval": {},
+            "code_quality_score": None,
+        }
+        try:
+            req_path = task_dir / "01_requirements.json"
+            plan_path = task_dir / "02_engineering_plan.json"
+            if not plan_path.exists():
+                result["errors"] = [f"Missing {plan_path}"]
+                results.append(result)
+                continue
+            with open(plan_path, "r", encoding="utf-8") as f:
+                plan_data = json.load(f)
+            tasks = []
+            for td in plan_data.get("tasks", []):
+                c = td.get("estimated_complexity", "medium")
+                if c not in ("low", "medium", "high"):
+                    c = "medium"
+                tasks.append(Task(
+                    id=td["id"], name=td["name"], description=td.get("description", ""),
+                    type=TaskType(td.get("type", "frontend")), dependencies=td.get("dependencies", []),
+                    priority=td.get("priority", 3), estimated_complexity=TaskComplexity(c),
+                ))
+            requirements = Requirements(title="", description="", features=[])
+            if req_path.exists():
+                with open(req_path, "r", encoding="utf-8") as f:
+                    req_data = json.load(f)
+                requirements = Requirements(
+                    title=req_data.get("title", ""),
+                    description=req_data.get("description", ""),
+                    features=[Feature(id=ft.get("id", ""), name=ft.get("name", ""), description=ft.get("description", ""), priority=ft.get("priority", 1)) for ft in req_data.get("features", [])],
+                    constraints=req_data.get("constraints", []),
+                )
+            from src.benchmarks.task_eval import evaluate_task_division
+            result["task_division_eval"] = evaluate_task_division(tasks, requirements)
+            result["success"] = True
+            gen_path = task_dir / "generated"
+            if gen_path.exists():
+                result["code_quality_score"] = _compute_code_quality_impl(gen_path)
+        except Exception as e:
+            result["errors"] = [str(e)[:200]]
+        results.append(result)
+    return results
+
+
+def _compute_code_quality_impl(gen_path: Path) -> float:
+    """Compute ruff-based quality score for a generated code directory."""
+    import subprocess
+    try:
+        py_files = list(gen_path.rglob("*.py"))
+        if not py_files:
+            return None
+        result = subprocess.run(
+            [sys.executable, "-m", "ruff", "check", "--select", "E,F", "--quiet", str(gen_path)],
+            capture_output=True, text=True, timeout=30,
+        )
+        issue_count = len(result.stdout.strip().splitlines()) if result.stdout.strip() else 0
+        total_lines = sum(1 for f in py_files for _ in open(f, encoding="utf-8", errors="ignore"))
+        if total_lines == 0:
+            return 1.0
+        return round(max(0.0, 1.0 - (issue_count / max(total_lines, 1))), 3)
+    except Exception:
+        return None
+
+
 def main():
     """Run benchmark suite and print summary."""
-    if not os.getenv("OPENAI_API_KEY"):
-        print("ERROR: OPENAI_API_KEY not set. Benchmark requires real LLM.")
-        sys.exit(1)
-
     mode = "cli"
-    if len(sys.argv) > 1 and sys.argv[1] in ("chat", "--chat"):
-        mode = "chat"
+    offline = False
+    for arg in (sys.argv[1:] or []):
+        if arg in ("chat", "--chat"):
+            mode = "chat"
+        elif arg in ("--offline", "-o"):
+            offline = True
+
+    if offline:
+        print("=" * 60)
+        print("Idea2Product Benchmark Suite (offline mode, no LLM)")
+        print("=" * 60)
+        settings = get_settings()
+        results = run_offline(settings)
+        for r in results:
+            ev = r.get("task_division_eval", {})
+            fc = ev.get("feature_coverage", 0)
+            dv = ev.get("dependency_validity", False)
+            q = r.get("code_quality_score", "N/A")
+            print(f"  {r['task_id']} | feature_coverage={fc} | dep_valid={dv} | code_quality={q}")
+        eval_results = [r.get("task_division_eval", {}) for r in results if r.get("task_division_eval")]
+        avg_fc = sum(e.get("feature_coverage", 0) for e in eval_results) / len(eval_results) if eval_results else 0
+        dep_ok = sum(1 for e in eval_results if e.get("dependency_validity", False))
+        quality_scores = [r["code_quality_score"] for r in results if r.get("code_quality_score") is not None]
+        avg_q = round(sum(quality_scores) / len(quality_scores), 3) if quality_scores else None
+        report_path = Path(__file__).parent.parent.parent / "data" / "benchmark_report.json"
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        summary = {"mode": "offline", "avg_feature_coverage": round(avg_fc, 3), "dependency_valid_count": dep_ok, "avg_code_quality_score": avg_q}
+        with open(report_path, "w", encoding="utf-8") as f:
+            json.dump({"results": results, "summary": summary}, f, indent=2, ensure_ascii=False)
+        print(f"\nReport: {report_path}")
+        return
+
+    if not os.getenv("OPENAI_API_KEY"):
+        print("ERROR: OPENAI_API_KEY not set. Benchmark requires real LLM. Use --offline for no-API eval.")
+        sys.exit(1)
 
     settings = get_settings()
     results = []

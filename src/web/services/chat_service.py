@@ -1,12 +1,13 @@
 """Chat session storage per project. Persists messages to artifacts/chat.json."""
 
-import json
 from pathlib import Path
 from typing import List, Dict, Any
 from datetime import datetime
 
+from filelock import FileLock
+
 from config.settings import Settings
-from src.utils.file_utils import ensure_dir, read_json, write_json
+from src.utils.file_utils import ensure_dir, read_json_safe, write_json
 
 
 CHAT_FILENAME = "chat.json"
@@ -19,15 +20,14 @@ def _chat_path(projects_dir: Path, project_id: str) -> Path:
 def get_messages(settings: Settings, project_id: str) -> List[Dict[str, str]]:
     """
     Load chat messages for a project. Returns empty list if no chat file exists.
+    Uses file lock for safe concurrent read during append.
     """
     path = _chat_path(settings.projects_dir, project_id)
     if not path.exists():
         return []
-    try:
-        data = read_json(path)
-        return data.get("messages", [])
-    except Exception:
-        return []
+    with FileLock(str(path) + ".lock", timeout=10):
+        data = read_json_safe(path, default={})
+        return data.get("messages", []) if isinstance(data, dict) else []
 
 
 def append_message(
@@ -38,6 +38,7 @@ def append_message(
 ) -> None:
     """
     Append a message and persist. Creates project dir and artifacts dir if needed.
+    Uses file lock to prevent concurrent write corruption.
     """
     projects_dir = settings.projects_dir
     project_dir = projects_dir / project_id
@@ -45,7 +46,10 @@ def append_message(
     ensure_dir(artifacts_dir)
     path = artifacts_dir / CHAT_FILENAME
 
-    messages = get_messages(settings, project_id)
-    messages.append({"role": role, "content": content})
-    data = {"messages": messages, "updated_at": datetime.now().isoformat()}
-    write_json(path, data)
+    with FileLock(str(path) + ".lock", timeout=10):
+        messages = []
+        data = read_json_safe(path, default={})
+        if isinstance(data, dict):
+            messages = list(data.get("messages", []))
+        messages.append({"role": role, "content": content})
+        write_json(path, {"messages": messages, "updated_at": datetime.now().isoformat()})

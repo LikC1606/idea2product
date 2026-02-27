@@ -231,6 +231,46 @@ class LLMService:
                 else:
                     raise
 
+    def stream_messages(
+        self,
+        messages: List[Dict[str, str]],
+        max_tokens: Optional[int] = None,
+        temperature: Optional[float] = None,
+    ) -> Iterator[str]:
+        """
+        Stream a chat completion from a list of messages (OpenAI format).
+
+        Args:
+            messages: List of {"role": "system"|"user"|"assistant", "content": "..."}
+            max_tokens: Override default
+            temperature: Override default
+
+        Yields:
+            Chunks of generated text
+        """
+        max_tokens = max_tokens or self.max_tokens
+        temperature = temperature if temperature is not None else self.temperature
+
+        for attempt in range(self.max_retries):
+            try:
+                stream = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    stream=True,
+                )
+                for chunk in stream:
+                    if chunk.choices and chunk.choices[0].delta.content is not None:
+                        yield chunk.choices[0].delta.content
+                return
+            except (RateLimitError, APIError) as e:
+                logger.warning(f"Stream error (attempt {attempt + 1}): {e}")
+                if attempt < self.max_retries - 1:
+                    time.sleep(2**attempt)
+                else:
+                    raise
+
     def generate_json(
         self,
         prompt: str,

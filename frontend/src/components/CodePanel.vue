@@ -1,5 +1,6 @@
 <script setup>
 import { ref, watch, computed, nextTick } from 'vue'
+import EmptyState from './EmptyState.vue'
 import hljs from 'highlight.js'
 import 'highlight.js/styles/github-dark.min.css'
 
@@ -49,6 +50,11 @@ const groupedFiles = computed(() => {
   return { dirs, rootFiles, sortedDirs: Object.keys(dirs).sort() }
 })
 
+const currentLang = computed(() => {
+  if (!props.currentFile || !props.fileContent) return ''
+  return props.fileContent.language || guessLang(props.currentFile)
+})
+
 watch(
   () => [props.fileContent, props.currentFile],
   () => {
@@ -67,48 +73,65 @@ watch(
 </script>
 
 <template>
-  <div class="code-pane">
-    <div class="file-tree">
+  <div class="code-pane" role="region" aria-label="Code files">
+    <nav class="file-tree" aria-label="File tree">
       <template v-if="!files?.length">
-        <div class="file-item root-file placeholder">Waiting for generation...</div>
+        <EmptyState
+          icon="📂"
+          title="No files yet"
+          description="Files will appear here after you generate an app. Describe what you want to build in the chat, then click Generate."
+        />
       </template>
       <template v-else>
-        <div
+        <button
           v-for="f in groupedFiles.rootFiles"
           :key="f.path"
+          type="button"
           class="file-item root-file"
           :class="{
             active: f.path === currentFile,
             'entry-point': ENTRY_POINTS.has(f.path.split('/').pop()),
           }"
           :title="f.path"
+          :aria-current="f.path === currentFile ? 'true' : undefined"
           @click="emit('select-file', f.path)"
         >
           {{ f.path }}
-        </div>
+        </button>
         <template v-for="dir in groupedFiles.sortedDirs" :key="dir">
           <div class="file-tree-dir">{{ dir }}/</div>
-          <div
+          <button
             v-for="f in groupedFiles.dirs[dir]"
             :key="f.path"
+            type="button"
             class="file-item"
             :class="{
               active: f.path === currentFile,
               'entry-point': ENTRY_POINTS.has(f.path.split('/').pop()),
             }"
             :title="f.path"
+            :aria-current="f.path === currentFile ? 'true' : undefined"
             @click="emit('select-file', f.path)"
           >
             {{ f.path.split('/').pop() }}
-          </div>
+          </button>
         </template>
       </template>
-    </div>
-    <div ref="codeEl" class="code-viewer">
+    </nav>
+    <div ref="codeEl" class="code-viewer" role="region" aria-label="Code viewer">
       <template v-if="fileContent?.content != null">
-        <pre><code :class="'language-' + (fileContent.language || guessLang(currentFile))">{{ fileContent.content }}</code></pre>
+        <div class="code-header">
+          <span class="lang-badge">{{ currentLang }}</span>
+          <span class="file-name">{{ currentFile }}</span>
+        </div>
+        <pre><code :class="'language-' + currentLang">{{ fileContent.content }}</code></pre>
       </template>
-      <div v-else class="placeholder">Select a file to view its code</div>
+      <EmptyState
+        v-else
+        icon="📄"
+        title="Select a file"
+        description="Choose a file from the tree to view its code."
+      />
     </div>
   </div>
 </template>
@@ -121,41 +144,45 @@ watch(
 }
 
 .file-tree {
-  width: 220px;
+  width: 240px;
   overflow-y: auto;
   border-right: 1px solid var(--border);
-  padding: 8px 0;
-  background: var(--bg-panel);
+  padding: var(--spacing-12) 0;
+  background: var(--bg-elevated);
   flex-shrink: 0;
 }
 
 .file-tree-dir {
-  padding: 6px 12px;
-  font-size: 0.78rem;
+  padding: 8px 16px;
+  font-size: 0.75rem;
   color: var(--text-muted);
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.03em;
   cursor: default;
 }
 
 .file-item {
-  padding: 5px 12px 5px 24px;
-  font-size: 0.82rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px 10px 20px;
+  font-size: 0.875rem;
   cursor: pointer;
   color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  transition: all var(--transition-fast);
+  border-left: 3px solid transparent;
+  background: transparent;
+  border: none;
+  width: 100%;
+  text-align: left;
 }
 
 .file-item.root-file {
-  padding-left: 12px;
-}
-
-.file-item.placeholder {
-  color: var(--text-muted);
-  cursor: default;
+  padding-left: 16px;
 }
 
 .file-item:hover {
@@ -163,27 +190,73 @@ watch(
   color: var(--text-primary);
 }
 
+.file-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
 .file-item.active {
-  background: var(--bg-surface);
+  background: var(--accent-muted);
   color: var(--accent);
+  border-left-color: var(--accent);
 }
 
 .file-item.entry-point {
   font-weight: 600;
 }
 
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: var(--spacing-32);
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.empty-icon {
+  font-size: 2rem;
+  opacity: 0.6;
+}
+
 .code-viewer {
   flex: 1;
   overflow: auto;
   padding: 0;
+  background: var(--bg-panel);
+}
+
+.code-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.8rem;
+}
+
+.lang-badge {
+  padding: 4px 10px;
+  background: var(--accent-muted);
+  color: var(--accent);
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.file-name {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
 }
 
 .code-viewer pre {
   margin: 0;
-  padding: var(--spacing-16);
-  font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
-  font-size: 0.82rem;
-  line-height: 1.6;
+  padding: var(--spacing-24);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  line-height: 1.7;
   color: var(--text-primary);
   white-space: pre;
   overflow-x: auto;
@@ -194,10 +267,18 @@ watch(
   background: transparent;
 }
 
-.code-viewer .placeholder {
+.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: var(--text-muted);
-  text-align: center;
-  margin-top: 80px;
-  font-size: 0.9rem;
+  font-size: 0.95rem;
+  min-height: 200px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .file-item {
+    transition: none;
+  }
 }
 </style>

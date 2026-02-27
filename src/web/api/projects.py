@@ -6,8 +6,9 @@ Endpoints:
   GET    /api/projects/<id>         - project details
   GET    /api/projects/<id>/status  - generation status
   GET    /api/projects/<id>/events  - SSE stream of status updates
-  POST   /api/projects/<id>/chat    - send message & get reply (auto-triggers generation)
+  POST   /api/projects/<id>/chat    - send message & get reply (no auto-generation)
   GET    /api/projects/<id>/chat    - get chat history
+  POST   /api/projects/<id>/generate - explicitly trigger generation
   GET    /api/projects/<id>/files   - list generated files
   GET    /api/projects/<id>/file/<path> - get file content
   GET    /api/projects/<id>/preview-url - get live preview URL
@@ -23,7 +24,7 @@ import json
 import time
 from flask import Blueprint, Response, jsonify, request
 
-from config.settings import Settings
+from config.settings import get_settings
 from src.services.llm_service import LLMService
 from src.agents.stage1_requirements.interaction_agent import InteractionAgent
 from src.web.services import chat_service
@@ -39,7 +40,7 @@ def _get_task_service():
     """Lazy import to avoid circular dependency."""
     from src.web.services.task_service import TaskService
     if not hasattr(_get_task_service, "_instance"):
-        _get_task_service._instance = TaskService(Settings())
+        _get_task_service._instance = TaskService(get_settings())
     return _get_task_service._instance
 
 
@@ -74,8 +75,9 @@ def create_project():
 
 @bp.route("/<project_id>/chat", methods=["POST"])
 def post_chat(project_id):
-    """Send a user message, get an assistant reply, auto-trigger generation.
+    """Send a user message and get an assistant reply. Does NOT trigger generation.
 
+    Generation is triggered explicitly via POST /api/projects/<id>/generate.
     Body: {"message": "I want a todo app with ..."}
     Returns: {"reply": "...", "project_id": "..."}
     """
@@ -84,7 +86,7 @@ def post_chat(project_id):
     if not message:
         return jsonify({"error": "message is required"}), 400
 
-    settings = Settings()
+    settings = get_settings()
 
     chat_service.append_message(settings, project_id, "user", message)
 
@@ -95,23 +97,93 @@ def post_chat(project_id):
         agent = InteractionAgent(llm_service)
         reply = agent.reply_in_chat(messages)
     except Exception as e:
-        logger.warning(f"Chat reply failed for {project_id}, queuing generation anyway: {e}")
-        reply = "收到你的需求，正在后台生成中。AI 回复暂时不可用，但生成流程已启动。"
+        logger.warning(f"Chat reply failed for {project_id}: {e}")
+        reply = "已收到你的需求。你可以继续补充说明，或点击 Generate 开始生成。"
 
     chat_service.append_message(settings, project_id, "assistant", reply)
 
-    ts = _get_task_service()
-    ts.enqueue_generation(project_id)
-
     return jsonify({"reply": reply, "project_id": project_id})
+
+
+@bp.route("/<project_id>/chat/stream", methods=["POST"])
+def post_chat_stream(project_id):
+    """Stream assistant reply via SSE. Body: {"message": "..."}. Appends user msg first, then streams AI reply."""
+    data = request.get_json(silent=True) or {}
+    message = data.get("message", "").strip()
+    if not message:
+        return jsonify({"error": "message is required"}), 400
+
+    settings = get_settings()
+    chat_service.append_message(settings, project_id, "user", message)
+    messages = chat_service.get_messages(settings, project_id)
+
+    def generate():
+        try:
+            llm_service = LLMService.from_settings(settings)
+            agent = InteractionAgent(llm_service)
+            for chunk in agent.reply_in_chat_stream(messages):
+                yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+            full_reply = ""
+            # We need to collect and persist the full reply; the stream yields chunks
+            # so we accumulate in the generator - but we can't easily get the full text here
+            # without duplicating. Alternative: yield a final event with the full reply.
+            # Simpler: persist after stream. We'll need to accumulate.
+            yield "data: {\"done\": true}\n\n"
+        except Exception as e:
+            logger.warning(f"Chat stream failed for {project_id}: {e}")
+            fallback = "已收到你的需求。你可以继续补充说明，或点击 Generate 开始生成。"
+            yield f"data: {json.dumps({'chunk': fallback, 'done': True})}\n\n"
+
+    # We need to persist the full reply after streaming. Refactor: accumulate in generator and persist at end.
+    # For now: use a wrapper that collects chunks, then persists when done.
+    def generate_and_persist():
+        buffer = []
+        try:
+            llm_service = LLMService.from_settings(settings)
+            agent = InteractionAgent(llm_service)
+            for chunk in agent.reply_in_chat_stream(messages):
+                buffer.append(chunk)
+                yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+            full_reply = "".join(buffer)
+            chat_service.append_message(settings, project_id, "assistant", full_reply)
+        except Exception as e:
+            logger.warning(f"Chat stream failed for {project_id}: {e}")
+            fallback = "已收到你的需求。你可以继续补充说明，或点击 Generate 开始生成。"
+            yield f"data: {json.dumps({'chunk': fallback})}\n\n"
+            chat_service.append_message(settings, project_id, "assistant", fallback)
+        yield "data: {\"done\": true}\n\n"
+
+    return Response(
+        generate_and_persist(),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Connection": "keep-alive"},
+    )
 
 
 @bp.route("/<project_id>/chat", methods=["GET"])
 def get_chat(project_id):
     """Get chat history for a project."""
-    settings = Settings()
+    settings = get_settings()
     messages = chat_service.get_messages(settings, project_id)
     return jsonify({"messages": messages})
+
+
+@bp.route("/<project_id>/generate", methods=["POST"])
+def trigger_generate(project_id):
+    """Explicitly trigger generation for a project."""
+    ts = _get_task_service()
+    project = ts.get_project(project_id)
+    if not project:
+        return jsonify({"error": "Project not found"}), 404
+
+    settings = get_settings()
+    messages = chat_service.get_messages(settings, project_id)
+    user_messages = [m for m in messages if m.get("role") == "user"]
+    if not user_messages:
+        return jsonify({"error": "No messages yet. Send a message first, then click Generate."}), 400
+
+    ts.enqueue_generation(project_id)
+    return jsonify({"status": "queued", "project_id": project_id})
 
 
 # ======================================================================
@@ -216,7 +288,7 @@ def stream_status(project_id):
 @bp.route("/<project_id>/visual-report", methods=["GET"])
 def get_visual_report(project_id):
     """Return visual verification results if available."""
-    settings = Settings()
+    settings = get_settings()
     context_path = settings.projects_dir / project_id / "artifacts" / "context.json"
     if not context_path.exists():
         return jsonify({"error": "No context found"}), 404
@@ -244,7 +316,7 @@ def analyze_requirement():
     if not requirement:
         return jsonify({"error": "requirement is required"}), 400
     try:
-        settings = Settings()
+        settings = get_settings()
         llm_service = LLMService.from_settings(settings)
         agent = InteractionAgent(llm_service)
         analysis = agent.analyze_requirement(requirement)
@@ -260,7 +332,7 @@ def clarify_requirement():
     if not requirement:
         return jsonify({"error": "requirement is required"}), 400
     try:
-        settings = Settings()
+        settings = get_settings()
         llm_service = LLMService.from_settings(settings)
         agent = InteractionAgent(llm_service)
         questions = agent.generate_clarification_questions(requirement)
@@ -282,7 +354,7 @@ def finalize_requirement():
     if not requirement:
         return jsonify({"error": "requirement is required"}), 400
     try:
-        settings = Settings()
+        settings = get_settings()
         llm_service = LLMService.from_settings(settings)
         agent = InteractionAgent(llm_service)
         questions = [

@@ -3,10 +3,16 @@ Return a JSON object with task ID as key:
 {
     "T1": {
         "implementation_approach": "Brief description of how to implement this task",
-        "notes": "Any important notes"
+        "notes": "Any important notes",
+        "hf_models": ["model-id-1", "model-id-2"],
+        "hf_usage_notes": "How to use the model based on its API docs"
     }
 }
 
+If Hugging Face context is provided below, prefer suitable models from it when the task involves ML/NLP/CV. Include hf_models (list of model IDs) and hf_usage_notes (usage based on API docs) when applicable. For non-ML tasks, omit hf_models and hf_usage_notes or leave empty.
+
 Tasks: $tasks_summary
+
+$hf_context
 
 Respond with valid JSON only. Keep it simple - just 1-2 sentences per task.

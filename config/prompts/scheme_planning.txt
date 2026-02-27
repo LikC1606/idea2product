@@ -2,6 +2,7 @@ Generate detailed file specification for this Flask web app.
 
 CRITICAL: 你在这里的pyi_stubs和api_specs描述将决定Stage 3代码生成的结果。请务必写完整、写详细。
 
+$design_mode_hint
 Application: $title
 Description: $description
 Features: $features
@@ -23,6 +24,7 @@ YOUR JOB:
 9. **【重要】session变量获取**：如果API需要获取当前用户信息（如author_id），必须从session读取，不需要前端传递
    - session_info 中用 gets 字段说明需要从 session 获取什么变量
    - 例如：创建博客时 author_id 从 session['user_id'] 获取，不需要前端传递
+10. **【产品级UI】ui_design_spec**：为每个 frontend_route 设计页面 UI 规格，必须包含 page_layouts（sections、empty_state、loading_state）、content_max_width、product_grade_rules。Stage 3 将严格按此规格实现，不在 Stage 3 自行设计。
 
 File assignment guidelines:
 - Frontend task: templates/*.html, static/*
@@ -31,8 +33,43 @@ File assignment guidelines:
 - Entry files (app/__init__.py, app.py): put in the task that depends on them
 - CRITICAL: If pyi_stubs defines app/database.py or app/__init__.py, you MUST add them to task_files and assign to an appropriate task
 
+Single-page vs multi-page (IMPORTANT for simple CRUD apps):
+- For simple apps (todo list, notes, basic CRUD with 1 entity, no auth): PREFER single-page design.
+- Single-page: index.html IS the main app - contains add form + list + delete/mark-done buttons. One template, one route "/". Use JavaScript fetch() to call API. No separate /tasks/new, /tasks/edit, /tasks/detail pages.
+- Multi-page: Use only when app has multiple entities, auth, complex flows, or user explicitly needs separate pages.
+- If single-page: frontend_routes = {"/": {"template": "index.html", "description": "Main app with form and list"}}. Only index.html needed for frontend.
+
 Output format (JSON):
 {
+    "ui_guidelines": {
+        "theme": "modern" | "minimal" | "dashboard",
+        "primary_color": "#6366f1",
+        "font_family": "system-ui, -apple-system, sans-serif",
+        "layout_hints": "e.g. sidebar nav, card grid layout"
+    },
+    "ui_design_spec": {
+        "content_max_width": "min(90vw, 960px)",
+        "layout_structure": "single-column" | "header-main" | "sidebar-main",
+        "layout_rules": "主内容占满可用宽度，避免窄条居中",
+        "page_layouts": {
+            "/": {
+                "sections": [
+                    {"id": "add-form", "description": "顶部添加任务表单，输入框+提交按钮"},
+                    {"id": "task-list", "description": "任务列表，每项包含 checkbox、文本、删除按钮"}
+                ],
+                "empty_state": {
+                    "message": "暂无任务，添加一个吧",
+                    "cta": "添加任务",
+                    "show_when": "列表为空"
+                },
+                "loading_state": {
+                    "type": "skeleton" | "spinner",
+                    "description": "首次加载时显示骨架屏或加载指示器"
+                }
+            }
+        },
+        "product_grade_rules": ["空状态必显", "加载态必显", "操作反馈(toast/内联)", "列表项 hover/完成态"]
+    },
     "task_files": {
         "T1": [{"path": "...", "layer": "...", "purpose": "..."}],
         "T2": [...]
@@ -49,9 +86,7 @@ Output format (JSON):
             {"path": "/api/posts", "method": "POST", "description": "创建博客", "request": "{title, content}", "response": "{id, title}", "session_info": {"gets": "session['user_id'] as author_id", "description": "从session获取当前用户ID作为author_id"}}
         ],
         "frontend_routes": {
-            "/": {"template": "index.html", "description": "主页显示笔记列表"},
-            "/notes": {"template": "notes.html", "description": "笔记列表页"},
-            "/notes/new": {"template": "note_new.html", "description": "新建笔记页"}
+            "/": {"template": "index.html", "description": "主页面。简单CRUD（todo/笔记）用单页：表单+列表+操作全在index；复杂应用才用多页"}
         }
     },
     "pyi_stubs": {
@@ -62,6 +97,8 @@ Output format (JSON):
 }
 
 IMPORTANT:
+- ui_guidelines is optional; if omitted, default theme "modern" will be used
+- ui_design_spec: For Todo/Notes/simple CRUD apps, MUST output complete page_layouts (every frontend_route), content_max_width (min 720px or min(90vw,960px)), product_grade_rules. Stage 3 implements exactly this spec.
 - Each file should appear exactly ONCE
 - Include all necessary files (templates, static, routes, models, app factory, entry point)
 - task_goals should describe what this task should achieve

@@ -9,6 +9,7 @@ Features:
 - Idle timeout: reaps processes that have been running longer than MAX_PREVIEW_LIFETIME
 """
 
+import json
 import os
 import sys
 import signal
@@ -143,8 +144,39 @@ class PreviewService:
             )
 
         self._clear_error(project_id)
-        logger.info(f"Preview started for {project_id} on {url} (pid={proc.pid}, healthy={healthy})")
-        return url
+        full_url = self._append_default_route(project_id, url)
+        logger.info(f"Preview started for {project_id} on {full_url} (pid={proc.pid}, healthy={healthy})")
+        return full_url
+
+    def _get_default_preview_path(self, project_id: str) -> Optional[str]:
+        """Read 02_engineering_plan.json and return main frontend route (list page over forms)."""
+        plan_path = self.settings.projects_dir / project_id / "artifacts" / "02_engineering_plan.json"
+        if not plan_path.exists():
+            return None
+        try:
+            data = json.loads(plan_path.read_text(encoding="utf-8"))
+            routes = (data.get("api_specs") or {}).get("frontend_routes") or {}
+            candidates = []
+            for path, _ in routes.items():
+                if path and path != "/" and "<" not in path:
+                    p = path.rstrip("/") or path
+                    # Prefer list routes (e.g. /tasks) over form routes (e.g. /tasks/new)
+                    is_form = "/new" in p or "/create" in p or "/edit" in p
+                    candidates.append((p, is_form))
+            # Prefer non-form routes, then by path length (shorter = likely main list)
+            if candidates:
+                best = min(candidates, key=lambda x: (x[1], len(x[0])))
+                return best[0]
+        except Exception:
+            pass
+        return None
+
+    def _append_default_route(self, project_id: str, base_url: str) -> str:
+        """Append default main route to preview URL when available."""
+        path = self._get_default_preview_path(project_id)
+        if path:
+            return base_url.rstrip("/") + path
+        return base_url
 
     def get_preview_error(self, project_id: str) -> Optional[str]:
         """Return the last error message for this project's preview, or None."""
@@ -190,7 +222,7 @@ class PreviewService:
             self._cleanup_entry(project_id)
             return None
 
-        return info["url"]
+        return self._append_default_route(project_id, info["url"])
 
     def stop_all(self):
         """Stop all running previews."""
@@ -307,7 +339,8 @@ _preview_service: Optional[PreviewService] = None
 def _get_preview_service() -> PreviewService:
     global _preview_service
     if _preview_service is None:
-        _preview_service = PreviewService(Settings())
+        from config.settings import get_settings
+        _preview_service = PreviewService(get_settings())
     return _preview_service
 
 

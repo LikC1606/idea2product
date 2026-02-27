@@ -27,6 +27,10 @@ aiofiles>=24.1.0
 # HTTP requests
 requests>=2.32.0
 httpx>=0.28.0
+filelock>=3.13.0
+
+# Hugging Face (for HF model search in algorithm analysis)
+huggingface_hub>=0.25.0
 
 # Image processing (for visual verification)
 Pillow>=10.0.0

@@ -18,9 +18,32 @@ export function useChat() {
 
     try {
       const pid = await ensureProject()
-      const data = await api.postChat(pid, msg)
-      if (data.reply) {
-        messages.value.push({ role: 'assistant', content: data.reply })
+      try {
+        const fullReply = await api.postChatStream(pid, msg, {
+          onChunk: (chunk) => {
+            const last = messages.value[messages.value.length - 1]
+            if (last?.role === 'assistant') {
+              last.content += chunk
+            } else {
+              messages.value.push({ role: 'assistant', content: chunk })
+            }
+          },
+        })
+        const last = messages.value[messages.value.length - 1]
+        if (last?.role === 'assistant' && last.content !== fullReply) {
+          last.content = fullReply
+        } else if (last?.role !== 'assistant' && fullReply) {
+          messages.value.push({ role: 'assistant', content: fullReply })
+        }
+      } catch (streamErr) {
+        try {
+          const data = await api.postChat(pid, msg)
+          if (data.reply) {
+            messages.value.push({ role: 'assistant', content: data.reply })
+          } else throw streamErr
+        } catch {
+          throw streamErr
+        }
       }
     } catch (err) {
       messages.value.push({
@@ -45,6 +68,10 @@ export function useChat() {
     messages.value.push({ role: 'assistant', content })
   }
 
+  const appendSystemMessage = (content) => {
+    messages.value.push({ role: 'system', content })
+  }
+
   return {
     messages: readonly(messages),
     sending: readonly(sending),
@@ -53,5 +80,6 @@ export function useChat() {
     setMessages,
     clearMessages,
     appendAssistantMessage,
+    appendSystemMessage,
   }
 }

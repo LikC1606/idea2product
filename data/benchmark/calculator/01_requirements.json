@@ -1,0 +1,13 @@
+{
+  "title": "Calculator App",
+  "description": "A calculator with add, subtract, multiply, divide",
+  "features": [
+    {"id": "f1", "name": "Add", "description": "Addition", "priority": 1},
+    {"id": "f2", "name": "Subtract", "description": "Subtraction", "priority": 1},
+    {"id": "f3", "name": "Multiply", "description": "Multiplication", "priority": 1},
+    {"id": "f4", "name": "Divide", "description": "Division", "priority": 1}
+  ],
+  "constraints": [],
+  "target_users": null,
+  "data_requirements": null
+}

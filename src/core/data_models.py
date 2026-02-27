@@ -72,6 +72,9 @@ class Requirements(BaseModel):
     user_clarifications: Dict[str, str] = Field(
         default_factory=dict, description="User answers to clarification questions"
     )
+    design_mode: Optional[str] = Field(
+        None, description="UI style: modern | minimal | dashboard. Affects ui_guidelines."
+    )
     created_at: datetime = Field(default_factory=datetime.now)
 
 
@@ -104,6 +107,12 @@ class Algorithm(BaseModel):
     libraries: List[str] = Field(default_factory=list, description="Required libraries")
     data_structures: List[str] = Field(default_factory=list, description="Data structures needed")
     notes: Optional[str] = Field(None, description="Additional implementation notes")
+    hf_models: Optional[List[str]] = Field(
+        default=None, description="Recommended Hugging Face model IDs"
+    )
+    hf_usage_notes: Optional[str] = Field(
+        default=None, description="API usage notes based on model documentation"
+    )
 
 
 class FileSpec(BaseModel):

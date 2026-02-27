@@ -1,0 +1,6 @@
+{
+  "tasks": [
+    {"id": "T1", "name": "Calculator backend", "description": "API for add subtract multiply divide", "type": "backend", "dependencies": [], "priority": 5, "estimated_complexity": "low"},
+    {"id": "T2", "name": "Calculator UI", "description": "Frontend with buttons", "type": "frontend", "dependencies": ["T1"], "priority": 4, "estimated_complexity": "low"}
+  ]
+}
