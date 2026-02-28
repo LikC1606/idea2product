@@ -57,7 +57,7 @@ def test_run_syntax_check_passes_valid_code(mock_llm):
 
 
 def test_generate_bdd_tests_structure(mock_llm):
-    """_generate_bdd_tests returns BDDTestCase list with required fields."""
+    """_rule_based_bdd_fallback returns BDDTestCase list with required fields."""
     agent = FullCycleTestingAgent(mock_llm)
     req = Requirements(
         title="Todo",
@@ -67,7 +67,7 @@ def test_generate_bdd_tests_structure(mock_llm):
             Feature(id="2", name="Delete todo", description="Del", priority=2),
         ],
     )
-    tests = agent._generate_bdd_tests(req)
+    tests = agent._rule_based_bdd_fallback(req)
     assert isinstance(tests, list)
     assert len(tests) >= 1
     for t in tests:
@@ -85,7 +85,7 @@ def test_write_bdd_pytest_file(mock_llm):
     """_write_bdd_pytest_file produces runnable pytest file."""
     agent = FullCycleTestingAgent(mock_llm)
     req = Requirements(title="Todo", description="App", features=[Feature(id="1", name="Add", description="Add", priority=1)])
-    bdd_tests = agent._generate_bdd_tests(req)
+    bdd_tests = agent._rule_based_bdd_fallback(req)
     ctx = ExecutionContext(user_requirement="Todo app")
     ctx.engineering_plan = None
 

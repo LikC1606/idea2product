@@ -34,6 +34,10 @@ $initial_tasks
    - 任务描述与需求是否匹配
    - 任务之间是否有遗漏或重复
 
+7. **Auth 任务完整性**（当任务涉及登录/认证时）：
+   - 若任何任务涉及「登录 / login / 用户认证」，必须存在实现「注册 / register」的任务
+   - 认证相关任务描述需同时覆盖 register 与 login（POST /api/auth/register、POST /api/auth/login）
+
 ## 输出格式
 请返回以下JSON格式：
 

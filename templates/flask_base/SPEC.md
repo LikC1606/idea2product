@@ -124,6 +124,19 @@ def spa(catch_all):
     return render_template('index.html')
 ```
 
+## Commercial-Grade Auth Pattern
+
+When the app has user login/authentication, follow these rules:
+
+1. **app/__init__.py** must:
+   - Import and register auth blueprint: `from app.routes.auth import auth_bp` and `app.register_blueprint(auth_bp, url_prefix='/api/auth')`
+   - Add page routes: `@app.route('/login')` → `render_template('login.html')`, `@app.route('/register')` → `render_template('register.html')`
+   - Redirect unauthenticated users from main app routes to `/login`
+
+2. **login.html** must contain a link to `/register` (e.g. "没有账号？去注册")
+3. **register.html** must contain a link to `/login` (e.g. "已有账号？去登录")
+4. **Blueprint routes** use relative paths: `@auth_bp.route('/login')` not `@auth_bp.route('/api/auth/login')` when url_prefix is `/api/auth`
+
 ## Common Modification Files
 
 1. **app/__init__.py** - Register new blueprints AND add frontend routes
@@ -141,6 +154,8 @@ def spa(catch_all):
 For a complete web application, you need both:
 - **API routes**: `/api/xxx` - Handle data operations (JSON)
 - **Frontend routes**: `/` or `/xxx` - Serve HTML pages
+
+**Auth apps**: When the app has login, frontend_routes must include `/login` and `/register` in addition to the main app route.
 
 Example frontend route setup:
 ```python

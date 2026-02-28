@@ -20,7 +20,9 @@ from .data_models import (
     ValidatedProject,
     ValidationStatus,
     BDDTestCase,
+    FileSpec,
 )
+from .adapters import engineering_plan_from_stage2
 
 # Import agents
 from src.agents.stage1_requirements.interaction_agent import InteractionAgent
@@ -165,6 +167,8 @@ class Orchestrator:
                 self._save_artifact(artifacts_dir, "context.json", {**context.to_dict(), "partial_failure": True, "failed_stage": 2})
                 raise
             context.engineering_plan = engineering_plan
+            context.tasks = engineering_plan.tasks
+            context.algorithms = engineering_plan.algorithms
             self._save_artifact(artifacts_dir, "02_engineering_plan.json", engineering_plan.model_dump(mode="json"))
 
             # Execute Stage 3: Code Generation
@@ -207,7 +211,11 @@ class Orchestrator:
         except Exception as e:
             self.logger.error(f"Workflow failed: {e}", exc_info=True)
             context.add_error(str(e))
-            self._save_artifact(artifacts_dir, "context.json", context.to_dict())
+            to_save = context.to_dict()
+            if context.current_stage >= 2:
+                to_save["partial_failure"] = True
+                to_save["failed_stage"] = context.current_stage
+            self._save_artifact(artifacts_dir, "context.json", to_save)
             raise
         finally:
             clear_correlation()
@@ -263,10 +271,10 @@ class Orchestrator:
         """
         self.logger.info("Stage 2: Task Division → Algorithm Analysis → Scheme Planning")
 
-        # Basic precondition check
+        # Stage2Input pre-check
         requirements = context.requirements
         if requirements is None:
-            raise ValueError("Stage 2 requires non-empty requirements in context")
+            raise ValueError("Stage 2 requires non-empty requirements in context (Stage2Input contract)")
 
         llm_primary = self._llm_for_stage(2)
         llm_fast = self._llm_for_stage(2, use_fast=True)
@@ -297,56 +305,48 @@ class Orchestrator:
             hf_model_service=hf_service,
             hf_search_limit=getattr(self.settings, "hf_search_limit", 5),
         )
-        algorithms = algo_agent.execute(tasks)
+        algorithms = algo_agent.execute(tasks, flow_simulation=flow_simulation)
         self.logger.info(f"  - Analyzed {len(algorithms)} algorithms")
 
         # Scheme Planning Agent - use primary (critical for code gen)
         scheme_agent = SchemePlanningAgent(llm_primary)
         file_structure, interface_specs, api_specs, pyi_stubs = scheme_agent.execute(
-            requirements, tasks, flow_simulation
+            requirements, tasks, flow_simulation, algorithms=algorithms
         )
-
-        if not file_structure:
-            self.logger.error(
-                "SchemePlanningAgent returned empty file_structure; "
-                "Stage 3 will have nothing to generate. Check LLM connectivity and prompt."
-            )
 
         self.logger.info(
             f"  - Planned {len(file_structure)} files with {len(interface_specs)} interface specs"
         )
 
-        # Extract dependencies from algorithm analysis (always include flask as base)
-        dependencies: set[str] = {"flask"}
-        for alg in algorithms.values():
-            for lib in alg.libraries:
-                if not lib:
-                    continue
-                lib_normalized = lib.strip()
-                # Filter out obvious non-package or built-in names
-                if lib_normalized.lower() in {"dict", "list", "str", "int", "standard"}:
-                    continue
-                dependencies.add(lib_normalized)
-
         # BDD test-driven: synthesize BDD test cases from requirements + api_specs
         bdd_test_cases = self._synthesize_bdd_tests(requirements, api_specs, llm=llm_primary)
         self.logger.info(f"  - Synthesized {len(bdd_test_cases)} BDD test cases (test-driven)")
 
-        # Create engineering plan
-        plan = EngineeringPlan(
+        # Create engineering plan via adapter (handles pyi_stubs fallback, file_structure fallback)
+        plan = engineering_plan_from_stage2(
             tasks=tasks,
             algorithms=algorithms,
             file_structure=file_structure,
             interface_specs=interface_specs,
-            dependencies=sorted(dependencies),
-            architecture_notes=f"Web application: {requirements.title}",
             api_specs=api_specs,
             pyi_stubs=pyi_stubs,
+            requirements=requirements,
             bdd_test_cases=bdd_test_cases,
+            default_file_structure_fn=self._default_file_structure,
         )
 
         self.logger.info("Stage 2 complete: Engineering plan created")
         return plan
+
+    def _default_file_structure(self, tasks: list) -> list:
+        """Default file structure when SchemePlanningAgent returns empty. Avoids Stage 3 failure."""
+        task_ids = [t.id for t in tasks] if tasks else []
+        return [
+            FileSpec(path="app/__init__.py", purpose="Flask app factory", dependencies=[], layer="assembly", related_tasks=task_ids),
+            FileSpec(path="app/models/__init__.py", purpose="Models package", dependencies=["app/__init__.py"], layer="base", related_tasks=task_ids),
+            FileSpec(path="app/routes/__init__.py", purpose="Routes package", dependencies=["app/__init__.py"], layer="assembly", related_tasks=task_ids),
+            FileSpec(path="templates/index.html", purpose="Home page", dependencies=[], layer=None, related_tasks=task_ids),
+        ]
 
     def _synthesize_bdd_tests(self, requirements: Requirements, api_specs: dict, llm: LLMService = None) -> list:
         """Synthesize BDD test cases from requirements + API specs using LLM (test-driven)."""
@@ -398,7 +398,8 @@ class Orchestrator:
                     test_code=c.get("test_code", ""),
                     status="pending",
                 ))
-            except Exception:
+            except Exception as ex:
+                self.logger.debug("Could not parse BDD test case: %s", ex)
                 continue
 
         if not bdd_tests:
@@ -428,28 +429,37 @@ class Orchestrator:
         """
         self.logger.info("Stage 3: Code Generation (with Memory and Mining support)")
 
-        # Basic precondition checks
+        # Stage3Input pre-check
+        if context.requirements is None:
+            raise ValueError("Stage 3 requires requirements in context (Stage3Input contract)")
         if context.engineering_plan is None:
-            raise ValueError("Stage 3 requires an EngineeringPlan in context")
+            raise ValueError("Stage 3 requires an EngineeringPlan in context (Stage3Input contract)")
         if not context.engineering_plan.file_structure:
             raise ValueError("Stage 3 requires a non-empty file_structure in EngineeringPlan")
 
         llm = self._llm_for_stage(3)
         self.logger.info(f"  - Model: {llm.model}")
 
-        # Code Generation Agent (with optional memory/mining via settings)
+        # Phase 1: CodeMemoryAgent pre_execute - seed symbol table, prefetch cross-project snippets
+        memory_agent = CodeMemoryAgent(llm, settings=self.settings)
+        memory_context = memory_agent.pre_execute(context)
+
+        # Phase 2: CodeMiningAgent - pre-fetch mining context per task
+        mining_agent = CodeMiningAgent(llm, settings=self.settings)
+        mining_by_task = mining_agent.execute(context)
+
+        # Phase 3: CodeGenerationAgent - generate code with mining/memory context, incremental snippet save
         code_agent = CodeGenerationAgent(llm, settings=self.settings)
-        repository = code_agent.execute(context)
+        repository = code_agent.execute(
+            context,
+            mining_by_task=mining_by_task,
+            memory_context=memory_context,
+        )
 
         self.logger.info(f"Stage 3 complete: Generated {len(repository.files)} files")
 
-        # Code Memory Agent: save snippets when ENABLE_CODE_MEMORY
-        memory_agent = CodeMemoryAgent(llm, settings=self.settings)
+        # Phase 4: CodeMemoryAgent.execute - final persist of snippets to memory
         memory_agent.execute(context, repository)
-
-        # Code Mining Agent: runs per-task in CodeGenerationAgent; this logs status
-        mining_agent = CodeMiningAgent(llm, settings=self.settings)
-        mining_agent.execute(context)
 
         return repository
 
@@ -464,6 +474,14 @@ class Orchestrator:
             Validated and tested project
         """
         self.logger.info("Stage 4: Code Fix with LangChain Agent")
+
+        # Stage4Input pre-check
+        if context.requirements is None:
+            raise ValueError("Stage 4 requires requirements in context (Stage4Input contract)")
+        if context.engineering_plan is None:
+            raise ValueError("Stage 4 requires engineering_plan in context (Stage4Input contract)")
+        if context.code_repository is None:
+            raise ValueError("Stage 4 requires code_repository in context (Stage4Input contract)")
 
         llm = self._llm_for_stage(4)
         self.logger.info(f"  - Model: {llm.model}")
@@ -483,12 +501,12 @@ class Orchestrator:
         try:
             code_fix_agent.execute(generated_path)
         except Exception as e:
-            self.logger.warning(f"CodeFixAgent failed ({e}), falling back to run_and_fix_loop")
-            context.code_repository = testing_agent.run_and_fix_loop(
+            self.logger.warning(f"CodeFixAgent failed ({e}), falling back to _fallback_run_and_fix")
+            context.code_repository = testing_agent._fallback_run_and_fix(
                 context.project_path,
                 context.code_repository,
                 context.requirements,
-                getattr(context.engineering_plan, "api_specs", None),
+                getattr(context.engineering_plan, "interface_specs", None) if context.engineering_plan else None,
                 max_iterations=5,
             )
             # Re-save fixed files to disk
@@ -503,7 +521,7 @@ class Orchestrator:
         if test_result.logic_passed:
             self.logger.info("  - Running frontend API testing...")
             frontend_agent = FrontendTestingAgent(llm)
-            frontend_errors = frontend_agent.execute(context.project_path / "generated", port=5555)
+            frontend_errors = frontend_agent.execute(context.project_path / "generated")
             if frontend_errors:
                 test_result.errors.extend(frontend_errors)
                 test_result.logic_passed = False
@@ -511,24 +529,12 @@ class Orchestrator:
             else:
                 self.logger.info("  - Frontend API testing passed!")
 
-        # Optional: if still errors/warnings, try FineTuningAgent (syntax/import/entry-point fixes on repository)
-        if (test_result.errors or test_result.warnings) and not test_result.logic_passed:
-            fine_tuning_agent = FineTuningAgent(llm)
-            repository, fixed = fine_tuning_agent.execute(context, test_result)
-            if fixed:
-                context.code_repository = repository
-                repository = context.code_repository
-                test_result = testing_agent.execute(context)
-                self.logger.info(f"  - After FineTuning: {len(test_result.errors)} errors, logic_passed={test_result.logic_passed}")
-
-        # Visual Verification Agent (optional, controlled by settings flag)
-        # Uses a vision-capable model when available
+        # Visual Verification Agent (runs BEFORE FineTuning so FineTuning can use visual_feedback)
         if getattr(self.settings, "enable_visual_verification", False):
             vlm_llm = self._llm_for_stage(4, requires_vision=True)
             self.logger.info(f"  - VLM Model: {vlm_llm.model}")
             visual_agent = VisualVerificationAgent(vlm_llm)
             visual_result = visual_agent.execute(context)
-            # Store visual feedback into test_result for downstream use (P4/P5)
             test_result.visual_feedback = {
                 "alignment_score": visual_result.get("alignment_score", 0.0),
                 "missing_elements": visual_result.get("missing_elements", []),
@@ -546,11 +552,23 @@ class Orchestrator:
                     issues=visual_result.get("issues", []),
                     passed=visual_result.get("passed", False),
                 )
-            except Exception:
-                pass
+            except Exception as ex:
+                self.logger.debug("Could not create visual result: %s", ex)
             self.logger.info(f"  - Visual alignment_score={visual_result.get('alignment_score', 0.0)}")
         else:
             self.logger.info("Visual verification disabled by settings; skipping UI analysis")
+
+        # FineTuningAgent: logic fixes (syntax/import/entry-point) OR visual fixes (alignment < 0.7)
+        need_logic_fix = (test_result.errors or test_result.warnings) and not test_result.logic_passed
+        visual_fb = getattr(test_result, "visual_feedback", None)
+        need_visual_fix = visual_fb and visual_fb.get("alignment_score", 1.0) < 0.7
+        if need_logic_fix or need_visual_fix:
+            fine_tuning_agent = FineTuningAgent(llm)
+            repository, fixed = fine_tuning_agent.execute(context, test_result)
+            if fixed:
+                context.code_repository = repository
+                test_result = testing_agent.execute(context)
+                self.logger.info(f"  - After FineTuning: {len(test_result.errors)} errors, logic_passed={test_result.logic_passed}")
 
         # Create validated project (use context.repository in case FineTuning updated it)
         repository = context.code_repository
@@ -594,8 +612,8 @@ class Orchestrator:
             if progress_callback:
                 try:
                     progress_callback(progress, stage)
-                except Exception:
-                    pass
+                except Exception as ex:
+                    self.logger.debug("Progress callback failed: %s", ex)
 
         set_correlation(project_id=project_id)
         project_path = self.settings.projects_dir / project_id

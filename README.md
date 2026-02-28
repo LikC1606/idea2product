@@ -9,14 +9,14 @@ Idea2Product takes a plain-text description of what you want to build and automa
 | Stage | Purpose | Agents |
 |-------|---------|--------|
 | **Stage 1** | Requirements Gathering | Interaction Agent |
-| **Stage 2** | Technical Planning | Task Division, Algorithm Analysis, Scheme Planning |
+| **Stage 2** | Technical Planning | Flow Simulation, Task Division, Algorithm Analysis, Scheme Planning |
 | **Stage 3** | Code Generation | Code Generation, Code Memory, Code Mining |
 | **Stage 4** | Validation | BDD Testing, Visual Verification, Fine-tuning |
 
 ### How It Works
 
 1. **Requirements** - The Interaction Agent clarifies your requirements through dialogue (or skips if `--no-interactive`)
-2. **Planning** - Three agents break the requirement into tasks, analyze algorithms, and design the file/API structure
+2. **Planning** - Flow Simulation simulates the user journey; then Task Division, Algorithm Analysis, and Scheme Planning break the requirement into tasks, analyze algorithms, and design the file/API structure
 3. **Code Generation** - A LangChain-based agent generates code using an interface-first strategy (`.pyi` stubs -> dependency graph -> implementations)
 4. **Validation** - The system runs the generated code, detects errors, and fixes them automatically in a run-fix loop. Optionally generates BDD smoke tests and runs visual verification.
 
@@ -538,6 +538,21 @@ Deploy Idea2Product so anyone can use Build Studio in a browser.
 - **`401 Unauthorized`** — `.env` is missing or `OPENAI_API_KEY` is invalid. Ensure you copied `.env.example` to `.env` and set a valid key
 - **Empty or minimal generated code** — Use a more specific requirement (e.g. "Build a todo app with add, delete, and complete" instead of "Build an app")
 - **Tests fail with `pytest tests/`** — Ensure you are in the project root and have run `pip install -r requirements.txt`; unit tests use mocks and do not need an API key
+
+---
+
+## Related Work
+
+Idea2Product differs from existing benchmarks and systems in scope and evaluation:
+
+| System | Scope | Evaluation focus |
+|--------|-------|------------------|
+| **Idea2Product** | NL requirement → runnable full-stack app | End-to-end "requirements to product" pipeline; code quality, BDD, visual alignment |
+| **DevBench** | Multi-stage SDLC, code completion | Functional correctness, compilation, developer telemetry |
+| **Design2Code** | Visual design → frontend code | Image-to-code similarity; frontend only |
+| **SWE-bench** | Issue → code patch | Repository-level PR correctness |
+
+Idea2Product targets the full product lifecycle from natural language to deployable application, combining skeleton-first generation, dual (logic + visual) verification, and a multi-dimensional benchmark.
 
 ---
 

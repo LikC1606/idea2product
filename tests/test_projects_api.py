@@ -70,6 +70,18 @@ def test_create_project_requirement_required(client, app_with_temp_settings):
     assert "error" in data
 
 
+def test_create_project_invalid_json(client, app_with_temp_settings):
+    """Invalid JSON body returns 400."""
+    r = client.post(
+        "/api/projects",
+        data="{invalid json}",
+        content_type="application/json",
+    )
+    assert r.status_code == 400
+    data = r.get_json()
+    assert "error" in data
+
+
 def test_status_after_start_chat(client, temp_settings, app_with_temp_settings):
     r = client.post("/api/projects", json={"start_chat": True}, content_type="application/json")
     assert r.status_code == 201
@@ -183,3 +195,53 @@ def test_get_project_404(client, app_with_temp_settings):
 def test_status_404(client, app_with_temp_settings):
     r = client.get("/api/projects/nonexistent_id_12345/status")
     assert r.status_code == 404
+
+
+def test_post_chat_llm_exception_returns_fallback(client, temp_settings, app_with_temp_settings):
+    """When LLM raises, POST chat returns fallback reply and 200."""
+    r = client.post("/api/projects", json={"start_chat": True}, content_type="application/json")
+    assert r.status_code == 201
+    project_id = r.get_json()["project_id"]
+
+    with patch("src.web.api.projects.LLMService") as MockLLM, patch(
+        "src.web.api.projects.InteractionAgent"
+    ) as MockAgent:
+        MockLLM.from_settings.return_value = MagicMock()
+        mock_agent = MagicMock()
+        mock_agent.reply_in_chat.side_effect = RuntimeError("LLM API failed")
+        MockAgent.return_value = mock_agent
+
+        r2 = client.post(
+            f"/api/projects/{project_id}/chat",
+            json={"message": "I want a todo app"},
+            content_type="application/json",
+        )
+    assert r2.status_code == 200
+    data = r2.get_json()
+    assert "reply" in data
+    assert "Generate" in data["reply"] or "生成" in data["reply"]
+
+
+def test_request_entity_too_large(client, app_with_temp_settings):
+    """Oversized POST body returns 413."""
+    r = client.post(
+        "/api/projects",
+        data="x" * 70000,
+        content_type="application/json",
+    )
+    assert r.status_code == 413
+    data = r.get_json()
+    assert "error" in data
+    assert "large" in data["error"].lower() or "太大" in data["error"]
+
+
+def test_get_file_not_found_returns_404(client, temp_settings, app_with_temp_settings):
+    """GET file for non-existent path returns 404."""
+    r = client.post("/api/projects", json={"start_chat": True}, content_type="application/json")
+    assert r.status_code == 201
+    project_id = r.get_json()["project_id"]
+
+    r2 = client.get(f"/api/projects/{project_id}/file/nonexistent.py")
+    assert r2.status_code == 404
+    data = r2.get_json()
+    assert "error" in data

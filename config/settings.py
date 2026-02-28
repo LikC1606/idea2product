@@ -46,24 +46,32 @@ class Settings(BaseSettings):
     enable_parallel_task_generation: bool = False
     max_fix_attempts: int = 2
     random_seed: Optional[int] = None  # If set, seeds random/numpy for reproducibility
-    enable_code_memory: bool = False
-    enable_code_mining: bool = False
+    enable_code_memory: bool = True  # Plan: skeleton-first + symbol-aware; set False to reduce API/DB usage
+    enable_code_mining: bool = True  # Plan: GitHub retrieval + interface adaptation; set False if no GITHUB_TOKEN
+    enable_cross_project_memory: bool = False  # When True, search_similar_snippet may fall back to other projects
+    enable_llm_code_adaptation: bool = False  # When True, use LLM to adapt mined code to interface (extra API cost)
     enable_visual_verification: bool = True
     enable_bdd_testing: bool = True
 
+    # Validation port (shared by FullCycleTesting, FrontendTesting, VisualVerification, CodeFix)
+    validation_port: int = 5555
+
+    # Review: when True, API specs review always runs (SchemePlanningAgent)
+    always_review_api_specs: bool = True
+
     def __init__(self, **kwargs):
-        # 临时清除可能存在的环境变量，确保从.env读取
+        # 临时清除可能存在的环境变量，确保从.env读取；初始化后恢复，避免副作用
         env_backup = {}
-        for key in ['OPENAI_API_KEY', 'OPENAI_BASE_URL', 'OPENAI_MODEL', 'OPENAI_VLM_MODEL', 'MAX_TOKENS', 'TEMPERATURE']:
+        keys_to_temp_clear = ['OPENAI_API_KEY', 'OPENAI_BASE_URL', 'OPENAI_MODEL', 'OPENAI_VLM_MODEL', 'MAX_TOKENS', 'TEMPERATURE']
+        for key in keys_to_temp_clear:
             if key in os.environ:
                 env_backup[key] = os.environ[key]
                 del os.environ[key]
-
-        super().__init__(**kwargs)
-
-        # 恢复环境变量（如果需要）
-        # for key, value in env_backup.items():
-        #     os.environ[key] = value
+        try:
+            super().__init__(**kwargs)
+        finally:
+            for key, value in env_backup.items():
+                os.environ[key] = value
 
     # Derived paths
     @property

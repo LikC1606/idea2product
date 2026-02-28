@@ -7,6 +7,7 @@ Application: $title
 Description: $description
 Features: $features
 $flow_section
+$algorithms_section
 
 $task_descriptions
 
@@ -25,6 +26,12 @@ YOUR JOB:
    - session_info 中用 gets 字段说明需要从 session 获取什么变量
    - 例如：创建博客时 author_id 从 session['user_id'] 获取，不需要前端传递
 10. **【产品级UI】ui_design_spec**：为每个 frontend_route 设计页面 UI 规格，必须包含 page_layouts（sections、empty_state、loading_state）、content_max_width、product_grade_rules。Stage 3 将严格按此规格实现，不在 Stage 3 自行设计。
+11. **【Auth 完整性】当应用需要用户登录时**：
+   - api_specs.endpoints 必须包含：/api/auth/register、/api/auth/login、/api/auth/logout
+   - api_specs.frontend_routes 必须包含：/login、/register 及主应用路由（如 / 或 /tasks）
+   - ui_design_spec.page_layouts 中 /login 与 /register 必须包含 auth_cross_links：
+     - /login: "auth_cross_links": {"text": "没有账号？去注册", "href": "/register"}
+     - /register: "auth_cross_links": {"text": "已有账号？去登录", "href": "/login"}
 
 File assignment guidelines:
 - Frontend task: templates/*.html, static/*
@@ -57,18 +64,19 @@ Output format (JSON):
                     {"id": "add-form", "description": "顶部添加任务表单，输入框+提交按钮"},
                     {"id": "task-list", "description": "任务列表，每项包含 checkbox、文本、删除按钮"}
                 ],
-                "empty_state": {
-                    "message": "暂无任务，添加一个吧",
-                    "cta": "添加任务",
-                    "show_when": "列表为空"
-                },
-                "loading_state": {
-                    "type": "skeleton" | "spinner",
-                    "description": "首次加载时显示骨架屏或加载指示器"
-                }
+                "empty_state": {"message": "暂无任务，添加一个吧", "cta": "添加任务", "show_when": "列表为空"},
+                "loading_state": {"type": "skeleton" | "spinner", "description": "首次加载时显示骨架屏或加载指示器"}
+            },
+            "/login": {
+                "sections": [{"id": "login-form", "description": "用户名、密码输入框和登录按钮"}],
+                "auth_cross_links": {"text": "没有账号？去注册", "href": "/register"}
+            },
+            "/register": {
+                "sections": [{"id": "register-form", "description": "用户名、密码、确认密码输入框和注册按钮"}],
+                "auth_cross_links": {"text": "已有账号？去登录", "href": "/login"}
             }
         },
-        "product_grade_rules": ["空状态必显", "加载态必显", "操作反馈(toast/内联)", "列表项 hover/完成态"]
+        "product_grade_rules": ["空状态必显", "加载态必显", "操作反馈(toast/内联)", "表单校验与错误提示", "列表项 hover/完成态", "登录/注册页必有互相跳转链接"]
     },
     "task_files": {
         "T1": [{"path": "...", "layer": "...", "purpose": "..."}],
@@ -82,11 +90,15 @@ Output format (JSON):
         "description": "前后端连接方式描述",
         "endpoints": [
             {"path": "/api/notes", "method": "GET", "description": "获取笔记列表", "response": "[{id, content, created_at}]"},
+            {"path": "/api/auth/register", "method": "POST", "description": "用户注册", "request": "{username, password, confirm_password}", "response": "{message}"},
             {"path": "/api/auth/login", "method": "POST", "description": "用户登录", "request": "{username, password}", "response": "{message, user}", "session_info": {"sets": "session['user_id'] = user.id", "description": "登录成功后保存用户ID到session"}},
+            {"path": "/api/auth/logout", "method": "POST", "description": "用户登出", "response": "{message}", "session_info": {"clears": "session.pop('user_id', None)"}},
             {"path": "/api/posts", "method": "POST", "description": "创建博客", "request": "{title, content}", "response": "{id, title}", "session_info": {"gets": "session['user_id'] as author_id", "description": "从session获取当前用户ID作为author_id"}}
         ],
         "frontend_routes": {
-            "/": {"template": "index.html", "description": "主页面。简单CRUD（todo/笔记）用单页：表单+列表+操作全在index；复杂应用才用多页"}
+            "/": {"template": "index.html", "description": "主页面。简单CRUD用单页；有auth时需定义 /login 和 /register"},
+            "/login": {"template": "login.html", "description": "登录页，需含链接到 /register"},
+            "/register": {"template": "register.html", "description": "注册页，需含链接到 /login"}
         }
     },
     "pyi_stubs": {
@@ -107,5 +119,6 @@ IMPORTANT:
 - frontend_routes: 列出所有前端页面路由 - 不能遗漏
 - session_info: 如果endpoint会设置session，必须说明session变量名和值（如 session['user_id'] = user.id）；如果需要从session获取变量，用gets说明（如 session['user_id'] as author_id）
 - 前端不需要传递author_id等关联ID，后端从session获取
+- auth 完整性: 当有 /api/auth/login 时，必须同时有 /api/auth/register；frontend_routes 必须包含 /login 与 /register
 
 Return ONLY valid JSON.

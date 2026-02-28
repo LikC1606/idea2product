@@ -5,11 +5,14 @@ import atexit
 from pathlib import Path
 from flask import Flask, jsonify, render_template, send_from_directory, request
 from flask_cors import CORS
+from werkzeug.exceptions import BadRequest, RequestEntityTooLarge
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 
 
 FRONTEND_DIST = PROJECT_ROOT / "frontend" / "dist"
+
+_MAX_JSON_BODY_BYTES = 64 * 1024  # 64KB for chat / create project bodies
 
 app = Flask(__name__, template_folder=str(PROJECT_ROOT / "templates"))
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret-key")
@@ -18,6 +21,43 @@ CORS(app)
 
 from src.web.api import projects
 app.register_blueprint(projects.bp)
+
+
+@app.before_request
+def check_request_size():
+    """Reject oversized JSON bodies for API POST endpoints."""
+    if request.method != "POST" or not request.path.startswith("/api/"):
+        return
+    cl = request.content_length
+    if cl is not None and cl > _MAX_JSON_BODY_BYTES:
+        raise RequestEntityTooLarge(f"Request body too large (max {_MAX_JSON_BODY_BYTES} bytes)")
+
+
+@app.errorhandler(BadRequest)
+def handle_bad_request(e):
+    """Return JSON for invalid request body (e.g. malformed JSON)."""
+    if request.path.startswith("/api/"):
+        msg = str(e.description) if e.description else "Invalid request"
+        if "JSON" in msg or "json" in str(e).lower():
+            return jsonify({"error": "Invalid JSON in request body"}), 400
+        return jsonify({"error": msg}), 400
+    return e
+
+
+@app.errorhandler(RequestEntityTooLarge)
+def handle_request_too_large(e):
+    """Return JSON for oversized request body."""
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "Request body too large"}), 413
+    return e
+
+
+@app.errorhandler(422)
+def handle_validation_error(e):
+    """Return JSON for Pydantic/validation errors (422 Unprocessable Entity)."""
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "Validation error", "details": str(e)}), 422
+    return e
 
 
 @app.route("/api/projects/<project_id>/generate", methods=["POST"])
@@ -123,8 +163,9 @@ def _cleanup():
     try:
         from src.web.services.preview_service import preview_service
         preview_service.stop_all()
-    except Exception:
-        pass
+    except Exception as ex:
+        import logging
+        logging.getLogger(__name__).debug("Cleanup stop_all failed: %s", ex)
 
 
 atexit.register(_cleanup)

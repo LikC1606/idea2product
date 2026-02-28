@@ -4,10 +4,13 @@ from pathlib import Path
 from typing import List, Dict, Any
 from datetime import datetime
 
-from filelock import FileLock
+from filelock import FileLock, Timeout
 
 from config.settings import Settings
 from src.utils.file_utils import ensure_dir, read_json_safe, write_json
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 CHAT_FILENAME = "chat.json"
@@ -25,9 +28,13 @@ def get_messages(settings: Settings, project_id: str) -> List[Dict[str, str]]:
     path = _chat_path(settings.projects_dir, project_id)
     if not path.exists():
         return []
-    with FileLock(str(path) + ".lock", timeout=10):
-        data = read_json_safe(path, default={})
-        return data.get("messages", []) if isinstance(data, dict) else []
+    try:
+        with FileLock(str(path) + ".lock", timeout=10):
+            data = read_json_safe(path, default={})
+            return data.get("messages", []) if isinstance(data, dict) else []
+    except Timeout:
+        logger.warning(f"Chat file lock timeout for project {project_id}, returning empty messages")
+        return []
 
 
 def append_message(
@@ -46,10 +53,14 @@ def append_message(
     ensure_dir(artifacts_dir)
     path = artifacts_dir / CHAT_FILENAME
 
-    with FileLock(str(path) + ".lock", timeout=10):
-        messages = []
-        data = read_json_safe(path, default={})
-        if isinstance(data, dict):
-            messages = list(data.get("messages", []))
-        messages.append({"role": role, "content": content})
-        write_json(path, {"messages": messages, "updated_at": datetime.now().isoformat()})
+    try:
+        with FileLock(str(path) + ".lock", timeout=10):
+            messages = []
+            data = read_json_safe(path, default={})
+            if isinstance(data, dict):
+                messages = list(data.get("messages", []))
+            messages.append({"role": role, "content": content})
+            write_json(path, {"messages": messages, "updated_at": datetime.now().isoformat()})
+    except Timeout:
+        logger.warning(f"Chat file lock timeout for project {project_id}, cannot append message")
+        raise RuntimeError("Chat storage is temporarily busy, please retry") from None

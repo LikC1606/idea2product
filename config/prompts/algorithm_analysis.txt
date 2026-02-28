@@ -13,6 +13,7 @@ If Hugging Face context is provided below, prefer suitable models from it when t
 
 Tasks: $tasks_summary
 
+$flow_section
 $hf_context
 
 Respond with valid JSON only. Keep it simple - just 1-2 sentences per task.

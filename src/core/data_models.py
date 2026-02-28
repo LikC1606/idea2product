@@ -309,6 +309,10 @@ class TestResult(BaseModel):
     visual_verification: Optional[VisualVerificationResult] = Field(None, description="Visual verification results")
     visual_feedback: Optional[Dict[str, Any]] = Field(None, description="Structured visual feedback for repair loop (alignment_score, missing_elements, issues)")
 
+    # Environment & runtime (Plan benchmark dimension 2)
+    env_install_success: Optional[bool] = Field(None, description="Dependency install success")
+    env_start_success: Optional[bool] = Field(None, description="Service start success")
+
     # Overall
     execution_time: float = Field(..., description="Execution time in seconds")
     stdout: Optional[str] = Field(None, description="Standard output")
@@ -349,3 +353,41 @@ class ProjectMetadata(BaseModel):
     updated_at: datetime = Field(default_factory=datetime.now)
     stage: int = Field(default=1, ge=1, le=4, description="Current stage (1-4)")
     project_path: str = Field(..., description="Path to project directory")
+
+
+# ============================================================================
+# Stage I/O Contracts (for type validation and documentation)
+# ============================================================================
+
+
+class Stage1Output(BaseModel):
+    """Output contract for Stage 1 (Requirements)."""
+
+    requirements: Requirements
+
+
+class Stage2Input(BaseModel):
+    """Input contract for Stage 2 (Planning)."""
+
+    requirements: Requirements
+
+
+class Stage2Output(BaseModel):
+    """Output contract for Stage 2 (Planning)."""
+
+    engineering_plan: EngineeringPlan
+
+
+class Stage3Input(BaseModel):
+    """Input contract for Stage 3 (Code Generation)."""
+
+    requirements: Requirements
+    engineering_plan: EngineeringPlan
+
+
+class Stage4Input(BaseModel):
+    """Input contract for Stage 4 (Validation)."""
+
+    requirements: Requirements
+    engineering_plan: EngineeringPlan
+    code_repository: CodeRepository

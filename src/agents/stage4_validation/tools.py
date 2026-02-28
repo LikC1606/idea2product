@@ -2,6 +2,7 @@
 
 import json
 import re
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -143,7 +144,7 @@ def get_testing_tools(project_path: str, port: int = 5555):
             # Try to parse JSON response
             try:
                 response_data = response.json()
-            except:
+            except (ValueError, TypeError):
                 response_data = response.text
 
             result = {
@@ -217,7 +218,7 @@ def get_fix_tools(project_path: str, port: int = 5555):
         proc = None
         try:
             proc = subprocess.Popen(
-                ["python", entry_file],
+                [sys.executable, entry_file],
                 cwd=str(base),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,

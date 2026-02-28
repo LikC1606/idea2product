@@ -56,7 +56,10 @@ def create_project():
       {"start_chat": true}              → chat-first (no requirement)
       {"requirement": "Build a ..."}    → legacy one-shot generation
     """
-    data = request.get_json(silent=True) or {}
+    try:
+        data = request.get_json(silent=False) or {}
+    except Exception:
+        return jsonify({"error": "Invalid JSON in request body"}), 400
     ts = _get_task_service()
 
     if data.get("start_chat"):
@@ -81,7 +84,10 @@ def post_chat(project_id):
     Body: {"message": "I want a todo app with ..."}
     Returns: {"reply": "...", "project_id": "..."}
     """
-    data = request.get_json(silent=True) or {}
+    try:
+        data = request.get_json(silent=False) or {}
+    except Exception:
+        return jsonify({"error": "Invalid JSON in request body"}), 400
     message = data.get("message", "").strip()
     if not message:
         return jsonify({"error": "message is required"}), 400

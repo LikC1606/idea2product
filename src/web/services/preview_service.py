@@ -97,6 +97,7 @@ class PreviewService:
 
         cmd = [sys.executable, entry]
 
+        stderr_fh = None
         try:
             stderr_fh = open(stderr_log, "a", encoding="utf-8")
             proc = subprocess.Popen(
@@ -108,6 +109,11 @@ class PreviewService:
                 creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0,
             )
         except Exception as e:
+            if stderr_fh is not None:
+                try:
+                    stderr_fh.close()
+                except OSError:
+                    pass
             self._set_error(project_id, f"Failed to start process: {e}")
             logger.error(f"Failed to start preview for {project_id}: {e}")
             return None
@@ -167,8 +173,8 @@ class PreviewService:
             if candidates:
                 best = min(candidates, key=lambda x: (x[1], len(x[0])))
                 return best[0]
-        except Exception:
-            pass
+        except Exception as ex:
+            logger.debug("Could not detect default route: %s", ex)
         return None
 
     def _append_default_route(self, project_id: str, base_url: str) -> str:
@@ -198,7 +204,8 @@ class PreviewService:
             text = log_path.read_text(encoding="utf-8", errors="replace")
             tail = text.strip()[-max_chars:] if text.strip() else ""
             return tail
-        except Exception:
+        except Exception as ex:
+            logger.debug("Could not read preview log: %s", ex)
             return ""
 
     def stop_preview(self, project_id: str):
@@ -277,8 +284,8 @@ class PreviewService:
                 proc.terminate()
             else:
                 os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
-        except (OSError, ProcessLookupError):
-            pass
+        except (OSError, ProcessLookupError) as ex:
+            logger.debug("Terminate signal failed: %s", ex)
         try:
             proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
@@ -291,8 +298,8 @@ class PreviewService:
         if fh:
             try:
                 fh.close()
-            except Exception:
-                pass
+            except OSError as ex:
+                logger.debug("Close stderr failed: %s", ex)
 
     @staticmethod
     def _install_requirements(gen_dir: Path) -> None:
@@ -328,7 +335,8 @@ class PreviewService:
                 content = f.read_text(encoding="utf-8", errors="ignore")
                 if "flask" in content.lower() and ("app.run" in content or "Flask(" in content):
                     return f.name
-            except Exception:
+            except Exception as ex:
+                logger.debug("Could not check file for Flask app: %s", ex)
                 continue
         return None
 

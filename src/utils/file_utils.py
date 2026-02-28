@@ -6,6 +6,12 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
 
+def _artifact_io_error(msg: str, cause: Exception):
+    """Raise ArtifactIOError; import deferred to avoid circular imports."""
+    from src.core.exceptions import ArtifactIOError
+    raise ArtifactIOError(msg) from cause
+
+
 def ensure_dir(path: Union[str, Path]) -> Path:
     """
     Ensure a directory exists, creating it if necessary.
@@ -15,9 +21,15 @@ def ensure_dir(path: Union[str, Path]) -> Path:
 
     Returns:
         Path object
+
+    Raises:
+        ArtifactIOError: On permission or filesystem errors
     """
     path = Path(path)
-    path.mkdir(parents=True, exist_ok=True)
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+    except (PermissionError, OSError) as e:
+        _artifact_io_error(f"Failed to create directory {path}: {e}", e)
     return path
 
 
@@ -28,10 +40,16 @@ def write_file(path: Union[str, Path], content: str) -> None:
     Args:
         path: File path
         content: Content to write
+
+    Raises:
+        ArtifactIOError: On permission or filesystem errors
     """
     path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+    except (PermissionError, OSError, UnicodeEncodeError) as e:
+        _artifact_io_error(f"Failed to write file {path}: {e}", e)
 
 
 def read_file(path: Union[str, Path]) -> str:
@@ -43,9 +61,45 @@ def read_file(path: Union[str, Path]) -> str:
 
     Returns:
         File content
+
+    Raises:
+        FileNotFoundError: If file does not exist
+        ArtifactIOError: On permission or encoding errors
     """
     path = Path(path)
-    return path.read_text(encoding="utf-8")
+    try:
+        return path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        raise
+    except (PermissionError, OSError, UnicodeDecodeError) as e:
+        _artifact_io_error(f"Failed to read file {path}: {e}", e)
+
+
+def read_file_safe(
+    path: Union[str, Path],
+    default: Optional[str] = None,
+    encoding: str = "utf-8",
+    errors: str = "replace",
+) -> Optional[str]:
+    """
+    Read content from a file, returning default on missing or I/O errors.
+
+    Args:
+        path: File path
+        default: Value to return on file not found or I/O error (default: None)
+        encoding: Text encoding (default: utf-8)
+        errors: How to handle encoding errors (default: replace)
+
+    Returns:
+        File content or default
+    """
+    path = Path(path)
+    if not path.exists() or not path.is_file():
+        return default
+    try:
+        return path.read_text(encoding=encoding, errors=errors)
+    except (FileNotFoundError, PermissionError, OSError, UnicodeDecodeError):
+        return default
 
 
 def write_json(path: Union[str, Path], data: Dict[str, Any], atomic: bool = True) -> None:

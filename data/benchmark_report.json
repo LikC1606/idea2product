@@ -14,7 +14,8 @@
         "orphan_tasks": [],
         "issues": []
       },
-      "code_quality_score": null
+      "code_quality_score": null,
+      "security_score": null
     },
     {
       "task_id": "calculator",
@@ -30,7 +31,8 @@
         "orphan_tasks": [],
         "issues": []
       },
-      "code_quality_score": null
+      "code_quality_score": null,
+      "security_score": null
     },
     {
       "task_id": "weather",
@@ -48,7 +50,8 @@
           "Uncovered features: ['Show temperature']"
         ]
       },
-      "code_quality_score": null
+      "code_quality_score": null,
+      "security_score": null
     }
   ],
   "summary": {

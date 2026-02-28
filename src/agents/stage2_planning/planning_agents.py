@@ -51,6 +51,28 @@ class FlowSimulationAgent:
     def __init__(self, llm_service: LLMService):
         self.llm_service = llm_service
 
+    def _structured_fallback(self, requirements: Requirements) -> str:
+        """Return structured pages/entities placeholder when LLM fails. TaskDivision uses directly."""
+        sections = ["## 用户操作流程（自动生成占位）", f"\n应用: {requirements.title}\n"]
+        # Pages: one per feature + home
+        sections.append("## 页面列表")
+        sections.append("- /: 首页 - 应用入口")
+        for f in requirements.features[:8]:
+            path = "/" + f.name.lower().replace(" ", "_")
+            sections.append(f"- {path}: {f.name} - {f.description[:80]}")
+        # Entities: infer from feature names (common patterns)
+        sections.append("\n## 数据实体")
+        seen = set()
+        for f in requirements.features[:6]:
+            name = "".join(w.capitalize() for w in f.name.split()[:2]) or "Item"
+            if name not in seen:
+                seen.add(name)
+                sections.append(f"- {name}(id, name, created_at) [关联: ]")
+        sections.append("\n## 关键交互")
+        for f in requirements.features[:5]:
+            sections.append(f"- 用户执行 {f.name}")
+        return "\n".join(sections)
+
     def execute(self, requirements: Requirements) -> str:
         """Simulate user operation flow and describe the complete user journey."""
         prompt = _prompt_loader.format(
@@ -65,14 +87,8 @@ class FlowSimulationAgent:
             logger.info("Flow simulation completed")
             return result
         except Exception as e:
-            logger.warning(f"Flow simulation failed, using placeholder: {e}")
-            features_list = "\n".join(f"- {f.name}" for f in requirements.features)
-            return (
-                f"## 用户操作流程（自动生成占位）\n\n"
-                f"应用: {requirements.title}\n"
-                f"功能列表:\n{features_list}\n\n"
-                f"（流程模拟失败，后续任务分解将仅基于需求文本。）"
-            )
+            logger.warning(f"Flow simulation failed, using structured placeholder: {e}")
+            return self._structured_fallback(requirements)
 
 
 class ReviewAgent:
@@ -430,9 +446,17 @@ class AlgorithmAnalysisAgent:
         self.hf_model_service = hf_model_service
         self.hf_search_limit = hf_search_limit
 
-    def execute(self, tasks: List[Task]) -> Dict[str, Algorithm]:
-        """Analyze algorithms for each task."""
+    def execute(
+        self,
+        tasks: List[Task],
+        flow_simulation: str = "",
+    ) -> Dict[str, Algorithm]:
+        """Analyze algorithms for each task. flow_simulation provides user-flow context for algorithm choice."""
         hf_context_parts: List[str] = []
+
+        flow_section = ""
+        if flow_simulation and len(flow_simulation.strip()) > 20:
+            flow_section = f"\n## User Operation Flow (consider for algorithm choice)\n{flow_simulation[:1500]}\n"
 
         if self.hf_model_service:
             for t in tasks:
@@ -461,6 +485,7 @@ class AlgorithmAnalysisAgent:
         prompt = _prompt_loader.format(
             "algorithm_analysis",
             tasks_summary=", ".join(f"{t.id}: {t.name}" for t in tasks),
+            flow_section=flow_section,
             hf_context=hf_context,
         )
 
@@ -527,8 +552,9 @@ class SchemePlanningAgent:
         requirements: Requirements,
         tasks: List[Task],
         flow_simulation: str = "",
+        algorithms: Optional[Dict[str, Algorithm]] = None,
     ) -> Tuple[List[FileSpec], List[InterfaceSpec], Dict, Dict]:
-        """Create file structure - files grouped by task."""
+        """Create file structure - files grouped by task. Uses algorithms for libraries and implementation context."""
         # 构建每个任务的详细描述
         task_descriptions = ""
         for t in tasks:
@@ -541,6 +567,19 @@ Task {t.id}: {t.name} ({t.type})
 """
 
         flow_section = f"\n\n## 用户操作流程参考\n{flow_simulation}\n" if flow_simulation else ""
+
+        # Algorithm context: libraries, implementation approach - ensures file_structure aligns with algo needs
+        algorithms_section = ""
+        if algorithms:
+            lines = ["\n## Algorithm Analysis (align file_structure and dependencies with these)\n"]
+            for task_id, alg in algorithms.items():
+                libs = getattr(alg, "libraries", []) or []
+                approach = getattr(alg, "implementation_approach", "") or ""
+                hf = getattr(alg, "hf_models", None)
+                lib_str = ", ".join(libs) if libs else "standard libs"
+                hf_str = f" | HF models: {hf}" if hf else ""
+                lines.append(f"- {task_id}: {approach[:120]}... | Libraries: {lib_str}{hf_str}")
+            algorithms_section = "\n".join(lines)
 
         design_mode = getattr(requirements, "design_mode", None)
         if design_mode and design_mode in ("modern", "minimal", "dashboard"):
@@ -559,6 +598,7 @@ Task {t.id}: {t.name} ({t.type})
             features=", ".join(f.name for f in requirements.features),
             flow_section=flow_section,
             task_descriptions=task_descriptions,
+            algorithms_section=algorithms_section,
         )
 
         try:
@@ -622,21 +662,21 @@ Task {t.id}: {t.name} ({t.type})
                 api_specs["ui_design_spec"] = ui_design_spec
 
             # ===== Stage 2 反思审查机制 - API规范审查 =====
-            logger.info("Running API specs review...")
-            review_agent = ReviewAgent(self.llm_service)
-
-            api_review_result = review_agent.review_api_specs(
-                initial_api_specs=api_specs,
-                tasks=tasks,
-                requirements=requirements
-            )
-
-            # 如果审查发现问题，使用修正后的API规范
-            if api_review_result.get("issues") and api_review_result["issues"]:
-                logger.info(f"Found {len(api_review_result['issues'])} API issues, applying refinements...")
-                refined_api_specs = api_review_result.get("refined_api_specs", {})
-                if refined_api_specs:
-                    api_specs = refined_api_specs
+            from config.settings import get_settings
+            if getattr(get_settings(), "always_review_api_specs", True):
+                logger.info("Running API specs review...")
+                review_agent = ReviewAgent(self.llm_service)
+                api_review_result = review_agent.review_api_specs(
+                    initial_api_specs=api_specs,
+                    tasks=tasks,
+                    requirements=requirements
+                )
+                # 如果审查发现问题，使用修正后的API规范
+                if api_review_result.get("issues") and api_review_result["issues"]:
+                    logger.info(f"Found {len(api_review_result['issues'])} API issues, applying refinements...")
+                    refined_api_specs = api_review_result.get("refined_api_specs", {})
+                    if refined_api_specs:
+                        api_specs = refined_api_specs
 
             return files, interface_specs, api_specs, pyi_stubs
 

@@ -2,7 +2,13 @@
 
 import time
 from typing import Optional, Iterator, Dict, Any, List
-from openai import OpenAI, APIError, RateLimitError
+from openai import (
+    OpenAI,
+    APIError,
+    RateLimitError,
+    APITimeoutError,
+    APIConnectionError,
+)
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -138,7 +144,11 @@ class LLMService:
                     temperature=temperature,
                 )
 
+                if not response.choices:
+                    raise APIError("Empty choices in OpenAI response")
                 result = response.choices[0].message.content
+                if result is None:
+                    raise APIError("Null content in OpenAI response (e.g. refusal)")
 
                 logger.debug(
                     "LLM API call successful",
@@ -152,7 +162,7 @@ class LLMService:
                     },
                 )
 
-                return self._strip_code_fences(result)
+                return self._strip_code_fences(result or "")
 
             except RateLimitError as e:
                 logger.warning(f"Rate limit hit, retrying in {2 ** attempt} seconds")
@@ -161,10 +171,10 @@ class LLMService:
                 else:
                     raise
 
-            except APIError as e:
-                logger.error(f"API error: {e}")
+            except (APIError, APITimeoutError, APIConnectionError, TimeoutError) as e:
+                logger.warning(f"API/connection/timeout error: {e}")
                 if attempt < self.max_retries - 1:
-                    time.sleep(1)
+                    time.sleep(2**attempt)
                 else:
                     raise
 
@@ -211,7 +221,7 @@ class LLMService:
                 )
 
                 for chunk in stream:
-                    if chunk.choices[0].delta.content is not None:
+                    if chunk.choices and chunk.choices[0].delta.content is not None:
                         yield chunk.choices[0].delta.content
 
                 logger.debug("LLM streaming completed")
@@ -224,10 +234,10 @@ class LLMService:
                 else:
                     raise
 
-            except APIError as e:
-                logger.error(f"Streaming API error: {e}")
+            except (APIError, APITimeoutError, APIConnectionError, TimeoutError) as e:
+                logger.warning(f"Streaming API/connection/timeout error: {e}")
                 if attempt < self.max_retries - 1:
-                    time.sleep(1)
+                    time.sleep(2**attempt)
                 else:
                     raise
 
@@ -264,7 +274,7 @@ class LLMService:
                     if chunk.choices and chunk.choices[0].delta.content is not None:
                         yield chunk.choices[0].delta.content
                 return
-            except (RateLimitError, APIError) as e:
+            except (RateLimitError, APIError, APITimeoutError, APIConnectionError, TimeoutError) as e:
                 logger.warning(f"Stream error (attempt {attempt + 1}): {e}")
                 if attempt < self.max_retries - 1:
                     time.sleep(2**attempt)
@@ -317,9 +327,11 @@ class LLMService:
 
         try:
             if "```json" in response:
-                json_str = response.split("```json")[1].split("```")[0].strip()
+                segments = response.split("```json")
+                json_str = segments[1].split("```")[0].strip() if len(segments) > 1 else response.strip()
             elif "```" in response:
-                json_str = response.split("```")[1].split("```")[0].strip()
+                segments = response.split("```")
+                json_str = segments[1].split("```")[0].strip() if len(segments) > 1 else response.strip()
             else:
                 json_str = response.strip()
 
@@ -344,7 +356,8 @@ class LLMService:
         messages.append({"role": "system", "content": sys_content.strip()})
         messages.append({"role": "user", "content": prompt})
 
-        schema_name = json_schema.pop("name", "structured_output")
+        schema_name = json_schema.get("name", "structured_output")
+        schema_for_api = {k: v for k, v in json_schema.items() if k != "name"}
 
         for attempt in range(self.max_retries):
             try:
@@ -358,11 +371,15 @@ class LLMService:
                         "json_schema": {
                             "name": schema_name,
                             "strict": True,
-                            "schema": json_schema,
+                            "schema": schema_for_api,
                         },
                     },
                 )
+                if not response.choices:
+                    raise APIError("Empty choices in OpenAI response")
                 result = response.choices[0].message.content
+                if result is None:
+                    raise APIError("Null content in OpenAI structured output")
                 return json.loads(result)
             except Exception as e:
                 if attempt < self.max_retries - 1:
@@ -390,8 +407,13 @@ class LLMService:
             image_content = {"type": "image_url", "image_url": {"url": image_path}}
         else:
             image_file = Path(image_path)
-            with open(image_file, "rb") as f:
-                image_data = base64.b64encode(f.read()).decode("utf-8")
+            if not image_file.exists() or not image_file.is_file():
+                raise FileNotFoundError(f"Image file not found: {image_path}")
+            try:
+                with open(image_file, "rb") as f:
+                    image_data = base64.b64encode(f.read()).decode("utf-8")
+            except OSError as e:
+                raise OSError(f"Failed to read image file {image_path}: {e}") from e
             image_content = {
                 "type": "image_url",
                 "image_url": {"url": f"data:image/jpeg;base64,{image_data}"},
@@ -422,7 +444,11 @@ class LLMService:
                     max_tokens=max_tokens,
                 )
 
+                if not response.choices:
+                    raise APIError("Empty choices in OpenAI VLM response")
                 result = response.choices[0].message.content
+                if result is None:
+                    raise APIError("Null content in OpenAI VLM response")
                 logger.debug("VLM analysis completed")
                 return result
 
@@ -433,10 +459,10 @@ class LLMService:
                 else:
                     raise
 
-            except APIError as e:
-                logger.error(f"VLM API error: {e}")
+            except (APIError, APITimeoutError, APIConnectionError, TimeoutError) as e:
+                logger.warning(f"VLM API/connection/timeout error: {e}")
                 if attempt < self.max_retries - 1:
-                    time.sleep(1)
+                    time.sleep(2**attempt)
                 else:
                     raise
 

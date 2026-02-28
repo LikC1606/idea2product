@@ -143,3 +143,71 @@ def test_enqueue_generation_does_nothing_when_no_messages(task_service, temp_set
     MockOrch.return_value.run_from_stage_2.assert_not_called()
     status = task_service.get_status(project_id)
     assert status["status"] == "idle"
+
+
+def test_enqueue_generation_exception_calls_fail(task_service, temp_settings):
+    """When pipeline raises, _fail is called and status becomes 'failed'."""
+    project_id = task_service.create_chat_project()
+    append_message(temp_settings, project_id, "user", "Build a todo app")
+    append_message(temp_settings, project_id, "assistant", "OK, generating.")
+
+    def fake_thread(*args, **kwargs):
+        target = kwargs.get("target") or (args[0] if args else None)
+        targs = kwargs.get("args", ())
+        mock_t = MagicMock()
+        def start():
+            if target:
+                target(*targs)
+        mock_t.start.side_effect = start
+        return mock_t
+
+    with patch("src.web.services.task_service.threading.Thread", side_effect=fake_thread):
+        with patch(
+            "src.web.services.chat_service.get_messages",
+            return_value=[
+                {"role": "user", "content": "Build a todo app"},
+                {"role": "assistant", "content": "OK"},
+            ],
+        ):
+            with patch("src.services.llm_service.LLMService") as MockLLM:
+                MockLLM.from_settings.return_value = MagicMock()
+                with patch(
+                    "src.core.orchestrator.Orchestrator"
+                ) as MockOrch:
+                    MockOrch.return_value.run_from_stage_2.side_effect = RuntimeError("Pipeline failed")
+                    with patch(
+                        "src.agents.stage1_requirements.interaction_agent.InteractionAgent"
+                    ) as MockAgent:
+                        from src.core.data_models import Requirements
+                        mock_agent = MagicMock()
+                        mock_agent.conversation_to_requirements.return_value = Requirements(
+                            title="Todo", description="Todo app", features=[],
+                            constraints=[], target_users=None, data_requirements=None,
+                        )
+                        MockAgent.return_value = mock_agent
+                    task_service.enqueue_generation(project_id)
+
+    status = task_service.get_status(project_id)
+    assert status["status"] == "failed"
+    assert status.get("error") == "Pipeline failed"
+
+
+def test_get_file_nonexistent_returns_none(task_service, temp_settings):
+    """get_file for non-existent path returns None."""
+    project_id = task_service.create_chat_project()
+    result = task_service.get_file(project_id, "nonexistent.py")
+    assert result is None
+
+
+def test_get_file_unicode_error_returns_none_or_content(task_service, temp_settings):
+    """get_file for file with encoding issues uses errors=replace or returns None."""
+    project_id = task_service.create_chat_project()
+    gen_dir = temp_settings.projects_dir / project_id / "generated"
+    gen_dir.mkdir(parents=True, exist_ok=True)
+    # Create file with invalid UTF-8 (latin-1 bytes that aren't valid utf-8)
+    bad_file = gen_dir / "bad.py"
+    bad_file.write_bytes(b"x = '\xff\xfe'")
+    result = task_service.get_file(project_id, "bad.py")
+    assert result is not None
+    assert "path" in result
+    assert "content" in result

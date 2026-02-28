@@ -27,12 +27,17 @@ $initial_api_specs
 4. **类型正确性**：
    - 字段类型是否正确（str, int, bool, list等）？
 
+5. **Auth 完整性**（当存在 auth 相关 endpoint 时）：
+   - 若存在 /api/auth/login，则必须同时存在 /api/auth/register（用户需能注册才能登录）
+   - 若存在 auth 相关 endpoint，frontend_routes 必须包含 /login 与 /register
+   - 若缺失，在 issues 中记录并给出修正建议
+
 ## 输出格式
 {
     "issues": [
         {
             "endpoint": "/api/blogs POST",
-            "issue_type": "missing_field|inconsistent_field|wrong_type|...",
+            "issue_type": "missing_field|inconsistent_field|wrong_type|auth_incomplete|...",
             "description": "问题描述",
             "suggestion": "修正建议"
         }

@@ -29,6 +29,7 @@ cd frontend && npm run dev
 # Testing & code quality
 pytest tests/ -v
 python -m src.benchmarks.run_small_suite  # requires OPENAI_API_KEY
+python scripts/check_bugs.py markdown  # Phase 1 bug check (ruff, mypy, patterns)
 black src/ tests/
 ruff check src/
 mypy src/
@@ -88,7 +89,7 @@ Key settings in `.env`:
 - `OPENAI_API_KEY` - Required
 - `OPENAI_MODEL` - Default: gpt-4o
 - `OPENAI_BASE_URL` - Custom endpoint (OpenRouter, Azure, etc.)
-- `ENABLE_CODE_MEMORY`, `ENABLE_CODE_MINING` - Off by default
+- `ENABLE_CODE_MEMORY`, `ENABLE_CODE_MINING` - On by default (Plan: skeleton-first); set False to reduce API/DB usage
 - `ENABLE_VISUAL_VERIFICATION`, `ENABLE_BDD_TESTING` - Feature flags
 
 ## Key Patterns

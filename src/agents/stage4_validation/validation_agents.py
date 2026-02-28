@@ -1,5 +1,6 @@
 """Stage 4 Validation Agents."""
 
+import os
 import re
 import subprocess
 import sys
@@ -39,11 +40,11 @@ class FullCycleTestingAgent:
 
         logger.info("Running full-cycle tests")
 
-        # Read BDD test cases from engineering plan (test-driven) or fallback to rule-based
+        # BDD single source: Orchestrator._synthesize_bdd_tests. Rule-based fallback only when plan has none.
         plan_bdd = []
         if context.engineering_plan and getattr(context.engineering_plan, 'bdd_test_cases', None):
             plan_bdd = context.engineering_plan.bdd_test_cases
-        bdd_tests = plan_bdd if plan_bdd else self._generate_bdd_tests(requirements)
+        bdd_tests = plan_bdd if plan_bdd else self._rule_based_bdd_fallback(requirements)
 
         # Save files to disk
         generated_path = project_path / "generated"
@@ -61,7 +62,7 @@ class FullCycleTestingAgent:
         warnings = []
 
         # 1. 使用 subprocess 直接运行 app.py 测试
-        run_errors = self._try_run_with_subprocess(generated_path)
+        run_errors, env_install_ok, env_start_ok = self._try_run_with_subprocess(generated_path)
         if run_errors:
             errors.extend(run_errors)
             test_stderr = "Run errors found"
@@ -74,6 +75,11 @@ class FullCycleTestingAgent:
             if route_errors:
                 errors.extend(route_errors)
                 test_stderr = test_stderr or "Frontend routes missing"
+            # 1.6 检查 auth 流程完整性（当 api_specs 有 auth endpoint 时）
+            auth_errors = self._check_auth_flow(generated_path, context.engineering_plan)
+            if auth_errors:
+                errors.extend(auth_errors)
+                test_stderr = test_stderr or "Auth flow incomplete"
 
         # 2. 检查未使用的文件
         if not errors:
@@ -104,13 +110,17 @@ class FullCycleTestingAgent:
             bdd_test_cases=bdd_tests,
             errors=errors,
             warnings=warnings,
+            env_install_success=env_install_ok,
+            env_start_success=env_start_ok,
             execution_time=execution_time,
             stdout=test_output,
             stderr=test_stderr
         )
 
-    def _try_run_with_subprocess(self, project_path: Path) -> List[TestError]:
-        """使用 subprocess 直接运行 app.py 进行测试"""
+    def _try_run_with_subprocess(
+        self, project_path: Path
+    ) -> tuple[List[TestError], bool, bool]:
+        """Run app.py via subprocess. Returns (errors, install_success, start_success)."""
         errors = []
 
         # 查找入口文件：app.py 或 run.py
@@ -128,25 +138,28 @@ class FullCycleTestingAgent:
                 error_message="No entry point found",
                 suggestion="Create app.py or run.py with create_app()"
             ))
-            return errors
+            return errors, False, False
 
-        self._install_project_deps(project_path)
+        install_success = self._install_project_deps(project_path)
+        start_success = False
 
         import subprocess
         import time
 
-        port = 5555
+        from config.settings import get_settings
+        port = get_settings().validation_port
 
         logger.info(f"Starting {entry_file} on port {port}...")
 
         proc = None
         try:
             proc = subprocess.Popen(
-                ["python", entry_file],
+                [sys.executable, entry_file],
                 cwd=str(project_path),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True
+                text=True,
+                env={**os.environ, "PORT": str(port)},
             )
 
             time.sleep(3)
@@ -160,24 +173,21 @@ class FullCycleTestingAgent:
                     error_message=f"Process exited immediately: {stderr[:500] if stderr else stdout[:500]}",
                     suggestion="Check for errors in the application"
                 ))
-                return errors
+                return errors, install_success, start_success
 
+            start_success = True
             try:
-                result = subprocess.run(
-                    ["curl", "-s", "-o", "NUL", "-w", "%{http_code}", f"http://localhost:{port}/"],
-                    capture_output=True,
-                    text=True,
-                    timeout=5
-                )
-                status_code = result.stdout.strip()
+                import requests as req
+                response = req.get(f"http://localhost:{port}/", timeout=5)
+                status_code = str(response.status_code)
                 logger.info(f"GET / -> {status_code}")
 
-                if status_code and int(status_code) >= 500:
+                if response.status_code >= 500:
                     errors.append(TestError(
                         error_type=ErrorType.RUNTIME,
                         file_path=entry_file,
                         line_number=0,
-                        error_message=f"Home page returned {status_code}",
+                        error_message=f"Home page returned {response.status_code}",
                         suggestion="Check server logs for errors"
                     ))
             except Exception as e:
@@ -202,7 +212,7 @@ class FullCycleTestingAgent:
         if import_test:
             errors.extend(import_test)
 
-        return errors
+        return errors, install_success, start_success
 
     def _check_frontend_routes(
         self, project_path: Path, engineering_plan: "EngineeringPlan"
@@ -259,6 +269,69 @@ class FullCycleTestingAgent:
         finally:
             if str(project_path) in sys.path:
                 sys.path.remove(str(project_path))
+
+        return errors
+
+    def _check_auth_flow(
+        self, project_path: Path, engineering_plan: "EngineeringPlan"
+    ) -> List[TestError]:
+        """When api_specs has auth endpoints, verify login/register pages exist and cross-link."""
+        errors = []
+        api_specs = getattr(engineering_plan, "api_specs", None) or {}
+        endpoints = api_specs.get("endpoints") or []
+        has_auth = any("auth" in str(ep.get("path", "")).lower() for ep in endpoints)
+        if not has_auth:
+            return errors
+
+        templates_dir = project_path / "templates"
+        login_html = templates_dir / "login.html"
+        register_html = templates_dir / "register.html"
+
+        if not login_html.exists():
+            errors.append(
+                TestError(
+                    error_type=ErrorType.LOGIC,
+                    file_path="templates/login.html",
+                    line_number=0,
+                    error_message="App has auth but templates/login.html is missing",
+                    suggestion="Create login.html and add @app.route('/login') in app/__init__.py",
+                )
+            )
+        else:
+            content = login_html.read_text(encoding="utf-8", errors="ignore")
+            if "/register" not in content and "注册" not in content and "register" not in content.lower():
+                errors.append(
+                    TestError(
+                        error_type=ErrorType.LOGIC,
+                        file_path="templates/login.html",
+                        line_number=0,
+                        error_message="Login page must have link to register (e.g. '没有账号？去注册' or href='/register')",
+                        suggestion="Add <a href='/register'>没有账号？去注册</a> to login.html",
+                    )
+                )
+
+        if not register_html.exists():
+            errors.append(
+                TestError(
+                    error_type=ErrorType.LOGIC,
+                    file_path="templates/register.html",
+                    line_number=0,
+                    error_message="App has auth but templates/register.html is missing",
+                    suggestion="Create register.html and add @app.route('/register') in app/__init__.py",
+                )
+            )
+        else:
+            content = register_html.read_text(encoding="utf-8", errors="ignore")
+            if "/login" not in content and "登录" not in content and "login" not in content.lower():
+                errors.append(
+                    TestError(
+                        error_type=ErrorType.LOGIC,
+                        file_path="templates/register.html",
+                        line_number=0,
+                        error_message="Register page must have link to login (e.g. '已有账号？去登录' or href='/login')",
+                        suggestion="Add <a href='/login'>已有账号？去登录</a> to register.html",
+                    )
+                )
 
         return errors
 
@@ -354,7 +427,7 @@ class FullCycleTestingAgent:
         proc = None
         try:
             proc = subprocess.Popen(
-                ["python", entry_file],
+                [sys.executable, entry_file],
                 cwd=str(project_path),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -431,8 +504,8 @@ class FullCycleTestingAgent:
 
                 # 转换为相对路径形式
                 file_imports[str(py_file.relative_to(project_path))] = imports
-            except:
-                pass
+            except Exception as ex:
+                logger.debug("Could not parse imports from %s: %s", py_file, ex)
 
         # 检查每个文件是否被其他文件引用
         for py_file in py_files:
@@ -648,11 +721,11 @@ class FullCycleTestingAgent:
         return errors, stdout, stderr
 
     @staticmethod
-    def _install_project_deps(project_path: Path) -> None:
-        """Install pip packages listed in the generated project's requirements.txt."""
+    def _install_project_deps(project_path: Path) -> bool:
+        """Install pip packages listed in the generated project's requirements.txt. Returns True if success or no deps."""
         req_file = project_path / "requirements.txt"
         if not req_file.exists():
-            return
+            return True
         try:
             logger.info("Installing generated project dependencies...")
             result = subprocess.run(
@@ -663,28 +736,28 @@ class FullCycleTestingAgent:
             )
             if result.returncode != 0:
                 logger.warning(f"pip install returned {result.returncode}: {result.stderr[:300]}")
-            else:
-                logger.info("Project dependencies installed")
+                return False
+            logger.info("Project dependencies installed")
+            return True
         except Exception as e:
             logger.warning(f"Could not install project deps: {e}")
+            return False
 
-    def _generate_bdd_tests(self, requirements: Requirements) -> list[BDDTestCase]:
-        """Generate BDD test cases from requirements."""
-        tests = []
-
-        for i, feature in enumerate(requirements.features[:5], 1):
-            tests.append(BDDTestCase(
+    def _rule_based_bdd_fallback(self, requirements: Requirements) -> list[BDDTestCase]:
+        """Rule-based fallback when plan.bdd_test_cases is empty (single source: Orchestrator._synthesize_bdd_tests)."""
+        return [
+            BDDTestCase(
                 test_id=f"test_{i}",
-                feature=feature.name,
-                scenario=f"User can {feature.name.lower()}",
-                given=f"User is on the application page",
-                when=f"User performs {feature.name.lower()}",
-                then=f"The application should respond correctly",
-                test_code=f"def test_{feature.name.lower().replace(' ', '_')}():\n    # TODO: Implement test for {feature.name}",
-                status="pending"
-            ))
-
-        return tests
+                feature=f.name,
+                scenario=f"User can {f.name.lower()}",
+                given="The application is running",
+                when=f"User performs {f.name.lower()}",
+                then="The application responds correctly",
+                test_code=f"def test_{f.name.lower().replace(' ', '_')}():\n    pass",
+                status="pending",
+            )
+            for i, f in enumerate(requirements.features[:5], 1)
+        ]
 
     def _write_bdd_pytest_file(
         self,
@@ -774,7 +847,7 @@ class FullCycleTestingAgent:
         for code_file in repository.files:
             file_path = project_path / code_file.path
             file_path.parent.mkdir(parents=True, exist_ok=True)
-            file_path.write_text(code_file.content, encoding='utf-8')
+            file_path.write_text(code_file.content or "", encoding='utf-8')
 
         if repository.dependencies:
             _NON_PIP = {
@@ -822,7 +895,7 @@ class FullCycleTestingAgent:
             if code_file.language == 'python':
                 try:
                     import ast
-                    ast.parse(code_file.content)
+                    ast.parse(code_file.content or "")
                 except SyntaxError as e:
                     errors.append(TestError(
                         error_type=ErrorType.SYNTAX,
@@ -834,218 +907,18 @@ class FullCycleTestingAgent:
 
         return errors
 
-    def run_and_fix_loop(self, project_path: Path, repository: CodeRepository, requirements: Requirements, interface_specs: list = None, max_iterations: int = 5) -> CodeRepository:
+    def _fallback_run_and_fix(self, project_path: Path, repository: CodeRepository, requirements: Requirements, interface_specs: list = None, max_iterations: int = 5) -> CodeRepository:
         """
-        运行代码 → 捕获错误 → LLM修复 → 循环直到成功或达到最大迭代次数
+        Fallback when CodeFixAgent fails. Delegates to RunAndFixAgent (traditional loop-based fix).
         """
-        logger.info("Starting run-and-fix loop...")
-        self.repository = repository  # 保存引用以便后续使用
-
-        for iteration in range(max_iterations):
-            logger.info(f"Iteration {iteration + 1}/{max_iterations}")
-
-            # 尝试导入并运行代码
-            error_info = self._try_run_app(project_path)
-
-            if error_info is None:
-                logger.info("SUCCESS: Code runs without errors!")
-                break
-
-            file_path, error_msg, line_number = error_info
-            logger.info(f"Error in {file_path}: {error_msg}")
-
-            # Skip errors about missing pip packages — not fixable by editing code
-            if file_path.startswith("import:") and "No module named" in error_msg:
-                module = file_path.split("import:")[-1]
-                logger.info(f"Skipping pip-package error ({module}); attempting pip install...")
-                subprocess.run(
-                    [sys.executable, "-m", "pip", "install", "-q", module],
-                    capture_output=True, text=True, timeout=60,
-                )
-                continue
-
-            full_path = project_path / "generated" / file_path
-            if not full_path.exists():
-                for ext in ['', '.py']:
-                    alt_path = project_path / "generated" / file_path
-                    if alt_path.exists():
-                        full_path = alt_path
-                        break
-                if not full_path.exists():
-                    logger.warning(f"File not found: {file_path}")
-                    continue
-
-            original_content = full_path.read_text(encoding='utf-8')
-
-            # 让 LLM 修复错误
-            fixed_content = self._llm_fix_error(
-                file_path=file_path,
-                error_message=error_msg,
-                line_number=line_number,
-                code=original_content,
-                requirements=requirements,
-                interface_specs=interface_specs
-            )
-
-            if fixed_content:
-                # 保存修复后的文件
-                full_path.write_text(fixed_content, encoding='utf-8')
-                logger.info(f"Fixed {file_path}, saving to disk")
-
-                # 更新 repository 中的文件
-                for f in self.repository.files:
-                    if f.path == file_path:
-                        f.content = fixed_content
-                        break
-            else:
-                logger.warning(f"LLM could not fix {file_path}")
-
-        return self.repository
-
-    def _try_run_app(self, project_path: Path) -> Optional[tuple]:
-        """
-        尝试运行应用，捕获错误
-        返回: (file_path, error_message, line_number) 或 None（无错误）
-        """
-        generated_path = project_path / "generated"
-
-        # 添加到 Python 路径
-        import sys
-        sys.path.insert(0, str(generated_path))
-
-        # 尝试导入 app
-        try:
-            # 先尝试导入主要模块
-            import importlib.util
-
-            # 尝试找到并导入应用
-            app_module = None
-
-            # 尝试 app/__init__.py
-            init_path = generated_path / "app" / "__init__.py"
-            if init_path.exists():
-                spec = importlib.util.spec_from_file_location("app", init_path)
-                app_module = importlib.util.module_from_spec(spec)
-                sys.modules['app'] = app_module
-                spec.loader.exec_module(app_module)
-
-            # 尝试创建 app
-            if app_module and hasattr(app_module, 'create_app'):
-                app = app_module.create_app()
-                logger.info("App created successfully!")
-                return None
-            else:
-                # 尝试 app.py
-                app_py = generated_path / "app.py"
-                if app_py.exists():
-                    spec = importlib.util.spec_from_file_location("app_module", app_py)
-                    test_module = importlib.util.module_from_spec(spec)
-                    spec.loader.exec_module(test_module)
-                    if hasattr(test_module, 'create_app'):
-                        logger.info("App from app.py created successfully!")
-                        return None
-
-                return ("app/__init__.py", "Could not find create_app function", 0)
-
-        except ImportError as e:
-            error_msg = str(e)
-            # 解析导入错误
-            if "No module named" in error_msg:
-                module_name = error_msg.split("No module named")[-1].strip().strip("'\"")
-                return (f"import:{module_name}", error_msg, 0)
-            return (self._extract_file_from_import_error(error_msg), error_msg, 0)
-
-        except Exception as e:
-            error_msg = str(e)
-            # 尝试提取文件名和行号
-            tb = traceback.format_exc()
-            file_path, line = self._extract_location_from_traceback(tb)
-            return (file_path or "unknown", error_msg, line or 0)
-
-        return None
-
-    def _extract_file_from_import_error(self, error_msg: str) -> str:
-        """从导入错误中提取文件路径"""
-        # 常见模式: "cannot import name 'X' from 'Y'"
-        if "cannot import name" in error_msg:
-            # 返回导入源文件
-            if "from 'app." in error_msg:
-                parts = error_msg.split("from 'app.")[1].split("'")
-                return parts[0].replace('.', '/') + '.py' if parts else "app/__init__.py"
-        return "app/__init__.py"
-
-    def _extract_location_from_traceback(self, tb: str) -> tuple:
-        """从 traceback 中提取文件和行号"""
-        lines = tb.split('\n')
-        for line in lines:
-            if 'File' in line and 'generated' in line:
-                # 提取文件路径
-                import re
-                match = re.search(r'File "(.*?)"', line)
-                if match:
-                    file_path = match.group(1)
-                    # 转换为相对路径
-                    if 'generated' in file_path:
-                        file_path = file_path.split('generated')[-1].lstrip('/\\')
-                    # 提取行号
-                    line_match = re.search(r'line (\d+)', line)
-                    line_num = int(line_match.group(1)) if line_match else 0
-                    return file_path, line_num
-        return None, 0
-
-    def _llm_fix_error(self, file_path: str, error_message: str, line_number: int, code: str, requirements: Requirements, interface_specs: list = None) -> Optional[str]:
-        """让 LLM 修复代码错误"""
-        logger.info(f"LLM fixing error in {file_path}")
-
-        # 构建接口规范上下文
-        interface_context = ""
-        if interface_specs:
-            interface_context = "Interface specifications:\n"
-            for spec in interface_specs:
-                if spec.file_path in file_path or file_path in spec.file_path:
-                    interface_context += f"- {spec.file_path}: exports {', '.join([e.name for e in spec.exports])}\n"
-
-        prompt = f"""Fix the Python error in this file.
-
-FILE: {file_path}
-ERROR: {error_message}
-{interface_context}
-
-APPLICATION: {requirements.title}
-FEATURES: {", ".join(f.name for f in requirements.features)}
-
-ORIGINAL CODE:
-{code}
-
-Instructions:
-1. Fix the error so the code can run
-2. If app/__init__.py or app.py: ensure models are imported before db.create_all()
-3. Ensure blueprint registration is correct
-4. Use correct import names based on actual exports
-
-Return ONLY the corrected code, no explanations.
-"""
-        try:
-            fixed = self.llm_service.generate(prompt, max_tokens=2000)
-            fixed = self._clean_code(fixed)
-
-            # 验证语法正确
-            import ast
-            ast.parse(fixed)
-            return fixed
-        except Exception as e:
-            logger.warning(f"LLM fix failed: {e}")
-            return None
-
-    def _clean_code(self, code: str) -> str:
-        """清理代码，移除 markdown 标记"""
-        if code.startswith("```python"):
-            code = code[len("```python"):]
-        if code.startswith("```"):
-            code = code[len("```"):]
-        if code.endswith("```"):
-            code = code[:-3]
-        return code.strip()
+        run_fix_agent = RunAndFixAgent(self.llm_service)
+        return run_fix_agent.execute(
+            project_path=project_path,
+            repository=repository,
+            requirements=requirements,
+            interface_specs=interface_specs,
+            max_iterations=max_iterations,
+        )
 
 
 class FineTuningAgent:
@@ -1055,12 +928,19 @@ class FineTuningAgent:
         self.llm_service = llm_service
 
     def execute(self, context: ExecutionContext, test_result: TestResult) -> tuple[CodeRepository, bool]:
-        """Fix issues found during testing."""
-        if test_result.logic_passed and not test_result.warnings:
-            logger.info("No fixes needed - tests passed")
+        """Fix issues found during testing (logic errors) or visual verification (alignment < 0.7)."""
+        visual_fb = getattr(test_result, "visual_feedback", None)
+        need_visual_fix = visual_fb and visual_fb.get("alignment_score", 1.0) < 0.7
+        need_logic_fix = (test_result.errors or test_result.warnings) and not test_result.logic_passed
+
+        if not need_logic_fix and not need_visual_fix:
+            logger.info("No fixes needed - tests passed and visual alignment OK")
             return context.code_repository, False
 
-        logger.info(f"Attempting to fix {len(test_result.errors)} errors and {len(test_result.warnings)} warnings")
+        logger.info(
+            f"Attempting to fix: {len(test_result.errors)} errors, {len(test_result.warnings)} warnings"
+            + (f", visual alignment={visual_fb.get('alignment_score', 0):.2f}" if need_visual_fix else "")
+        )
 
         repository = context.code_repository
         fixed = False
@@ -1087,8 +967,7 @@ class FineTuningAgent:
                 fixed = True
 
         # Visual feedback repair: if alignment_score < 0.7, apply visual fixes
-        visual_fb = getattr(test_result, "visual_feedback", None)
-        if visual_fb and visual_fb.get("alignment_score", 1.0) < 0.7:
+        if need_visual_fix and visual_fb:
             repository = self._fix_visual_issues(repository, visual_fb, context)
             fixed = True
 
@@ -1110,7 +989,7 @@ File: {f.path}
 Error at line {error.line_number}: {error.error_message}
 
 Original code:
-{f.content}
+{f.content or ""}
 
 Return the corrected code only, no explanations.
 """
@@ -1223,7 +1102,7 @@ Return the corrected code only, no explanations.
         all_files_content = []
         for f in repository.files:
             if f.language == 'python' and f.path.endswith('.py'):
-                all_files_content.append(f"=== {f.path} ===\n{f.content}")
+                all_files_content.append(f"=== {f.path} ===\n{f.content or ''}")
 
         context = "\n\n".join(all_files_content)
 
@@ -1399,7 +1278,7 @@ if __name__ == '__main__':
         frontend_files = []
         for f in repository.files:
             if f.path.endswith(('.html', '.css', '.js')):
-                frontend_files.append(f"=== {f.path} ===\n{f.content}")
+                frontend_files.append(f"=== {f.path} ===\n{f.content or ''}")
 
         if not frontend_files:
             return repository
@@ -1410,13 +1289,20 @@ if __name__ == '__main__':
         if context.requirements:
             requirements_text = f"App: {context.requirements.title}\nFeatures: {', '.join(f.name for f in context.requirements.features[:5])}"
 
+        missing_list = "\n".join(f"  - {m}" for m in missing) if missing else "  (none)"
+        issues_list = "\n".join(f"  - {i}" for i in issues) if issues else "  (none)"
+
         prompt = f"""Fix the visual/UI issues in this Flask web application.
 
-## Visual Analysis Results
-- Alignment score: {alignment_score} (needs to be >= 0.7)
+## Visual Analysis Results (Plan: dual grounding - address these explicitly)
+- Alignment score: {alignment_score} (target >= 0.7)
 - Layout feedback: {layout_feedback}
-- Missing UI elements: {', '.join(missing) if missing else 'None'}
-- Issues found: {', '.join(issues) if issues else 'None'}
+
+**Missing UI elements (PRIORITY - add each one):**
+{missing_list}
+
+**Issues found (fix each):**
+{issues_list}
 
 ## Requirements
 {requirements_text}
@@ -1424,7 +1310,7 @@ if __name__ == '__main__':
 ## Current Frontend Files
 {fe_context}
 
-Fix the HTML/CSS/JS to address ALL the missing elements and issues listed above.
+Fix the HTML/CSS/JS to address ALL missing elements first, then the issues.
 Return the fixed files in format:
 === FILENAME ===
 <fixed content>
@@ -1466,12 +1352,15 @@ class FrontendTestingAgent:
     def __init__(self, llm_service: LLMService):
         self.llm_service = llm_service
 
-    def execute(self, project_path: Path, port: int = 5555) -> List[TestError]:
+    def execute(self, project_path: Path, port: Optional[int] = None) -> List[TestError]:
         """Test APIs by analyzing frontend code with LangChain Agent."""
         from langchain.agents import create_agent
 
+        from config.settings import get_settings
         from .tools import get_testing_tools
 
+        if port is None:
+            port = get_settings().validation_port
         logger.info(f"Starting frontend API testing on port {port}...")
 
         # Start the Flask app
@@ -1495,13 +1384,13 @@ class FrontendTestingAgent:
             tools = get_testing_tools(str(project_path), port)
 
             # Build system prompt
-            system_prompt = """You are a testing engineer. Your task is to:
+            system_prompt = f"""You are a testing engineer. Your task is to:
 1. Use list_files and read_html_file to find frontend templates
 2. Extract all fetch/axios API calls from the HTML/JavaScript
 3. Use test_api to test these APIs
 
 ## Rules
-- App runs on http://localhost:5555
+- App runs on http://localhost:{port}
 - Test complete CRUD: create -> list -> detail -> update -> delete
 - Verify status codes are 2xx or 201
 
@@ -1585,11 +1474,11 @@ Start by exploring the templates directory."""
         proc = None
         try:
             proc = subprocess.Popen(
-                ["python", entry_file],
+                [sys.executable, entry_file],
                 cwd=str(project_path),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                env={**__import__("os").environ, **env},
+                env={**os.environ, **env},
                 text=True
             )
 
@@ -1621,8 +1510,197 @@ Start by exploring the templates directory."""
                 proc.kill()
 
 
+class RunAndFixAgent:
+    """
+    Stage 4 Agent: Traditional loop-based run-and-fix for runnability.
+
+    Run code -> capture error -> LLM fix -> repeat until success or max iterations.
+    Use as fallback when CodeFixAgent (LangChain-driven) fails.
+    """
+
+    def __init__(self, llm_service: LLMService):
+        self.llm_service = llm_service
+
+    def execute(
+        self,
+        project_path: Path,
+        repository: CodeRepository,
+        requirements: Requirements,
+        interface_specs: Optional[List[Any]] = None,
+        max_iterations: int = 5,
+    ) -> CodeRepository:
+        """Fix code until app runs. Modifies repository in-place and returns it."""
+        logger.info("RunAndFixAgent: Starting run-and-fix loop...")
+        generated_path = project_path / "generated"
+
+        for iteration in range(max_iterations):
+            logger.info(f"RunAndFixAgent iteration {iteration + 1}/{max_iterations}")
+            error_info = self._try_run_app(generated_path)
+
+            if error_info is None:
+                logger.info("RunAndFixAgent: Code runs without errors!")
+                return repository
+
+            file_path, error_msg, line_number = error_info
+            logger.info(f"RunAndFixAgent: Error in {file_path}: {error_msg}")
+
+            if file_path.startswith("import:") and "No module named" in error_msg:
+                module = file_path.split("import:")[-1]
+                logger.info(f"RunAndFixAgent: pip install {module}")
+                subprocess.run(
+                    [sys.executable, "-m", "pip", "install", "-q", module],
+                    capture_output=True, text=True, timeout=60,
+                )
+                continue
+
+            base_path = generated_path / file_path
+            full_path = None
+            candidates = [base_path, base_path.with_suffix(".py")] if base_path.suffix != ".py" else [base_path]
+            for candidate in candidates:
+                if candidate.exists():
+                    full_path = candidate
+                    break
+            if full_path is None:
+                logger.warning(f"RunAndFixAgent: File not found {file_path}")
+                continue
+
+            original_content = full_path.read_text(encoding="utf-8")
+            fixed_content = self._llm_fix_error(
+                file_path, error_msg, line_number, original_content, requirements, interface_specs
+            )
+
+            if fixed_content:
+                full_path.write_text(fixed_content, encoding="utf-8")
+                logger.info(f"RunAndFixAgent: Fixed {file_path}")
+                for f in repository.files:
+                    if f.path == file_path:
+                        f.content = fixed_content
+                        break
+            else:
+                logger.warning(f"RunAndFixAgent: LLM could not fix {file_path}")
+
+        return repository
+
+    def _try_run_app(self, generated_path: Path) -> Optional[tuple]:
+        """Try to import and create app. Returns (file_path, error_msg, line_number) or None."""
+        sys.path.insert(0, str(generated_path))
+        try:
+            import importlib.util
+            app_module = None
+            init_path = generated_path / "app" / "__init__.py"
+            if init_path.exists():
+                spec = importlib.util.spec_from_file_location("app", init_path)
+                app_module = importlib.util.module_from_spec(spec)
+                sys.modules["app"] = app_module
+                spec.loader.exec_module(app_module)
+            if app_module and hasattr(app_module, "create_app"):
+                app_module.create_app()
+                return None
+            app_py = generated_path / "app.py"
+            if app_py.exists():
+                spec = importlib.util.spec_from_file_location("app_module", app_py)
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)
+                if hasattr(mod, "create_app"):
+                    return None
+            return ("app/__init__.py", "Could not find create_app function", 0)
+        except ImportError as e:
+            err = str(e)
+            if "No module named" in err:
+                module_name = err.split("No module named")[-1].strip().strip("'\"")
+                return (f"import:{module_name}", err, 0)
+            return (self._extract_file_from_import_error(err), err, 0)
+        except Exception as e:
+            tb = traceback.format_exc()
+            fp, ln = self._extract_location_from_traceback(tb)
+            return (fp or "unknown", str(e), ln or 0)
+        finally:
+            if str(generated_path) in sys.path:
+                sys.path.remove(str(generated_path))
+
+    def _extract_file_from_import_error(self, error_msg: str) -> str:
+        if "cannot import name" in error_msg and "from 'app." in error_msg:
+            try:
+                parts = error_msg.split("from 'app.")[1].split("'")
+                return parts[0].replace(".", "/") + ".py" if parts else "app/__init__.py"
+            except (IndexError, AttributeError):
+                pass
+        return "app/__init__.py"
+
+    def _extract_location_from_traceback(self, tb: str) -> tuple:
+        for line in tb.split("\n"):
+            if "File" in line and "generated" in line:
+                match = re.search(r'File "(.*?)"', line)
+                if match:
+                    fp = match.group(1)
+                    if "generated" in fp:
+                        fp = fp.split("generated")[-1].lstrip("/\\")
+                    line_match = re.search(r"line (\d+)", line)
+                    ln = int(line_match.group(1)) if line_match else 0
+                    return fp, ln
+        return None, 0
+
+    def _llm_fix_error(
+        self,
+        file_path: str,
+        error_message: str,
+        line_number: int,
+        code: str,
+        requirements: Requirements,
+        interface_specs: Optional[List[Any]] = None,
+    ) -> Optional[str]:
+        interface_context = ""
+        if interface_specs:
+            interface_context = "Interface specifications:\n"
+            for spec in interface_specs:
+                fp = getattr(spec, "file_path", "") or ""
+                if fp in file_path or file_path in fp:
+                    exports = getattr(spec, "exports", []) or []
+                    names = [getattr(e, "name", "") for e in exports if hasattr(e, "name")]
+                    interface_context += f"- {fp}: exports {', '.join(names)}\n"
+
+        prompt = f"""Fix the Python error in this file.
+
+FILE: {file_path}
+ERROR: {error_message}
+{interface_context}
+
+APPLICATION: {requirements.title}
+FEATURES: {", ".join(f.name for f in requirements.features)}
+
+ORIGINAL CODE:
+{code}
+
+Instructions:
+1. Fix the error so the code can run
+2. If app/__init__.py or app.py: ensure models are imported before db.create_all()
+3. Ensure blueprint registration is correct
+4. Use correct import names based on actual exports
+
+Return ONLY the corrected code, no explanations.
+"""
+        try:
+            fixed = self.llm_service.generate(prompt, max_tokens=2000)
+            fixed = self._clean_code(fixed)
+            import ast
+            ast.parse(fixed)
+            return fixed
+        except Exception as e:
+            logger.warning(f"RunAndFixAgent LLM fix failed: {e}")
+            return None
+
+    def _clean_code(self, code: str) -> str:
+        if code.startswith("```python"):
+            code = code[len("```python"):]
+        if code.startswith("```"):
+            code = code[len("```"):]
+        if code.endswith("```"):
+            code = code[:-3]
+        return code.strip()
+
+
 class CodeFixAgent:
-    """Stage 4 Agent: Use LangChain Agent to fix code until it runs."""
+    """Stage 4 Agent: Use LangChain Agent to fix code until it runs (runnability fixes)."""
 
     def __init__(self, llm_service: LLMService):
         self.llm_service = llm_service
@@ -1637,13 +1715,15 @@ class CodeFixAgent:
         logger.info("Starting CodeFixAgent to fix code...")
 
         # Install project dependencies before attempting fixes (reduces ModuleNotFoundError)
+        from config.settings import get_settings
+
         proj_path = Path(project_path) if not isinstance(project_path, Path) else project_path
         FullCycleTestingAgent._install_project_deps(proj_path)
 
         llm = self.llm_service.create_langchain_llm(temperature=0, max_tokens=8000)
 
-        # Get tools
-        tools = get_fix_tools(str(project_path), port=5555)
+        port = get_settings().validation_port
+        tools = get_fix_tools(str(project_path), port=port)
 
         # Build system prompt
         system_prompt = """You are a code fixing expert. Your task is to fix Flask app errors until it runs successfully.
@@ -1792,17 +1872,20 @@ class VisualVerificationAgent:
         import time
         import socket
 
-        # Check if port 5001 is available
-        def is_port_available(port):
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                return s.connect_ex(('localhost', port)) != 0
+        from config.settings import get_settings
 
-        # Find available port
-        port = 5001
-        while port < 5010 and not is_port_available(port):
+        # Use validation_port; if occupied, try validation_port+1 (plan: share or use fallback)
+        base_port = get_settings().validation_port
+
+        def is_port_available(p):
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                return s.connect_ex(('localhost', p)) != 0
+
+        port = base_port
+        while port < base_port + 10 and not is_port_available(port):
             port += 1
 
-        if port >= 5010:
+        if port >= base_port + 10:
             logger.warning("No available port for visual verification")
             return None
 
@@ -1819,12 +1902,12 @@ class VisualVerificationAgent:
 
         # Try to start the app
         try:
-            # Start Flask app in background
-            env = {"FLASK_ENV": "production", "PYTHONUNBUFFERED": "1"}
+            # Start Flask app in background with PORT so it binds correctly
+            popen_env = {**os.environ, "FLASK_ENV": "production", "PYTHONUNBUFFERED": "1", "PORT": str(port)}
             self.server_process = subprocess.Popen(
                 [sys.executable, str(app_file)],
                 cwd=str(project_path),
-                env={**subprocess.os.environ, **env},
+                env=popen_env,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE
             )
@@ -1983,7 +2066,7 @@ Return a JSON object with these fields.
                     "missing_elements": data.get("missing_elements", []),
                     "issues": data.get("issues", [])
                 }
-        except:
+        except (json.JSONDecodeError, KeyError, TypeError):
             pass
 
         # Default fallback
@@ -2014,7 +2097,7 @@ Return a JSON object with these fields.
 
         # Analyze each HTML file
         for html_file in html_files:
-            content = html_file.content.lower()
+            content = (html_file.content or "").lower()
 
             # Check for common elements
             checks = {

@@ -570,10 +570,11 @@ Respond with valid JSON only.
         # Try to extract features from clarifications
         for i, (q, a) in enumerate(clarifications.items(), 1):
             if any(kw in q.lower() for kw in ["feature", "function", "do"]):
+                a_safe = a if a is not None else ""
                 features.append(Feature(
                     id=f"f{i}",
-                    name=a.split(',')[0].strip() if ',' in a else a.strip()[:50],
-                    description=a,
+                    name=a_safe.split(',')[0].strip() if ',' in a_safe else a_safe.strip()[:50],
+                    description=a_safe,
                     priority=1
                 ))
 
@@ -601,8 +602,9 @@ Respond with valid JSON only.
 
     def reply_in_chat(self, messages: List[Dict[str, str]]) -> str:
         """
-        Generate an assistant reply given conversation history (no pipeline).
-        Used for ChatGPT-style continuous dialogue.
+        Generate an assistant reply given conversation history.
+        Does NOT produce Requirements - only returns reply text for dialogue.
+        Used for ChatGPT-style continuous chat (Web/API).
         """
         if not messages:
             return "请描述你想要的应用或功能，我会根据你的描述在后台生成产品。你可以随时补充需求，我会在已有基础上改进。"
@@ -623,7 +625,8 @@ the system will automatically generate the app in the background. Keep replies c
     def reply_in_chat_stream(self, messages: List[Dict[str, str]]) -> Iterator[str]:
         """
         Stream an assistant reply given conversation history.
-        Yields chunks of text for SSE streaming.
+        Does NOT produce Requirements - yields reply text chunks only.
+        Used for SSE streaming in Web/API.
         """
         if not messages:
             yield "请描述你想要的应用或功能，我会根据你的描述在后台生成产品。你可以随时补充需求，我会在已有基础上改进。"
@@ -645,9 +648,39 @@ the system will automatically generate the app in the background. Keep replies c
             logger.warning(f"reply_in_chat_stream failed: {e}")
             yield "已收到。我会根据当前对话在后台生成或更新应用，你可以在右侧查看代码和预览。"
 
+    def _dict_to_requirements(
+        self,
+        result: dict,
+        fallback: Optional[Requirements] = None,
+    ) -> Requirements:
+        """Shared parsing: dict from LLM -> Requirements. Used by conversation_to_requirements and merge_requirements."""
+        features = []
+        for i, f in enumerate(result.get("features", []), 1):
+            if not isinstance(f, dict):
+                continue
+            features.append(Feature(
+                id=f.get("id", f"f{i}"),
+                name=f.get("name", f"Feature {i}"),
+                description=f.get("description", ""),
+                priority=f.get("priority", 3),
+            ))
+        dm = result.get("design_mode")
+        if dm and dm not in ("modern", "minimal", "dashboard"):
+            dm = fallback.design_mode if fallback else None
+        return Requirements(
+            title=result.get("title", fallback.title if fallback else "Generated Application"),
+            description=result.get("description", fallback.description if fallback else ""),
+            features=features,
+            constraints=result.get("constraints", fallback.constraints if fallback else []),
+            target_users=result.get("target_users") or (fallback.target_users if fallback else None),
+            data_requirements=result.get("data_requirements") or (fallback.data_requirements if fallback else None),
+            design_mode=dm or (fallback.design_mode if fallback else None),
+        )
+
     def conversation_to_requirements(self, messages: List[Dict[str, str]]) -> Requirements:
         """
-        Turn full conversation history into a single Requirements object (for first-time generate).
+        Turn full conversation history into a single Requirements object (first-time generate).
+        Core entry for Web flow when starting fresh.
         """
         conv = "\n".join(
             f"{m.get('role', 'user').upper()}: {m.get('content', '')}"
@@ -674,29 +707,7 @@ design_mode: optional. Use "minimal" for sparse/clean UI, "dashboard" for data-h
             result = self.llm_service.generate_json(prompt)
             if not isinstance(result, dict):
                 raise ValueError("Expected dict")
-            features = []
-            for i, f in enumerate(result.get("features", []), 1):
-                if not isinstance(f, dict):
-                    continue
-                features.append(Feature(
-                    id=f.get("id", f"f{i}"),
-                    name=f.get("name", f"Feature {i}"),
-                    description=f.get("description", ""),
-                    priority=f.get("priority", 3)
-                ))
-            dm = result.get("design_mode")
-            if dm and dm not in ("modern", "minimal", "dashboard"):
-                dm = None
-
-            return Requirements(
-                title=result.get("title", "Generated Application"),
-                description=result.get("description", ""),
-                features=features,
-                constraints=result.get("constraints", []),
-                target_users=result.get("target_users"),
-                data_requirements=result.get("data_requirements"),
-                design_mode=dm,
-            )
+            return self._dict_to_requirements(result)
         except Exception as e:
             logger.warning(f"conversation_to_requirements failed: {e}")
             last_user = next((m.get("content", "") for m in reversed(messages) if m.get("role") == "user"), "")
@@ -709,7 +720,8 @@ design_mode: optional. Use "minimal" for sparse/clean UI, "dashboard" for data-h
         recent_messages: Optional[List[Dict[str, str]]] = None,
     ) -> Requirements:
         """
-        Merge new user request into existing Requirements (for incremental generate).
+        Merge new user request into existing Requirements (incremental generate).
+        Uses same parsing logic as conversation_to_requirements via _dict_to_requirements.
         """
         existing_json = existing.model_dump(mode="json")
         existing_str = json.dumps(existing_json, indent=2, ensure_ascii=False)[:2500]
@@ -731,29 +743,7 @@ Respond with valid JSON only."""
             result = self.llm_service.generate_json(prompt)
             if not isinstance(result, dict):
                 return existing
-            features = []
-            for i, f in enumerate(result.get("features", []), 1):
-                if not isinstance(f, dict):
-                    continue
-                features.append(Feature(
-                    id=f.get("id", f"f{i}"),
-                    name=f.get("name", f"Feature {i}"),
-                    description=f.get("description", ""),
-                    priority=f.get("priority", 3)
-                ))
-            dm = result.get("design_mode")
-            if dm and dm not in ("modern", "minimal", "dashboard"):
-                dm = existing.design_mode
-
-            return Requirements(
-                title=result.get("title", existing.title),
-                description=result.get("description", existing.description),
-                features=features,
-                constraints=result.get("constraints", existing.constraints),
-                target_users=result.get("target_users") or existing.target_users,
-                data_requirements=result.get("data_requirements") or existing.data_requirements,
-                design_mode=dm or existing.design_mode,
-            )
+            return self._dict_to_requirements(result, fallback=existing)
         except Exception as e:
             logger.warning(f"merge_requirements failed: {e}")
             return existing

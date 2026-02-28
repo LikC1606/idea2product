@@ -88,8 +88,8 @@ class TaskService:
                     data["current_stage"] = "Interrupted"
                 with self._lock:
                     self.tasks.setdefault(pid, data)
-            except Exception:
-                pass
+            except Exception as ex:
+                logger.debug("Could not restore persisted task %s: %s", pid, ex)
 
     # ------------------------------------------------------------------
     # Project creation (chat-first: no requirement needed upfront)
@@ -397,8 +397,8 @@ class TaskService:
                     {"path": f["path"], "language": f.get("language", "text")}
                     for f in data.get("files", [])
                 ]
-            except Exception:
-                pass
+            except Exception as ex:
+                logger.debug("Could not load artifacts for list_files: %s", ex)
         return []
 
     def get_file(self, project_id: str, file_path: str) -> Optional[Dict[str, str]]:
@@ -407,8 +407,13 @@ class TaskService:
             return None
         try:
             content = full.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            try:
+                content = full.read_text(encoding="utf-8", errors="replace")
+            except Exception:
+                return None
         except Exception:
-            content = full.read_text(encoding="utf-8", errors="replace")
+            return None
         return {
             "path": file_path,
             "content": content,
@@ -439,8 +444,8 @@ class TaskService:
         if status_file.exists():
             try:
                 return read_json(status_file)
-            except Exception:
-                pass
+            except Exception as ex:
+                logger.debug("Could not read status file: %s", ex)
 
         req_file = artifacts / "01_requirements.json"
         chat_file = artifacts / "chat.json"
@@ -449,8 +454,8 @@ class TaskService:
             try:
                 data = json.loads(req_file.read_text(encoding="utf-8"))
                 desc = data.get("description", "")
-            except Exception:
-                pass
+            except Exception as ex:
+                logger.debug("Could not read requirements for fallback: %s", ex)
         if not desc and chat_file.exists():
             try:
                 data = json.loads(chat_file.read_text(encoding="utf-8"))
@@ -459,8 +464,8 @@ class TaskService:
                     if m.get("role") == "user":
                         desc = m.get("content", "")[:100]
                         break
-            except Exception:
-                pass
+            except Exception as ex:
+                logger.debug("Could not read chat for fallback: %s", ex)
         return {
             "project_id": project_id,
             "requirement": desc,
