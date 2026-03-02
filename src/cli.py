@@ -17,6 +17,8 @@ if sys.platform == 'win32':
 from config.settings import get_settings
 from src.core.orchestrator import Orchestrator
 from src.utils.file_utils import read_json
+from src.agents.stage1_requirements.paper_to_project_agent import PaperToProjectAgent
+from src.services.llm_service import LLMService
 
 console = Console()
 
@@ -213,6 +215,107 @@ def list():
 
     except Exception as e:
         console.print(f"[bold red]Error:[/bold red] {e}")
+        sys.exit(1)
+
+
+@cli.command()
+@click.argument("paper_path", type=str)
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(),
+    help="Output directory for generated project",
+)
+@click.option(
+    "--context",
+    "-c",
+    type=str,
+    help="Additional user context (e.g., 'I want to build a mobile app')",
+)
+@click.option(
+    "--generate/--no-generate",
+    default=False,
+    help="Also generate the full application (default: only analyze paper)",
+)
+def from_paper(paper_path: str, output: str = None, context: str = None, generate: bool = False):
+    """
+    Create a project from an academic paper.
+
+    PAPER_PATH: Path to PDF file or text file containing the paper.
+
+    This command analyzes the paper and generates an application idea
+    that can be built using the Idea2Product pipeline.
+
+    Example:
+        idea2product from-paper paper.pdf
+        idea2product from-paper paper.pdf --generate
+        idea2product from-paper paper.txt --context "build a mobile app"
+    """
+    try:
+        settings = get_settings()
+        llm_service = LLMService.from_settings(settings)
+
+        # Check file exists
+        paper_file = Path(paper_path)
+        if not paper_file.exists():
+            console.print(f"[red]File not found: {paper_path}[/red]")
+            sys.exit(1)
+
+        console.print(Panel.fit(
+            f"[bold cyan]Analyzing paper:[/bold cyan]\n{paper_file.name}",
+            title="Paper to Project",
+            border_style="cyan",
+        ))
+
+        # Create agent and analyze
+        agent = PaperToProjectAgent(llm_service)
+        requirements = agent.execute_from_file(str(paper_file), user_context=context)
+
+        # Display results
+        console.print("\n[bold green]Generated Application Idea:[/bold green]\n")
+        console.print(Panel.fit(
+            f"[bold cyan]{requirements.title}[/bold cyan]\n\n"
+            f"{requirements.description}",
+            border_style="green",
+        ))
+
+        console.print("\n[bold]Features:[/bold]")
+        for i, feature in enumerate(requirements.features, 1):
+            priority_emoji = {
+                "must-have": "🔴",
+                "should-have": "🟡",
+                "nice-to-have": "🟢",
+            }.get(feature.priority, "⚪")
+            console.print(f"  {i}. {priority_emoji} {feature.name}")
+            console.print(f"     {feature.description}")
+
+        if requirements.target_users:
+            console.print(f"\n[bold]Target Users:[/bold] {requirements.target_users}")
+
+        if requirements.data_requirements:
+            console.print(f"\n[bold]Data Requirements:[/bold] {requirements.data_requirements}")
+
+        # Optionally generate the full project
+        if generate:
+            console.print("\n[bold cyan]Generating full application...[/bold cyan]")
+            orchestrator = Orchestrator(settings)
+            # Generate project ID
+            from datetime import datetime
+            project_id = f"proj_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            result = orchestrator.run_from_stage_2(project_id, requirements)
+            console.print(f"\n[bold green]Project created successfully![/bold green]")
+            console.print(f"Project ID: {result.project_id}")
+        else:
+            console.print("\n[yellow]To generate the full application, add --generate flag[/yellow]")
+
+    except ImportError as e:
+        console.print(f"[bold red]Missing dependency:[/bold red] {e}")
+        console.print("Install pypdf: pip install pypdf")
+        sys.exit(1)
+    except Exception as e:
+        console.print(f"[bold red]Error:[/bold red] {e}")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
 
 

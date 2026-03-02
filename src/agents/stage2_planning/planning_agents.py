@@ -441,10 +441,77 @@ class AlgorithmAnalysisAgent:
         llm_service: LLMService,
         hf_model_service: Optional[Any] = None,
         hf_search_limit: int = 5,
+        hf_check_inference: bool = True,
     ):
         self.llm_service = llm_service
         self.hf_model_service = hf_model_service
         self.hf_search_limit = hf_search_limit
+        self.hf_check_inference = hf_check_inference
+
+    def _detect_ml_task(self, task: Task) -> Optional[Dict[str, Any]]:
+        """
+        Use LLM to detect if task requires ML/NLP/CV and extract keywords.
+        Returns dict with is_ml, pipeline_tag, keywords, or None if not ML task.
+        """
+        prompt = f"""Analyze if this task requires Machine Learning/NLP/CV.
+
+Task: {task.name}
+Description: {task.description}
+
+Respond in JSON format:
+{{
+    "is_ml_task": true/false,
+    "reason": "why it is or is not ML task",
+    "pipeline_tag": "huggingface pipeline tag if applicable (e.g., text-classification, text-to-image, object-detection)",
+    "keywords": ["keyword1", "keyword2", "keyword3"],
+    "suggested_models": ["optional model suggestions"]
+}}
+
+Only return is_ml_task=true if the task genuinely needs ML models (e.g., sentiment analysis, image generation, object detection, translation, speech recognition, etc).
+Tasks like "user login", "CRUD operations", "display data" are NOT ML tasks.
+"""
+        try:
+            result = self.llm_service.generate_json(prompt)
+            if result and isinstance(result, dict):
+                return result
+        except Exception as e:
+            logger.debug(f"ML task detection failed for {task.id}: {e}")
+        return None
+
+    def _get_hf_info_for_task(self, task: Task) -> Optional[Dict[str, Any]]:
+        """Get HuggingFace info for a task using LLM."""
+        ml_info = self._detect_ml_task(task)
+        if not ml_info or not ml_info.get("is_ml_task"):
+            return None
+
+        if not self.hf_model_service:
+            return None
+
+        # Get pipeline_tag from LLM response or use keyword matching
+        pipeline_tag = ml_info.get("pipeline_tag")
+        if not pipeline_tag:
+            pipeline_tag = _get_pipeline_tag(task)
+
+        keywords = ml_info.get("keywords", [])
+        query = " ".join(keywords) if keywords else f"{task.name} {task.description}"[:200]
+
+        try:
+            models = self.hf_model_service.search_and_fetch_docs(
+                query=query,
+                pipeline_tag=pipeline_tag,
+                limit=self.hf_search_limit,
+                keywords=keywords,
+                check_inference=self.hf_check_inference,
+            )
+            return {
+                "pipeline_tag": pipeline_tag,
+                "keywords": keywords,
+                "models": models,
+                "suggested_models": ml_info.get("suggested_models", []),
+            }
+        except Exception as e:
+            logger.debug(f"HF search for task {task.id} failed: {e}")
+            return None
 
     def execute(
         self,
@@ -458,27 +525,29 @@ class AlgorithmAnalysisAgent:
         if flow_simulation and len(flow_simulation.strip()) > 20:
             flow_section = f"\n## User Operation Flow (consider for algorithm choice)\n{flow_simulation[:1500]}\n"
 
+        # Use LLM to detect ML tasks and search HF
         if self.hf_model_service:
             for t in tasks:
-                if not _is_ml_task(t):
+                hf_info = self._get_hf_info_for_task(t)
+                if not hf_info or not hf_info.get("models"):
                     continue
-                pipeline_tag = _get_pipeline_tag(t)
-                query = f"{t.name} {t.description}"[:200]
-                try:
-                    models = self.hf_model_service.search_and_fetch_docs(
-                        query=query,
-                        pipeline_tag=pipeline_tag,
-                        limit=self.hf_search_limit,
-                    )
-                    if models:
-                        lines = [f"## {t.id} - {t.name} (Hugging Face candidates)"]
-                        for m in models:
-                            model_id = m.get("model_id", "")
-                            card = (m.get("card_text") or "")[:800]
-                            lines.append(f"- {model_id}: {card}")
-                        hf_context_parts.append("\n".join(lines))
-                except Exception as e:
-                    logger.debug(f"HF search for task {t.id} failed: {e}")
+
+                models = hf_info["models"]
+                lines = [f"## {t.id} - {t.name} (ML/NLP/CV candidates)"]
+                lines.append(f"Pipeline: {hf_info.get('pipeline_tag', 'N/A')}")
+                lines.append(f"Keywords: {', '.join(hf_info.get('keywords', []))}")
+
+                for m in models:
+                    model_id = m.get("model_id", "")
+                    downloads = m.get("downloads", 0)
+                    card = (m.get("card_text") or "")[:600]
+                    lines.append(f"- **{model_id}** (downloads: {downloads:,})")
+                    lines.append(f"  {card[:500]}")
+
+                if hf_info.get("suggested_models"):
+                    lines.append(f"\nSuggested by LLM: {', '.join(hf_info['suggested_models'])}")
+
+                hf_context_parts.append("\n".join(lines))
 
         hf_context = "\n\n".join(hf_context_parts) if hf_context_parts else ""
 

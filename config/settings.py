@@ -24,10 +24,11 @@ class Settings(BaseSettings):
     github_token: Optional[str] = None
     github_search_limit: int = 5
 
-    # Hugging Face Configuration (Optional, for algorithm analysis)
-    enable_hf_model_search: bool = False
+    # Hugging Face Configuration (for ML algorithm analysis)
+    enable_hf_model_search: bool = True  # Default enabled
     hf_search_limit: int = 5
     hf_token: Optional[str] = None
+    hf_check_inference: bool = True  # Check Inference API availability
 
     # System Configuration
     log_level: str = "INFO"

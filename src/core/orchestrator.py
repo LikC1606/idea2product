@@ -292,7 +292,7 @@ class Orchestrator:
 
         # Algorithm Analysis Agent (optional HF model search)
         hf_service = None
-        if getattr(self.settings, "enable_hf_model_search", False):
+        if getattr(self.settings, "enable_hf_model_search", True):
             try:
                 hf_service = HfModelService(
                     token=getattr(self.settings, "hf_token", None),
@@ -304,6 +304,7 @@ class Orchestrator:
             llm_fast,
             hf_model_service=hf_service,
             hf_search_limit=getattr(self.settings, "hf_search_limit", 5),
+            hf_check_inference=getattr(self.settings, "hf_check_inference", True),
         )
         algorithms = algo_agent.execute(tasks, flow_simulation=flow_simulation)
         self.logger.info(f"  - Analyzed {len(algorithms)} algorithms")
