@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
+import { directionVisuals, directionIconStrip, resolveDirectionImage } from '../visuals/directionVisuals'
 
 const router = useRouter()
 
@@ -109,22 +110,22 @@ function goTo(path, directionKey) {
           </ul>
         </div>
         <div class="hero-right">
-          <div class="hero-card">
-            <div class="hero-card-header">
-              <span class="dot dot-red" />
-              <span class="dot dot-yellow" />
-              <span class="dot dot-green" />
+          <figure class="hero-visual" aria-hidden="true">
+            <div class="hero-visual-glass">
+              <img
+                class="hero-visual-image"
+                :src="resolveDirectionImage('code')"
+                alt="AI 工作室的多模态输出面板插画"
+              />
+              <div class="hero-visual-strip">
+                <img
+                  class="hero-visual-strip-image"
+                  :src="directionIconStrip"
+                  alt="代码、视频、音频、Slides 与 PDF 的发光图标"
+                />
+              </div>
             </div>
-            <div class="hero-card-body">
-              <p class="hero-card-title">生成方向</p>
-              <ul class="hero-card-list">
-                <li>全栈 Web 应用 · 从想法到运行代码</li>
-                <li>视频生成 · 脚本到故事板和画面</li>
-                <li>音频生成 · 文稿到高质量配音</li>
-                <li>Slides 与 PDF · 自动排版与结构化输出</li>
-              </ul>
-            </div>
-          </div>
+          </figure>
         </div>
       </section>
 
@@ -165,7 +166,7 @@ function goTo(path, directionKey) {
 <style scoped>
 .landing {
   min-height: 100vh;
-  padding: 16px 40px 40px;
+  padding: 18px 40px 40px;
   display: flex;
   flex-direction: column;
   gap: 24px;
@@ -345,65 +346,51 @@ function goTo(path, directionKey) {
   justify-content: flex-end;
 }
 
-.hero-card {
+.hero-visual {
   width: 100%;
-  max-width: 420px;
-  border-radius: 18px;
-  background: radial-gradient(circle at 0% 0%, rgba(56, 189, 248, 0.08), transparent 60%),
-    radial-gradient(circle at 100% 100%, rgba(79, 70, 229, 0.3), rgba(15, 23, 42, 0.95));
-  border: 1px solid rgba(148, 163, 184, 0.4);
-  box-shadow: 0 22px 45px rgba(15, 23, 42, 0.9);
+  max-width: 480px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.hero-visual-glass {
+  position: relative;
+  width: 100%;
+  border-radius: 24px;
+  padding: 10px;
+  background: radial-gradient(circle at top left, rgba(56, 189, 248, 0.18), transparent 55%),
+    radial-gradient(circle at bottom right, rgba(99, 102, 241, 0.28), rgba(15, 23, 42, 0.98));
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  box-shadow: 0 24px 55px rgba(15, 23, 42, 0.95);
   overflow: hidden;
 }
 
-.hero-card-header {
-  height: 34px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 14px;
-  background: linear-gradient(to right, rgba(15, 23, 42, 0.9), rgba(15, 23, 42, 0.7));
-  border-bottom: 1px solid rgba(148, 163, 184, 0.3);
+.hero-visual-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 18px;
+  object-fit: cover;
 }
 
-.dot {
-  width: 9px;
-  height: 9px;
+.hero-visual-strip {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 80%;
   border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  padding: 4px 10px;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(148, 163, 184, 0.5);
 }
 
-.dot-red {
-  background: #f87171;
-}
-
-.dot-yellow {
-  background: #facc15;
-}
-
-.dot-green {
-  background: #4ade80;
-}
-
-.hero-card-body {
-  padding: 16px 18px 18px;
-}
-
-.hero-card-title {
-  font-size: 0.85rem;
-  font-weight: 550;
-  color: var(--text-secondary);
-  margin-bottom: 8px;
-}
-
-.hero-card-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: 0.82rem;
-  color: var(--text-muted);
+.hero-visual-strip-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  object-fit: contain;
 }
 
 .directions {
@@ -444,6 +431,18 @@ function goTo(path, directionKey) {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  position: relative;
+  overflow: hidden;
+}
+
+.direction-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at top left, rgba(56, 189, 248, 0.18), transparent 65%);
+  opacity: 0;
+  transition: opacity var(--transition-normal);
+  pointer-events: none;
 }
 
 .direction-card-header {
@@ -498,7 +497,11 @@ function goTo(path, directionKey) {
   font-size: 0.9rem;
 }
 
-.card-button:hover {
+.direction-card:hover::before {
+  opacity: 1;
+}
+
+.direction-card:hover .card-button {
   background: rgba(56, 189, 248, 0.18);
   transform: translateY(-0.5px);
 }

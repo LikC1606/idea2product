@@ -1,5 +1,6 @@
 <script setup>
 import { useRouter } from 'vue-router'
+import { resolveDirectionImage } from '../visuals/directionVisuals'
 
 const router = useRouter()
 
@@ -42,12 +43,19 @@ function startFromHere() {
           </button>
         </div>
         <div class="panel panel-right">
-          <div class="preview-placeholder">
-            <p class="preview-title">结构预览 / 页缩略图（预留区域）</p>
-            <p class="preview-desc">
-              未来这里可以展示页面缩略图、章节导览和主题预览。
-              当前版本聚焦在通过通用工作台建立高质量的内容与结构基础。
-            </p>
+          <div class="preview-shell slides-shell">
+            <img
+              :src="resolveDirectionImage('slides')"
+              alt="Slides 演示文稿生成工作台插画"
+              class="preview-image"
+            />
+            <div class="preview-overlay">
+              <p class="preview-title">结构预览 / 页缩略图（预留区域）</p>
+              <p class="preview-desc">
+                未来这里可以展示页面缩略图、章节导览和主题预览。
+                当前版本聚焦在通过通用工作台建立高质量的内容与结构基础。
+              </p>
+            </div>
           </div>
         </div>
       </section>
@@ -169,15 +177,32 @@ function startFromHere() {
   box-shadow: 0 18px 40px rgba(15, 23, 42, 0.9);
 }
 
-.preview-placeholder {
+.preview-shell {
+  position: relative;
   height: 100%;
-  border-radius: 14px;
-  border: 1px dashed rgba(148, 163, 184, 0.6);
-  padding: 16px 16px 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  justify-content: center;
+  border-radius: 18px;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.95);
+}
+
+.slides-shell {
+  background: radial-gradient(circle at top left, rgba(251, 191, 36, 0.26), transparent 60%),
+    radial-gradient(circle at bottom right, rgba(96, 165, 250, 0.32), rgba(15, 23, 42, 0.98));
+}
+
+.preview-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.preview-overlay {
+  position: absolute;
+  inset: auto 0 0;
+  padding: 12px 16px 16px;
+  background: linear-gradient(to top, rgba(15, 23, 42, 0.92), transparent);
 }
 
 .preview-title {

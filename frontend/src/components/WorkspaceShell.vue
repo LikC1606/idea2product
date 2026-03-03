@@ -187,14 +187,17 @@ watch(projectId, (pid) => {
     <div v-if="!backendConnected" class="backend-banner">
       后端服务未连接。请确保已启动: <code>python -m src.web.app</code>
     </div>
-    <Header
-      :project-id="projectId"
-      :history-open="historyOpen"
-      @toggle-history="historyOpen = !historyOpen"
-      @new-project="handleNewProject"
-    />
-    <div v-if="directionLabel" class="direction-banner">
-      当前方向：{{ directionLabel }}
+    <div class="app-header">
+      <Header
+        :project-id="projectId"
+        :history-open="historyOpen"
+        @toggle-history="historyOpen = !historyOpen"
+        @new-project="handleNewProject"
+      />
+      <div v-if="directionLabel" class="direction-banner">
+        <span class="direction-dot" />
+        <span class="direction-label">当前方向：{{ directionLabel }}</span>
+      </div>
     </div>
     <div class="main">
       <HistoryDrawer
@@ -271,6 +274,12 @@ watch(projectId, (pid) => {
   flex-direction: column;
 }
 
+.app-header {
+  position: relative;
+  z-index: var(--z-sticky, 20);
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.85);
+}
+
 .backend-banner {
   background: var(--error-bg, #3d1f1f);
   color: var(--error-fg, #f8b4b4);
@@ -287,11 +296,27 @@ watch(projectId, (pid) => {
 }
 
 .direction-banner {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 6px var(--spacing-24);
-  font-size: 0.8rem;
-  background: rgba(88, 101, 242, 0.1);
+  font-size: 0.78rem;
+  background: radial-gradient(circle at left, rgba(56, 189, 248, 0.18), transparent 70%),
+    rgba(15, 23, 42, 0.92);
   color: var(--accent);
-  border-bottom: 1px solid rgba(88, 101, 242, 0.25);
+  border-bottom: 1px solid rgba(88, 101, 242, 0.3);
+}
+
+.direction-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: radial-gradient(circle, #22c55e, #16a34a);
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.9);
+}
+
+.direction-label {
+  letter-spacing: 0.03em;
 }
 
 .main {
