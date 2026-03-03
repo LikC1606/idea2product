@@ -51,6 +51,36 @@
 - **工厂**：`get_image_provider(settings)` — `enable_image_generation=False` 时返回 `None`
 - **配置**：`enable_image_generation`、`image_generation_provider`（openai | generic_http）、`image_generation_openai_model`、`image_generation_base_url`、`image_generation_api_key`、`image_generation_extra_headers`、`image_generation_response_image_path`、`image_generation_timeout`
 
+## Video/PPT/LaTeX/Audio Generation Services（多模态生成）
+
+- **视频生成**（VideoGenerationService）
+  - **文件**：`src/services/video_generation_service.py`
+  - **接口**：`VideoGenerationProvider.generate_video(prompt, duration_seconds=None, format=\"mp4\") -> Path`
+  - **实现**：`GenericHTTPVideoProvider`（通用 HTTP 客户端，具体 API 由 settings / ExternalModelSpec 决定）
+  - **工厂**：`get_video_provider(settings, spec=None)` — 当 `enable_video_generation=False` 或 base_url 缺失时返回 None
+  - **配置**：`enable_video_generation`、`video_generation_provider`（generic_http）、`video_generation_base_url`、`video_generation_api_key`、`video_generation_extra_headers`、`video_generation_timeout`
+
+- **PPT 生成**（PresentationGenerationService）
+  - **文件**：`src/services/ppt_generation_service.py`
+  - **接口**：`PresentationGenerationProvider.generate_ppt(slides_spec, format=\"pptx\") -> Path`
+  - **实现**：`GenericHTTPPresentationProvider`
+  - **工厂**：`get_ppt_provider(settings, spec=None)`
+  - **配置**：`enable_ppt_generation`、`ppt_generation_provider`、`ppt_generation_base_url`、`ppt_generation_api_key`、`ppt_generation_extra_headers`、`ppt_generation_timeout`
+
+- **LaTeX/PDF 生成**（LatexGenerationService）
+  - **文件**：`src/services/latex_generation_service.py`
+  - **接口**：`LatexGenerationProvider.render(spec, output_format=\"tex\") -> Path`
+  - **实现**：`GenericHTTPLatexProvider`
+  - **工厂**：`get_latex_provider(settings, spec=None)`
+  - **配置**：`enable_latex_generation`、`latex_generation_provider`、`latex_generation_base_url`、`latex_generation_api_key`、`latex_generation_extra_headers`、`latex_generation_timeout`
+
+- **音频生成（TTS/音乐）**（AudioGenerationService）
+  - **文件**：`src/services/audio_generation_service.py`
+  - **接口**：`AudioGenerationProvider.generate_audio(text, voice=None, format=\"mp3\") -> Path`
+  - **实现**：`GenericHTTPAudioProvider`
+  - **工厂**：`get_audio_provider(settings, spec=None)`
+  - **配置**：`enable_audio_generation`、`audio_generation_provider`、`audio_generation_base_url`、`audio_generation_api_key`、`audio_generation_extra_headers`、`audio_generation_timeout`
+
 ## AssetGeneration（Stage 3 可选步骤）
 
 - **文件**：`src/services/asset_generation.py`

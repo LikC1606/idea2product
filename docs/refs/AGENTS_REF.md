@@ -53,6 +53,7 @@
 - **Agent 失败兜底**：`agent.invoke` 异常时，若 `detect_pattern_with_score` 达到阈值（crud/dashboard/auth/readonly），用 `generate_fallback_stub` 生成最小 stub
 - **语法修复**：`use_fast_model_for_syntax_fix=True` 时 fix 轮使用 fast model；`code_gen_syntax_fix_retries` 可配置重试次数
 - **Prompt 模块化**：system prompt 从 config/prompts/code_gen_system_base.txt、code_gen_critical_rules.txt、code_gen_quality.txt 加载
+- **正确性检查**：Stage 3 内部集成轻量级 Python 语法检查与自动修复循环（可通过 `enable_stage3_syntax_check` 开关控制），并提供可选的内部导入健全性检查（`enable_stage3_import_sanity_check`，用于提前发现 `app.*` 模块引用与生成文件不匹配的问题）；Skeleton 构建后会进行基础校验并在日志中输出 warning，用于尽早暴露依赖图异常。
 
 ## Stage 4 - Validation
 
@@ -128,10 +129,12 @@
 ## ModelIntegrationPlanningAgent 行为说明
 
 - **触发**：仅当 `enable_stage2_web_search=True` 且 `get_web_search_provider(settings)` 非空时由 Orchestrator 在 Stage 2（BDD 合成之后）调用
-- **能力推断**：根据 requirements 与 tasks 的关键词推断所需外部能力（如 image_generation、tts），与 AlgorithmAnalysisAgent 的 HF 发现解耦
-- **联网搜索**：对每种能力调用 WebSearchProvider.search 检索 API 文档（如 "image generation API documentation"）
-- **结构化产出**：LLM 将搜索结果整理为 List[ExternalModelSpec]（provider_name、docs_url、base_url_hint、auth_type、response_image_path、suggested_integration 等），写入 plan.external_model_specs
-- **Stage 3 可选使用**：AssetGeneration 在存在 capability_type=image_generation 的 external_model_spec 且含 base_url_hint 时，可优先采用该 spec 配置 GenericHTTPImageProvider
+- **能力推断**：
+  - 关键词：根据 requirements 与 tasks 的关键词推断所需外部能力，能力类型来自 `_EXTERNAL_CAPABILITY_KEYWORDS`（如 image_generation、tts、video_generation、ppt_generation、latex_generation、audio_tts、audio_music）
+  - 可选 LLM：当 `enable_stage2_llm_capability_infer=True` 时，使用 LLM 进一步分析 requirements/tasks，补充/精炼能力列表
+- **联网搜索**：对每种能力调用 WebSearchProvider.search 检索 API 文档（如 `"text to video API documentation 2026"`、`"generate pptx API"`、`"text to speech API"`），合并多条 query 结果
+- **结构化产出**：LLM 将搜索结果整理为 List[ExternalModelSpec]（capability_type、provider_name、docs_url、base_url_hint、auth_type、request_body_example、response_image_path、suggested_integration 等），写入 plan.external_model_specs
+- **Stage 3 可选使用**：AssetGeneration 在存在 capability_type=image_generation 的 external_model_spec 且含 base_url_hint 时，可优先采用该 spec 配置 GenericHTTPImageProvider；视频/PPT/LaTeX/音频能力可由后续 Video/PPT/Latex/AudioGenerationService 消费
 
 ## See also
 

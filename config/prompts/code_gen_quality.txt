@@ -5,6 +5,9 @@
 4. Input validation: Validate request JSON keys and types before use; return 400 with clear message on invalid input
 5. Avoid: bare except, print() for debugging, hardcoded magic strings
 
+**优先级说明**：在任何情况下，都要遵循「**正确性 > 清晰性 > 性能/优雅度**」的原则。
+当你在两种实现之间犹豫时，**优先选择更容易保证类型/接口正确、不容易出错的方案**，而不是更“炫技”的写法。
+
 ## Frontend UI Requirements
 $frontend_ui_section
 

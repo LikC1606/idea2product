@@ -351,6 +351,19 @@ class TestResult(BaseModel):
         return self.logic_passed and visual_ok
 
 
+class ValidationRun(BaseModel):
+    """Summary of a single validation run for a project (used for dashboards/UX)."""
+
+    run_id: str = Field(..., description="Unique validation run identifier")
+    project_id: str = Field(..., description="Associated project id")
+    stage: str = Field(default="full_cycle", description="Validation stage label (e.g., full_cycle)")
+    status: str = Field(..., description="pending | running | passed | failed | partial")
+    started_at: datetime = Field(..., description="When this validation run started")
+    finished_at: Optional[datetime] = Field(None, description="When this validation run finished")
+    metrics: Dict[str, Any] = Field(default_factory=dict, description="Key metrics (errors, warnings, scores, etc.)")
+    summary: Optional[str] = Field(None, description="Short natural-language summary for UX/dashboard")
+
+
 class ValidatedProject(BaseModel):
     """Final validated and deployable project."""
 

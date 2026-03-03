@@ -84,3 +84,13 @@ python -m src.benchmarks.aggregate_ablation
 ## CI note
 
 `run_small_suite` requires `OPENAI_API_KEY` and calls the real LLM; it is not suitable as a default CI step. Use for manual or scheduled evaluation, or add a mock/dry-run mode that skips LLM calls.
+
+## Using benchmarks for algorithm/model optimization
+
+配合 `[ALGO_OPTIMIZATION_FLOW.md](ALGO_OPTIMIZATION_FLOW.md)`，基准评测脚本可以作为算法/模型设计优化的“实验执行与记录”引擎：
+
+- **问题与指标**：从 `data/benchmark_report.json` 中挑选与当前优化目标最相关的字段（如 `test_passed`、`is_deployable`、`code_quality_score`、`errors_count` 等），并在实验说明中明确主指标与辅助指标。
+- **搜索空间**：通过命令行参数（如 `--tasks`、`--runs`、`--pass-at-k`、`--config`）以及环境变量 / 配置文件，构造不同的算法/模型配置组合。
+- **基线与对照组**：\n  - 基线可以使用 `python -m src.benchmarks.run_baseline` 或 `run_small_suite` 的默认配置。\n  - 对照组通过修改模型路由、温度/采样策略、Agent 开关等方式构造。
+- **结果归档**：建议为每一轮实验创建独立目录（例如 `data/experiments/<experiment_name>/`），将对应的 `benchmark_report.json` 和实验说明文档（Markdown）一起保存，便于后续对比和回归检查。
+

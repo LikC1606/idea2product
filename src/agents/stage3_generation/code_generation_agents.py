@@ -23,7 +23,7 @@ from src.core.data_models import (
 from src.core.context import ExecutionContext
 from src.services.llm_service import LLMService
 from src.utils.logger import get_logger
-from src.utils.skeleton_builder import build_skeleton_from_pyi_stubs
+from src.utils.skeleton_builder import build_skeleton_from_pyi_stubs, validate_skeleton
 from src.agents.stage3_generation.tools import (
     get_tools,
     set_project_path,
@@ -82,6 +82,13 @@ class CodeGenerationAgent:
         logger.info(
             f"Skeleton: {len(skeleton.interfaces)} interfaces, {len(skeleton.dependency_graph.nodes)} nodes"
         )
+        # Lightweight skeleton validation to surface obvious issues early
+        skeleton_warnings_list = validate_skeleton(skeleton)
+        skeleton_warnings = ""
+        if skeleton_warnings_list:
+            skeleton_warnings = "\n".join(
+                f"- {msg}" for msg in skeleton_warnings_list[:10]
+            )
 
         # Step 1: 加载框架模板
         logger.info("Loading framework template...")
@@ -612,6 +619,7 @@ class CodeGenerationAgent:
             "task_description": task.description,
             "auth_checklist_section": auth_checklist_section,
             "frontend_ui_section": frontend_ui_section,
+            "skeleton_warnings": skeleton_warnings,
         }
         try:
             loader = PromptLoader(
@@ -757,52 +765,74 @@ Remember to use tools (list_files, read_file, write_file, modify_file, validate_
                 preview = (getattr(final_msg, "content", None) or "")[:200]
                 logger.info(f"  Task {task.id} output: {preview}")
 
-            # Post-task syntax validation and retry (configurable)
-            syntax_errors = self._validate_all_python_syntax(project_path)
-            max_retries = (
-                getattr(self.settings, "code_gen_syntax_fix_retries", 1) or 1
-            )
-            retry_count = 0
-            use_fast_for_fix = (
-                getattr(self.settings, "use_fast_model_for_syntax_fix", True)
-                if self.settings
-                else True
-            )
-            while syntax_errors and retry_count < max_retries:
-                err_summary = "\n".join(
-                    f"- {fp}: {err}" for fp, err in syntax_errors[:5]
+            # Post-task syntax validation and retry (configurable, can be disabled)
+            if not self.settings or getattr(
+                self.settings, "enable_stage3_syntax_check", True
+            ):
+                syntax_errors = self._validate_all_python_syntax(project_path)
+                max_retries = (
+                    getattr(self.settings, "code_gen_syntax_fix_retries", 1) or 1
                 )
-                fix_msg = f"""Fix the following Python syntax errors. Use read_file, modify_file, and validate_syntax to fix each file.
+                retry_count = 0
+                use_fast_for_fix = (
+                    getattr(self.settings, "use_fast_model_for_syntax_fix", True)
+                    if self.settings
+                    else True
+                )
+                while syntax_errors and retry_count < max_retries:
+                    err_summary = "\n".join(
+                        f"- {fp}: {err}" for fp, err in syntax_errors[:5]
+                    )
+                    fix_msg = f"""Fix the following Python syntax errors. Use read_file, modify_file, and validate_syntax to fix each file.
 
 {err_summary}
 
 Fix one file at a time, then call validate_syntax to verify."""
-                logger.info(
-                    f"  Task {task.id}: {len(syntax_errors)} syntax errors, attempting fix..."
-                )
-                try:
-                    fix_llm_svc = self.llm_service
-                    if use_fast_for_fix:
-                        fast_model = (
-                            getattr(self.settings, "fast_model_for_code_gen", "gpt-4o-mini")
-                            if self.settings
-                            else "gpt-4o-mini"
+                    logger.info(
+                        f"  Task {task.id}: {len(syntax_errors)} syntax errors, attempting fix..."
+                    )
+                    try:
+                        fix_llm_svc = self.llm_service
+                        if use_fast_for_fix:
+                            fast_model = (
+                                getattr(
+                                    self.settings,
+                                    "fast_model_for_code_gen",
+                                    "gpt-4o-mini",
+                                )
+                                if self.settings
+                                else "gpt-4o-mini"
+                            )
+                            fix_llm_svc = self.llm_service.with_model(fast_model)
+                        fix_llm = fix_llm_svc.create_langchain_llm(
+                            temperature=0, max_tokens=4000
                         )
-                        fix_llm_svc = self.llm_service.with_model(fast_model)
-                    fix_llm = fix_llm_svc.create_langchain_llm(temperature=0, max_tokens=4000)
-                    fix_agent = create_agent(
-                        model=fix_llm,
-                        tools=tools,
-                        system_prompt="You fix Python syntax errors. Use read_file, modify_file, validate_syntax.",
+                        fix_agent = create_agent(
+                            model=fix_llm,
+                            tools=tools,
+                            system_prompt="You fix Python syntax errors. Use read_file, modify_file, validate_syntax.",
+                        )
+                        fix_agent.invoke(
+                            {"messages": [HumanMessage(content=fix_msg)]},
+                            {"recursion_limit": 20},
+                        )
+                    except Exception as fix_e:
+                        logger.warning(f"  Syntax fix attempt failed: {fix_e}")
+                    syntax_errors = self._validate_all_python_syntax(project_path)
+                    retry_count += 1
+
+            # Optional: import sanity check for internal app modules
+            if self.settings and getattr(
+                self.settings, "enable_stage3_import_sanity_check", False
+            ):
+                import_issues = self._find_import_issues(project_path)
+                if import_issues:
+                    truncated = import_issues[:10]
+                    logger.warning(
+                        "Stage 3 import sanity check found %d potential issue(s): %s",
+                        len(import_issues),
+                        "; ".join(truncated),
                     )
-                    fix_agent.invoke(
-                        {"messages": [HumanMessage(content=fix_msg)]},
-                        {"recursion_limit": 20},
-                    )
-                except Exception as fix_e:
-                    logger.warning(f"  Syntax fix attempt failed: {fix_e}")
-                syntax_errors = self._validate_all_python_syntax(project_path)
-                retry_count += 1
 
             logger.info(f"  Task {task.id} completed")
 
@@ -937,6 +967,66 @@ Fix one file at a time, then call validate_syntax to verify."""
                 logger.debug("Could not validate syntax for %s: %s", py_file, ex)
                 continue
         return errors
+
+    def _find_import_issues(self, project_path: Path) -> List[str]:
+        """
+        Perform a lightweight sanity check on internal imports (app.* modules).
+
+        This does not block generation; it only reports potential problems like
+        importing modules that do not exist in the generated project.
+        """
+        import ast as _ast
+
+        issues: List[str] = []
+        existing_modules: set[str] = set()
+
+        # Collect all internal module paths that actually exist under project_path
+        for py_file in project_path.rglob("*.py"):
+            if "__pycache__" in str(py_file):
+                continue
+            rel = str(py_file.relative_to(project_path)).replace("\\", "/")
+            if rel.endswith(".py"):
+                mod = rel[:-3].replace("/", ".")
+                existing_modules.add(mod)
+
+        for py_file in project_path.rglob("*.py"):
+            if "__pycache__" in str(py_file):
+                continue
+            rel = str(py_file.relative_to(project_path)).replace("\\", "/")
+            try:
+                source = py_file.read_text(encoding="utf-8")
+                tree = _ast.parse(source)
+            except Exception:
+                # Syntax errors handled separately
+                continue
+
+            for node in _ast.walk(tree):
+                if isinstance(node, _ast.Import):
+                    for alias in node.names:
+                        name = alias.name or ""
+                        if not name.startswith("app."):
+                            continue
+                        if name not in existing_modules:
+                            issues.append(
+                                f"{rel}: imports internal module '{name}' which does not match any generated module"
+                            )
+                elif isinstance(node, _ast.ImportFrom):
+                    module = node.module or ""
+                    if not module.startswith("app."):
+                        continue
+                    if module not in existing_modules:
+                        issues.append(
+                            f"{rel}: from-import internal module '{module}' which does not match any generated module"
+                        )
+
+        # Deduplicate while preserving order
+        seen: set[str] = set()
+        unique_issues: List[str] = []
+        for msg in issues:
+            if msg not in seen:
+                seen.add(msg)
+                unique_issues.append(msg)
+        return unique_issues
 
     def _get_task_relevant_files(self, task, plan: EngineeringPlan) -> List[str]:
         """Get list of file paths relevant to this task."""

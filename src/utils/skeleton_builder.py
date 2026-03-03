@@ -210,11 +210,64 @@ def build_skeleton_from_pyi_stubs(
         entry_point=entry_point,
     )
 
-    return CodeSkeleton(
+    skeleton = CodeSkeleton(
         interfaces=interfaces,
         dependency_graph=dep_graph,
         symbol_table=symbol_table,
     )
+
+    return skeleton
+
+
+def validate_skeleton(skeleton: CodeSkeleton) -> list[str]:
+    """
+    Perform lightweight validation on a CodeSkeleton and return a list of warning messages.
+
+    This is intentionally conservative:它只检查一些明显的问题，例如：
+    - 依赖图中引用了不存在的节点
+    - entry_point 不在节点列表中
+    - 图中存在明显的自环或简单循环迹象
+    """
+    warnings: list[str] = []
+
+    try:
+        nodes = set(skeleton.dependency_graph.nodes or [])
+        edges = skeleton.dependency_graph.edges or []
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("validate_skeleton: could not read dependency graph: %s", exc)
+        return warnings
+
+    # Missing nodes referenced in edges
+    for edge in edges:
+        src = (edge.get("from") or "").strip()
+        dst = (edge.get("to") or "").strip()
+        if src and src not in nodes:
+            warnings.append(f"Dependency edge 'from' path not in nodes: {src!r}")
+        if dst and dst not in nodes:
+            warnings.append(f"Dependency edge 'to' path not in nodes: {dst!r}")
+
+    # Entry point presence
+    entry_point = (skeleton.dependency_graph.entry_point or "").strip()
+    if entry_point and entry_point not in nodes:
+        warnings.append(
+            f"Entry point {entry_point!r} is not present in dependency graph nodes"
+        )
+
+    # Simple self-loop / trivial cycle detection
+    for edge in edges:
+        src = (edge.get("from") or "").strip()
+        dst = (edge.get("to") or "").strip()
+        if src and dst and src == dst:
+            warnings.append(f"Self-loop detected in dependency graph at {src!r}")
+
+    if warnings:
+        logger.warning(
+            "Skeleton validation produced %d warning(s): %s",
+            len(warnings),
+            "; ".join(warnings),
+        )
+
+    return warnings
 
 
 def _parse_functions_from_stub(content: str) -> List[Dict[str, Any]]:

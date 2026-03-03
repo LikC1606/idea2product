@@ -22,6 +22,7 @@ from .data_models import (
     ValidationStatus,
     BDDTestCase,
     FileSpec,
+    ValidationRun,
 )
 from .adapters import engineering_plan_from_stage2
 from .exceptions import StageExecutionError
@@ -629,7 +630,14 @@ class Orchestrator:
         )
 
         self.logger.info(f"Stage 4 complete: Deployable={validated_project.is_deployable}")
+        # Record validation run for dashboards / UX (best-effort, non-critical)
+        try:
+            self._record_validation_run(context, test_result)
+        except Exception as ex:
+            self.logger.debug("Failed to record validation run: %s", ex)
         return validated_project
+
+    def _save_artifact(self, artifacts_dir: Path, filename: str, data: dict) -> None:
 
     def _save_artifact(self, artifacts_dir: Path, filename: str, data: dict) -> None:
         """
@@ -643,6 +651,54 @@ class Orchestrator:
         filepath = artifacts_dir / filename
         write_json(filepath, data)
         self.logger.debug(f"Saved artifact: {filename}")
+
+    def _record_validation_run(self, context: ExecutionContext, test_result) -> None:
+        """Append a ValidationRun entry under artifacts/validation_runs.json for this project."""
+        if context.project_path is None:
+            return
+        artifacts_dir = context.project_path / "artifacts"
+        try:
+            import json as _json
+
+            artifacts_dir.mkdir(parents=True, exist_ok=True)
+            runs_path = artifacts_dir / "validation_runs.json"
+            existing = []
+            if runs_path.exists():
+                try:
+                    existing = _json.loads(runs_path.read_text(encoding="utf-8")) or []
+                    if not isinstance(existing, list):
+                        existing = []
+                except Exception:
+                    existing = []
+            now = datetime.now()
+            run_id = f"run_{now.strftime('%Y%m%d_%H%M%S')}"
+            status = "passed" if getattr(test_result, "passed", False) else "failed"
+            errors = len(getattr(test_result, "errors", []) or [])
+            warnings = len(getattr(test_result, "warnings", []) or [])
+            metrics = {
+                "errors": errors,
+                "warnings": warnings,
+                "logic_passed": getattr(test_result, "logic_passed", False),
+                "visual_passed": bool(
+                    getattr(getattr(test_result, "visual_verification", None), "passed", False)
+                ),
+            }
+            summary = f"{'Passed' if status == 'passed' else 'Failed'}: {errors} errors, {warnings} warnings."
+            run = ValidationRun(
+                run_id=run_id,
+                project_id=context.project_id,
+                stage="full_cycle",
+                status=status,
+                started_at=now,
+                finished_at=now,
+                metrics=metrics,
+                summary=summary,
+            )
+            existing.append(run.model_dump(mode="json"))
+            write_json(runs_path, existing)
+            self.logger.debug("Recorded validation run %s for project %s", run_id, context.project_id)
+        except Exception as ex:
+            self.logger.debug("Could not record validation run for %s: %s", context.project_id, ex)
 
     def run_from_stage_2(
         self,

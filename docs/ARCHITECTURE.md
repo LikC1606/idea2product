@@ -93,6 +93,17 @@ flowchart TB
 3. Generate implementations in dependency order
 4. Each task uses tools (list_files, read_file, write_file, modify_file) to produce code
 
+## Algorithm / Model 优化与 Pipeline 的关系
+
+Idea2Product 的算法/模型设计优化遵循一个独立但紧密耦合的循环（问题定义 → 指标与约束 → 搜索空间 → 基线方案 → 实验 → 集成 → 回归），详细见 `[ALGO_OPTIMIZATION_FLOW.md](ALGO_OPTIMIZATION_FLOW.md)`。
+
+与 4 阶段的对应关系大致为：
+
+- **Stage 1 Requirements**：将用户需求和当前失败模式抽象为“可优化的算法问题”（例如：模型选择策略、任务划分策略等）。
+- **Stage 2 Planning**（尤其是 `AlgorithmAnalysisAgent` 与 `SchemePlanningAgent`）：承载算法搜索空间设计与基线方案选择。
+- **Stage 3 Code Generation**：将选定的算法策略实现为可配置的代码（接口优先，实现可替换）。
+- **Stage 4 Validation**：通过 `FullCycleTestingAgent`、`FineTuningAgent`、`VisualVerificationAgent` 以及 benchmark 脚本收集指标并驱动下一个优化循环。
+
 ## Configuration
 
 - **Settings** (`config/settings.py`): Pydantic-settings, env vars, feature flags

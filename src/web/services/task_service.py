@@ -346,8 +346,13 @@ class TaskService:
         with self._lock:
             task = self.tasks.get(project_id)
             if task:
-                return dict(task)
-        return self._load_project(project_id)
+                project = dict(task)
+            else:
+                project = self._load_project(project_id)
+        if not project:
+            return None
+        project.update(self._timeline_for_project(project_id))
+        return project
 
     def list_projects(self) -> List[Dict[str, Any]]:
         projects = []
@@ -356,12 +361,14 @@ class TaskService:
         with self._lock:
             for pid, task in self.tasks.items():
                 seen.add(pid)
-                projects.append({
+                base = {
                     "project_id": pid,
                     "requirement": task.get("requirement", ""),
                     "status": task.get("status", "unknown"),
                     "created_at": task.get("created_at", ""),
-                })
+                }
+                base.update(self._timeline_for_project(pid))
+                projects.append(base)
 
         data_dir = self.settings.projects_dir
         if data_dir.exists():
@@ -369,12 +376,14 @@ class TaskService:
                 if proj_dir.is_dir() and proj_dir.name not in seen:
                     project = self._load_project(proj_dir.name)
                     if project:
-                        projects.append({
+                        base = {
                             "project_id": proj_dir.name,
                             "requirement": project.get("requirement", ""),
                             "status": project.get("status", "completed"),
                             "created_at": project.get("created_at", ""),
-                        })
+                        }
+                        base.update(self._timeline_for_project(proj_dir.name))
+                        projects.append(base)
         return projects
 
     def list_files(self, project_id: str) -> Optional[List[Dict[str, str]]]:
@@ -473,6 +482,103 @@ class TaskService:
             "created_at": "",
             "result": {"is_deployable": True, "files_count": 0, "test_passed": True},
         }
+
+    def get_plan(self, project_id: str) -> Optional[Dict[str, Any]]:
+        """Return persisted EngineeringPlan JSON for a project, if available."""
+        artifacts = self.settings.projects_dir / project_id / "artifacts"
+        plan_path = artifacts / "02_engineering_plan.json"
+        if not plan_path.exists():
+            return None
+        try:
+            return json.loads(plan_path.read_text(encoding="utf-8"))
+        except Exception as ex:
+            logger.debug("Could not read engineering plan for %s: %s", project_id, ex)
+            return None
+
+    def update_plan(self, project_id: str, patch: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Patch persisted EngineeringPlan (currently supports safe task field updates)."""
+        artifacts = self.settings.projects_dir / project_id / "artifacts"
+        plan_path = artifacts / "02_engineering_plan.json"
+        if not plan_path.exists():
+            return None
+        try:
+            data = json.loads(plan_path.read_text(encoding="utf-8"))
+        except Exception as ex:
+            logger.debug("Could not read engineering plan for patch %s: %s", project_id, ex)
+            return None
+
+        tasks_patch = patch.get("tasks") or []
+        if tasks_patch:
+            # Index existing tasks by id
+            tasks = data.get("tasks") or []
+            index = {t.get("id"): t for t in tasks if isinstance(t, dict) and t.get("id")}
+            allowed_keys = {"name", "description", "priority", "estimated_complexity"}
+            for tp in tasks_patch:
+                if not isinstance(tp, dict):
+                    continue
+                tid = tp.get("id")
+                if not tid or tid not in index:
+                    continue
+                target = index[tid]
+                for key, value in tp.items():
+                    if key == "id":
+                        continue
+                    # allow title as alias for name
+                    if key == "title":
+                        key = "name"
+                    if key in allowed_keys:
+                        target[key] = value
+
+        # Validate via data model to avoid breaking changes
+        try:
+            from src.core.data_models import EngineeringPlan
+
+            plan_obj = EngineeringPlan.model_validate(data)
+            data = plan_obj.model_dump(mode="json")
+        except Exception as ex:
+            logger.debug("EngineeringPlan validation failed during update for %s: %s", project_id, ex)
+            return None
+
+        try:
+            plan_path.parent.mkdir(parents=True, exist_ok=True)
+            write_json(plan_path, data)
+        except Exception as ex:
+            logger.warning("Failed to persist updated engineering plan for %s: %s", project_id, ex)
+            return None
+        return data
+
+    def _timeline_for_project(self, project_id: str) -> Dict[str, str]:
+        """Derive simple timeline metadata from artifacts (ISO8601 strings or '')."""
+        artifacts = self.settings.projects_dir / project_id / "artifacts"
+        timeline: Dict[str, str] = {
+            "planning_completed_at": "",
+            "generation_completed_at": "",
+            "validation_last_run_at": "",
+        }
+        try:
+            plan_file = artifacts / "02_engineering_plan.json"
+            if plan_file.exists():
+                ts = datetime.fromtimestamp(plan_file.stat().st_mtime).isoformat()
+                timeline["planning_completed_at"] = ts
+            repo_file = artifacts / "03_code_repository.json"
+            if repo_file.exists():
+                ts = datetime.fromtimestamp(repo_file.stat().st_mtime).isoformat()
+                timeline["generation_completed_at"] = ts
+            runs_file = artifacts / "validation_runs.json"
+            if runs_file.exists():
+                data = read_json_safe(runs_file) or []
+                if isinstance(data, list) and data:
+                    last = sorted(
+                        data,
+                        key=lambda r: r.get("finished_at") or r.get("started_at") or "",
+                        reverse=True,
+                    )[0]
+                    finished = last.get("finished_at") or last.get("started_at")
+                    if finished:
+                        timeline["validation_last_run_at"] = finished
+        except Exception as ex:
+            logger.debug("Could not build timeline for %s: %s", project_id, ex)
+        return timeline
 
     @staticmethod
     def _guess_language(ext: str) -> str:

@@ -28,3 +28,22 @@
 $auth_checklist_section
 ## API Endpoints
 $api_info
+
+## Code Correctness Rules (MUST FOLLOW)
+
+1. **Imports MUST match actual modules**：
+   - 所有 `import` / `from ... import ...` 必须引用真实存在的模块或符号；
+   - **禁止**凭空创建不存在的模块名或从未定义的符号；
+   - 对于应用内部模块，优先使用 `app` 包中的已有文件（例如 `app.routes.*`, `app.models.*`）。
+2. **Respect interface-first contracts**：
+   - 函数/方法的参数和返回类型 **必须**与 `.pyi` stub / InterfaceSpec / Skeleton 中的签名保持一致；
+   - 不要随意改变返回类型（例如把 `List[str]` 改成 `str`），宁可先返回简单但类型正确的实现。
+3. **Prefer safe fallbacks over guessing**：
+   - 如果你不确定如何实现某个复杂逻辑，**宁可**使用安全占位实现（例如 `raise NotImplementedError` 或最小可用逻辑），也不要生成看起来复杂但容易出错的代码；
+   - 当需要调用其他模块中的函数时，先对照已给出的接口签名（Skeleton / symbol_table），避免猜测参数顺序或名称。
+4. **External resources must be wrapped and validated**：
+   - 对文件、网络请求、数据库访问使用清晰的封装函数，并添加基本错误处理（try/except）；
+   - 确保在异常路径下不会悄悄吞掉错误（记录日志或抛出合适的异常）。
+5. **Do not ignore obvious errors**：
+   - 若在阅读现有文件时发现明显错误（比如未使用的导入、死代码、无法到达的分支），在完成当前任务前一并修正；
+   - 避免引入新的 `bare except`、未使用变量、重复逻辑等会增加 bug 风险的模式。

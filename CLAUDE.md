@@ -76,12 +76,16 @@ mypy src/
 - `SKIP_FLOW_EXTRACTION`, `USE_FAST_MODEL_FOR_TASK_REVIEW`, `FAST_MODEL_FOR_REVIEW` — Task Division Agent
 - `SKIP_HF_FOR_SIMPLE_TASKS`, `SKIP_FLOW_IN_ALGORITHM`, `ENABLE_HF_CACHE` — Algorithm Analysis Agent
 - `SKIP_API_REVIEW_WHEN_SIMPLE`, `USE_FAST_MODEL_FOR_API_REVIEW`, `SKIP_FLOW_IN_SCHEME_PLANNING` — Scheme Planning Agent
-- `USE_FAST_MODEL_FOR_SIMPLE_CODE_TASKS`, `FAST_MODEL_FOR_CODE_GEN`, `SKIP_MINING_FOR_SIMPLE_TASKS` — Code Generation Agent
+- `USE_FAST_MODEL_FOR_SIMPLE_CODE_TASKS`, `FAST_MODEL_FOR_CODE_GEN`, `SKIP_MINING_FOR_SIMPLE_TASKS`, `ENABLE_STAGE3_SYNTAX_CHECK`, `ENABLE_STAGE3_IMPORT_SANITY_CHECK` — Code Generation Agent
 - `CODE_MINING_PARALLEL_WORKERS`, `CODE_MINING_MAX_CONTEXT_CHARS`, `CODE_MINING_DEDUPLICATE_QUERIES` — Code Mining Agent
 - `ENABLE_PARALLEL_STAGE3_PREFETCH` — When True (default), run CodeMemory pre_execute and CodeMining execute in parallel in Stage 3
 - `MAX_SYSTEM_PROMPT_CHARS`, `USE_FAST_MODEL_FOR_SYNTAX_FIX`, `CODE_GEN_SYNTAX_FIX_RETRIES` — Code Generation Agent
 - `ENABLE_IMAGE_GENERATION`, `IMAGE_GENERATION_PROVIDER` — Image generation (openai | generic_http); when True, Stage 3 runs asset generation (hero/placeholder images to generated/static/images/)
 - `IMAGE_GENERATION_OPENAI_MODEL`, `IMAGE_GENERATION_BASE_URL`, `IMAGE_GENERATION_API_KEY` — OpenAI DALL-E or generic HTTP provider; `IMAGE_GENERATION_RESPONSE_IMAGE_PATH`, `IMAGE_GENERATION_EXTRA_HEADERS`, `IMAGE_GENERATION_TIMEOUT` for generic_http
+- `ENABLE_VIDEO_GENERATION`, `VIDEO_GENERATION_PROVIDER`, `VIDEO_GENERATION_BASE_URL`, `VIDEO_GENERATION_API_KEY` — Optional video generation service（text/script → mp4），用于教程/演示视频等
+- `ENABLE_PPT_GENERATION`, `PPT_GENERATION_PROVIDER`, `PPT_GENERATION_BASE_URL`, `PPT_GENERATION_API_KEY` — Optional PPT 生成服务（结构化大纲 → pptx）
+- `ENABLE_LATEX_GENERATION`, `LATEX_GENERATION_PROVIDER`, `LATEX_GENERATION_BASE_URL`, `LATEX_GENERATION_API_KEY` — Optional LaTeX/PDF 生成服务（文档导出）
+- `ENABLE_AUDIO_GENERATION`, `AUDIO_GENERATION_PROVIDER`, `AUDIO_GENERATION_BASE_URL`, `AUDIO_GENERATION_API_KEY` — Optional 音频生成服务（TTS/音乐）
 - `ENABLE_STAGE2_WEB_SEARCH`, `WEB_SEARCH_PROVIDER`, `WEB_SEARCH_API_KEY` — Stage 2 model discovery: when True, ModelIntegrationPlanningAgent searches web for external APIs and writes plan.external_model_specs; Serper uses WEB_SEARCH_API_KEY or SERPER_API_KEY
 - `EXPOSE_ERROR_DETAILS` — When True, 500 API responses may include error details; when False (default), return generic "Internal server error" only; server always logs full exception
 

@@ -33,8 +33,19 @@ $requirement
 
 ## Output
 
-Return a JSON array (no markdown fences):
+Return a JSON array (no markdown fences) with **questions + options**:
 [
-  {"id": "q1", "category": "functional", "question": "..."},
+  {
+    "id": "q1",
+    "category": "functional",
+    "question": "...",
+    "options": [
+      {"id": "opt_simple", "label": "Simple MVP version"},
+      {"id": "opt_full", "label": "Full-featured version"},
+      {"id": "opt_not_sure", "label": "Not sure yet"}
+    ],
+    "allow_multiple": false,
+    "allow_other": true
+  },
   ...
 ]

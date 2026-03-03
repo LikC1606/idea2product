@@ -53,20 +53,91 @@ _ML_TASK_KEYWORDS: Dict[str, str] = {
     "translation": "translation",
 }
 
-# Keywords that suggest non-HF external capabilities (image gen, TTS, etc.) for ModelIntegrationPlanningAgent
+# Keywords that suggest non-HF external capabilities (image/video gen, TTS, PPT, LaTeX, etc.)
+# for ModelIntegrationPlanningAgent. Keys are capability_type values for ExternalModelSpec.
 _EXTERNAL_CAPABILITY_KEYWORDS: Dict[str, List[str]] = {
     "image_generation": [
-        "图片生成", "image generation", "hero", "placeholder", "generate image",
-        "图生", "配图", "banner", "头图", "dall", "imagen", "stable diffusion",
+        "图片生成",
+        "image generation",
+        "hero",
+        "placeholder",
+        "generate image",
+        "图生",
+        "配图",
+        "banner",
+        "头图",
+        "dall",
+        "imagen",
+        "stable diffusion",
     ],
     "tts": [
-        "语音", "tts", "text to speech", "read aloud", "朗读", "语音合成",
+        "语音",
+        "tts",
+        "text to speech",
+        "read aloud",
+        "朗读",
+        "语音合成",
+        "audio narration",
+    ],
+    # Multimodal generation capabilities discovered in Stage 2
+    "video_generation": [
+        "视频",
+        "video",
+        "shorts",
+        "讲解视频",
+        "课程视频",
+        "demo 视频",
+        "动画",
+        "剪辑",
+        "text to video",
+        "generate video",
+    ],
+    "ppt_generation": [
+        "ppt",
+        "幻灯片",
+        "slides",
+        "演示文稿",
+        "deck",
+        "slide deck",
+        "pitch deck",
+    ],
+    "latex_generation": [
+        "latex",
+        "tex",
+        "公式",
+        "数学排版",
+        "论文模版",
+        "math document",
+        "数学文档",
+        "导出为 latex",
+    ],
+    "audio_tts": [
+        "旁白",
+        "配音",
+        "语音播报",
+        "text to speech",
+        "tts",
+        "audio narration",
+        "voice over",
+    ],
+    "audio_music": [
+        "背景音乐",
+        "bgm",
+        "配乐",
+        "music generation",
+        "生成音乐",
+        "生成音效",
     ],
 }
 
 
 def _infer_external_capabilities(requirements: Requirements, tasks: List[Task]) -> List[Tuple[str, str]]:
-    """Infer which external capabilities (image_generation, tts, ...) are needed from requirements and tasks."""
+    """Infer which external capabilities are needed from requirements and tasks.
+
+    Returns a list of (capability_type, reason_keyword) pairs, where capability_type
+    matches keys in _EXTERNAL_CAPABILITY_KEYWORDS (e.g., image_generation, tts,
+    video_generation, ppt_generation, latex_generation, audio_tts, audio_music).
+    """
     text_parts = [
         requirements.title or "",
         requirements.description or "",
@@ -1005,6 +1076,74 @@ class ModelIntegrationPlanningAgent:
         self.llm_service = llm_service
         self.web_search_provider = web_search_provider
 
+    def _llm_infer_capabilities(
+        self,
+        requirements: Requirements,
+        tasks: List[Task],
+        settings: Any = None,
+    ) -> List[Tuple[str, str]]:
+        """Optionally use LLM to infer external capabilities (video, ppt, latex, audio, etc.)."""
+        # Guard: feature flag, default off for backwards compatibility
+        if settings is not None and not getattr(
+            settings, "enable_stage2_llm_capability_infer", False
+        ):
+            return []
+
+        allowed_caps = ", ".join(sorted(_EXTERNAL_CAPABILITY_KEYWORDS.keys()))
+        tasks_summary = "\n".join(
+            f"- {t.id}: {t.name} - {(t.description or '')[:120]}"
+            for t in tasks[:20]
+        )
+        prompt = f"""
+You are helping design integrations with external APIs (non-LLM) for an app.
+
+App title: {requirements.title}
+Description: {(requirements.description or '')[:500]}
+
+Key features:
+{chr(10).join(f"- {f.name}: {(f.description or '')[:120]}" for f in requirements.features[:12])}
+
+Current tasks:
+{tasks_summary}
+
+From this description, infer which external capabilities are needed from the following set:
+{allowed_caps}
+
+Only include capabilities that clearly add value (e.g., image/video generation, TTS, PPT export, LaTeX export, audio).
+
+Respond in JSON array format, for example:
+[
+  {{"capability_type": "video_generation", "reason": "User wants tutorial videos for each feature"}},
+  {{"capability_type": "ppt_generation", "reason": "User needs downloadable slide decks"}}
+]
+
+Do not include capabilities that are not clearly implied by the requirements.
+"""
+        import json
+
+        try:
+            result = self.llm_service.generate_json(prompt)
+        except Exception as e:
+            logger.debug("LLM capability inference failed: %s", e)
+            return []
+        if not result:
+            return []
+        if isinstance(result, dict):
+            # tolerate dict with capabilities list
+            items = result.get("capabilities") or []
+        else:
+            items = result
+        inferred: List[Tuple[str, str]] = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            cap = str(item.get("capability_type", "")).strip()
+            reason = str(item.get("reason", "")).strip()
+            if not cap or cap not in _EXTERNAL_CAPABILITY_KEYWORDS:
+                continue
+            inferred.append((cap, reason or cap))
+        return inferred
+
     def execute(
         self,
         requirements: Requirements,
@@ -1014,23 +1153,46 @@ class ModelIntegrationPlanningAgent:
     ) -> List[ExternalModelSpec]:
         if not self.web_search_provider:
             return []
+        # 1) Keyword-based capabilities
         capabilities = _infer_external_capabilities(requirements, tasks)
-        if not capabilities:
+        # 2) Optional LLM-based capability inference for richer multimodal detection
+        llm_caps: List[Tuple[str, str]] = []
+        try:
+            llm_caps = self._llm_infer_capabilities(requirements, tasks, settings=settings)
+        except Exception as e:
+            logger.debug("LLM-based capability inference skipped due to error: %s", e)
+
+        merged: Dict[str, str] = {}
+        for cap, reason in capabilities + llm_caps:
+            if cap not in merged:
+                merged[cap] = reason
+        capabilities_merged: List[Tuple[str, str]] = [(c, r) for c, r in merged.items()]
+
+        if not capabilities_merged:
             return []
         num_results = 5
         if settings:
             num_results = getattr(settings, "web_search_num_results", 5) or 5
         search_results_by_cap: Dict[str, str] = {}
-        for cap_type, _ in capabilities:
-            queries = [f"{cap_type.replace('_', ' ')} API documentation", f"{cap_type.replace('_', ' ')} API 2024"]
+        for cap_type, reason in capabilities_merged:
+            natural_name = cap_type.replace("_", " ")
+            # Use slightly richer queries to bias towards 2025/2026 docs and API references
+            queries = [
+                f"{natural_name} API documentation 2026",
+                f"{natural_name} REST API reference",
+            ]
+            if reason:
+                queries.append(f"{natural_name} {reason} API 2026")
             snippets = []
-            for q in queries[:2]:
+            for q in queries[:3]:
                 results = self.web_search_provider.search(q, num_results=num_results)
                 for r in results:
                     snippets.append(f"- {r.get('title', '')}: {r.get('link', '')}\n  {r.get('snippet', '')}")
             search_results_by_cap[cap_type] = "\n\n".join(snippets) if snippets else "No results."
-        capabilities_list = ", ".join(f"{c[0]} ({c[1]})" for c in capabilities)
-        search_results = "\n---\n".join(f"## {cap}\n{search_results_by_cap.get(cap, '')}" for cap, _ in capabilities)
+        capabilities_list = ", ".join(f"{c[0]} ({c[1]})" for c in capabilities_merged)
+        search_results = "\n---\n".join(
+            f"## {cap}\n{search_results_by_cap.get(cap, '')}" for cap, _ in capabilities_merged
+        )
         prompt = _prompt_loader.format(
             "model_integration_planning",
             title=requirements.title or "App",

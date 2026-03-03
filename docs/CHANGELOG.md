@@ -60,6 +60,27 @@
 
 ---
 
+## 2026-03-03 | agents, services, config Stage 2 多模态模型发现与接入设计扩展
+
+- **Stage 2 能力类型**：扩展 `_EXTERNAL_CAPABILITY_KEYWORDS` 与 ExternalModelSpec.capability_type 语义，支持 `video_generation`、`ppt_generation`、`latex_generation`、`audio_tts`、`audio_music` 等多模态能力，用于发现视频/PPT/LaTeX/音频相关外部服务
+- **ModelIntegrationPlanningAgent**：增加可选 LLM 能力推断（`enable_stage2_llm_capability_infer`），在关键词基础上用 LLM 辅助识别需要的外部能力，并对每种能力构造更丰富的搜索 query（偏向 2026 API 文档）
+- **多模态服务抽象**：新增 `video_generation_service.py`、`ppt_generation_service.py`、`latex_generation_service.py`、`audio_generation_service.py`，分别定义 Video/Presentation/Latex/AudioGenerationProvider 及对应 GenericHTTP*Provider 与工厂函数（get_video_provider/get_ppt_provider/get_latex_provider/get_audio_provider）
+- **配置**：config/settings.py 增加 `enable_video_generation` / `enable_ppt_generation` / `enable_latex_generation` / `enable_audio_generation` 及各自的 provider/base_url/api_key/timeout/extra_headers 配置；新增 `enable_stage2_llm_capability_infer`
+- **文档**：DATA_MODELS_REF 补充 ExternalModelSpec 多模态 capability_type 示例；AGENTS_REF 扩展 ModelIntegrationPlanningAgent 行为说明（多模态能力 + LLM 推断）；SERVICES_REF 新增多模态生成服务章节；CLAUDE.md 环境变量增加多模态相关开关；CHANGELOG 记录
+
+---
+
+## 2026-03-03 | web, agents, data-models 全流程 UX 优化（规划/验证/时间线）
+
+- **Stage 2 规划可视化/编辑**：TaskService 暴露 `get_plan` / `update_plan`（基于 artifacts/02_engineering_plan.json），新增 `GET/PATCH /api/projects/{id}/plan` 接口，前者返回完整 EngineeringPlan JSON，后者安全地允许更新任务的 name/description/priority/estimated_complexity 等字段，并通过 EngineeringPlan 校验
+- **验证历史记录**：新增数据模型 ValidationRun（run_id, project_id, stage, status, started_at, finished_at, metrics, summary）；Orchestrator 在 Stage 4 完成后调用 `_record_validation_run` 将本次验证摘要附加到 artifacts/validation_runs.json，metrics 含 errors/warnings/logic_passed/visual_passed
+- **验证 Dashboard API**：新增 `GET /api/projects/{id}/validation-runs` 与 `GET /api/projects/{id}/validation-runs/<run_id>`，分别返回项目的验证历史列表与单次验证详情，供后续前端仪表盘使用
+- **项目时间线元数据**：TaskService 基于 artifacts 文件时间与 validation_runs.json 推导 `planning_completed_at`、`generation_completed_at`、`validation_last_run_at`，并在项目列表/详情 API 中一并返回，便于前端构建时间线视图
+- **项目概览接口**：新增 `GET /api/projects/{id}/overview`，聚合项目当前状态、时间线、轻量的 plan_summary（任务数 + 架构备注截断）以及 latest_validation（最近一次 ValidationRun），作为仪表盘卡片的数据源
+- **文档**：WEB_FLOW_REF 更新项目相关 REST API 表；DATA_MODELS_REF 增加 ValidationRun 描述；CHANGELOG 记录本次 UX 优化改动
+
+---
+
 ## 2026-03-03 | agents, config, data-models Agent 接口连接与性能优化（更稳妥路径）
 
 - **文档**：AGENTS_REF 增加 Stage Input/Output 契约表（各阶段进入/写回 context、阶段内显式传参、Stage 4 磁盘契约）
@@ -180,3 +201,15 @@
 - 新增 docs/CONTEXT_INDEX.md、docs/refs/*、docs/specs/CODE_GEN_SPEC.md
 - 新增 .cursor/rules/*.mdc（project-context、doc-sync、core-pipeline、agents、web-layer、code-generation）
 - 精简 CLAUDE.md，增加 CONTEXT_INDEX 链接
+
+## 2026-03-03 | code-gen, agents, config, troubleshooting Stage 3 代码正确性优化（Skeleton + Prompt + 检查）
+
+- **Skeleton 质量校验**：在 `skeleton_builder.build_skeleton_from_pyi_stubs` 之上新增 `validate_skeleton`，对依赖图节点/边、entry_point 等做轻量检查，并在日志中输出 warning，供 Stage 3 提前发现明显结构问题。
+- **Prompt 强化正确性规则**：更新 `config/prompts/code_gen_critical_rules.txt` 与 `code_gen_quality.txt`，强调接口/类型约束、禁止臆造模块、优先使用安全占位实现，以及「正确性 > 清晰性 > 性能」的优先级原则。
+- **Stage 3 检查开关**：在 `config/settings.py` 中新增 `enable_stage3_syntax_check` 与 `enable_stage3_import_sanity_check`，并在 `CodeGenerationAgent` 中按配置控制语法检查与内部导入健全性检查（扫描 `app.*` 模块引用是否对应生成模块）。
+- **Agent 文档与排错说明**：更新 `AGENTS_REF` 中 CodeGenerationAgent 小节以反映新的正确性检查行为；在 `CLAUDE.md` 环境变量列表中增加 Stage 3 检查相关开关；在 `docs/TROUBLESHOOTING.md` 中新增「Stage 3 常见错误与预防」表，覆盖 SyntaxError 爆发、内部模块导入错误与 Skeleton 异常等场景。
+
+## 2026-03-03 | other 设计优化全流程文档
+
+- 新增 `docs/OPTIMIZATION_FLOW.md`，给出面向 4 阶段流水线的统一设计优化循环（问题发现→现状建模→指标设计→方案与优先级→实验→实施→验证与回滚）
+- 在 `docs/DEVELOPMENT_PLAN.md` 中增加指向 OPTIMIZATION_FLOW 的说明，约定后续优化专题可复用该流程与模板

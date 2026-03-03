@@ -16,6 +16,26 @@ from .web_search_service import (
     SerperSearchProvider,
     get_web_search_provider,
 )
+from .video_generation_service import (
+    VideoGenerationProvider,
+    GenericHTTPVideoProvider,
+    get_video_provider,
+)
+from .ppt_generation_service import (
+    PresentationGenerationProvider,
+    GenericHTTPPresentationProvider,
+    get_ppt_provider,
+)
+from .latex_generation_service import (
+    LatexGenerationProvider,
+    GenericHTTPLatexProvider,
+    get_latex_provider,
+)
+from .audio_generation_service import (
+    AudioGenerationProvider,
+    GenericHTTPAudioProvider,
+    get_audio_provider,
+)
 
 __all__ = [
     "LLMService",
@@ -30,4 +50,16 @@ __all__ = [
     "WebSearchProvider",
     "SerperSearchProvider",
     "get_web_search_provider",
+    "VideoGenerationProvider",
+    "GenericHTTPVideoProvider",
+    "get_video_provider",
+    "PresentationGenerationProvider",
+    "GenericHTTPPresentationProvider",
+    "get_ppt_provider",
+    "LatexGenerationProvider",
+    "GenericHTTPLatexProvider",
+    "get_latex_provider",
+    "AudioGenerationProvider",
+    "GenericHTTPAudioProvider",
+    "get_audio_provider",
 ]

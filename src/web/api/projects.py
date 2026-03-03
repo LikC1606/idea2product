@@ -313,6 +313,145 @@ def get_visual_report(project_id):
 
 
 # ======================================================================
+# Planning & validation APIs
+# ======================================================================
+
+
+@bp.route("/<project_id>/plan", methods=["GET"])
+def get_project_plan(project_id):
+    """Return persisted EngineeringPlan for a project, if available."""
+    ts = _get_task_service()
+    plan = ts.get_plan(project_id)
+    if plan is None:
+        return jsonify({"error": "Plan not found for this project"}), 404
+    return jsonify(plan)
+
+
+@bp.route("/<project_id>/plan", methods=["PATCH"])
+def patch_project_plan(project_id):
+    """Patch EngineeringPlan (safe fields only, currently task-level name/description/priority/complexity)."""
+    try:
+        data = request.get_json(silent=False) or {}
+    except Exception:
+        return jsonify({"error": "Invalid JSON in request body"}), 400
+    ts = _get_task_service()
+    project = ts.get_project(project_id)
+    if not project:
+        return jsonify({"error": "Project not found"}), 404
+    try:
+        updated = ts.update_plan(project_id, data)
+    except Exception as e:
+        logger.exception(e)
+        err_msg = str(e) if getattr(get_settings(), "expose_error_details", False) else "Internal server error"
+        return jsonify({"error": err_msg}), 500
+    if updated is None:
+        return jsonify({"error": "Failed to update plan (no existing plan or invalid patch)"}), 400
+    return jsonify(updated)
+
+
+@bp.route("/<project_id>/validation-runs", methods=["GET"])
+def list_validation_runs(project_id):
+    """List validation runs for a project (if any)."""
+    ts = _get_task_service()
+    project = ts.get_project(project_id)
+    if not project:
+        return jsonify({"error": "Project not found"}), 404
+    artifacts = get_settings().projects_dir / project_id / "artifacts"
+    runs_file = artifacts / "validation_runs.json"
+    if not runs_file.exists():
+        return jsonify({"runs": []})
+    try:
+        data = json.loads(runs_file.read_text(encoding="utf-8")) or []
+    except Exception as e:
+        logger.exception(e)
+        err_msg = str(e) if getattr(get_settings(), "expose_error_details", False) else "Internal server error"
+        return jsonify({"error": err_msg}), 500
+    if not isinstance(data, list):
+        data = []
+    # sort by finished_at / started_at desc
+    data = sorted(
+        data,
+        key=lambda r: r.get("finished_at") or r.get("started_at") or "",
+        reverse=True,
+    )
+    return jsonify({"runs": data})
+
+
+@bp.route("/<project_id>/validation-runs/<run_id>", methods=["GET"])
+def get_validation_run(project_id, run_id):
+    """Get details for a single validation run."""
+    settings = get_settings()
+    artifacts = settings.projects_dir / project_id / "artifacts"
+    runs_file = artifacts / "validation_runs.json"
+    if not runs_file.exists():
+        return jsonify({"error": "No validation runs for this project"}), 404
+    try:
+        data = json.loads(runs_file.read_text(encoding="utf-8")) or []
+    except Exception as e:
+        logger.exception(e)
+        err_msg = str(e) if getattr(settings, "expose_error_details", False) else "Internal server error"
+        return jsonify({"error": err_msg}), 500
+    if not isinstance(data, list):
+        data = []
+    for run in data:
+        if run.get("run_id") == run_id:
+            return jsonify(run)
+    return jsonify({"error": "Validation run not found"}), 404
+
+
+@bp.route("/<project_id>/overview", methods=["GET"])
+def get_project_overview(project_id):
+    """Return aggregated overview: project status, timeline, plan & latest validation summary."""
+    settings = get_settings()
+    ts = _get_task_service()
+    project = ts.get_project(project_id)
+    if not project:
+        return jsonify({"error": "Project not found"}), 404
+
+    artifacts = settings.projects_dir / project_id / "artifacts"
+
+    # Plan summary (very lightweight)
+    plan_summary = None
+    plan_file = artifacts / "02_engineering_plan.json"
+    if plan_file.exists():
+        try:
+            plan_data = json.loads(plan_file.read_text(encoding="utf-8"))
+            tasks = plan_data.get("tasks") or []
+            arch = plan_data.get("architecture_notes") or ""
+            plan_summary = f"{len(tasks)} tasks planned" + (f"; {arch[:140]}" if arch else "")
+        except Exception as e:
+            logger.debug("Failed to build plan summary for %s: %s", project_id, e)
+
+    # Latest validation run (if any)
+    latest_run = None
+    runs_file = artifacts / "validation_runs.json"
+    if runs_file.exists():
+        try:
+            runs = json.loads(runs_file.read_text(encoding="utf-8")) or []
+            if isinstance(runs, list) and runs:
+                runs = sorted(
+                    runs,
+                    key=lambda r: r.get("finished_at") or r.get("started_at") or "",
+                    reverse=True,
+                )
+                latest_run = runs[0]
+        except Exception as e:
+            logger.debug("Failed to read validation runs for overview %s: %s", project_id, e)
+
+    overview = {
+        "project": project,
+        "timeline": {
+            "planning_completed_at": project.get("planning_completed_at", ""),
+            "generation_completed_at": project.get("generation_completed_at", ""),
+            "validation_last_run_at": project.get("validation_last_run_at", ""),
+        },
+        "plan_summary": plan_summary,
+        "latest_validation": latest_run,
+    }
+    return jsonify(overview)
+
+
+# ======================================================================
 # Legacy analysis endpoints (kept for backward compat)
 # ======================================================================
 
@@ -345,12 +484,24 @@ def clarify_requirement():
         llm_service = LLMService.from_settings(settings)
         agent = InteractionAgent(llm_service)
         questions = agent.generate_clarification_questions(requirement)
-        return jsonify({
-            "questions": [
-                {"id": q.id, "category": q.category, "question": q.question}
-                for q in questions
-            ]
-        })
+        return jsonify(
+            {
+                "questions": [
+                    {
+                        "id": q.id,
+                        "category": q.category,
+                        "question": q.question,
+                        "options": [
+                            {"id": opt.id, "label": opt.label}
+                            for opt in (q.options or [])
+                        ],
+                        "allow_multiple": bool(q.allow_multiple),
+                        "allow_other": bool(q.allow_other),
+                    }
+                    for q in questions
+                ]
+            }
+        )
     except Exception as e:
         logger.exception(e)
         err_msg = str(e) if getattr(get_settings(), "expose_error_details", False) else "Internal server error"

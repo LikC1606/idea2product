@@ -43,6 +43,14 @@
 | **StageExecutionError** | 某阶段执行失败时 Orchestrator 抛出的异常 | 查看 `stage` 属性（1～4）和 `partial_context`（或 `data/projects/<id>/artifacts/context.json`）定位失败阶段；根据 `__cause__` 或日志排查具体原因 |
 | **500 响应仅返回 "Internal server error"** | 生产态下 Web API 不向客户端返回详细错误内容 | 服务端会通过 `logger.exception` 记录完整异常；查服务端日志获取堆栈。若需在响应中看到详情，可设置 `EXPOSE_ERROR_DETAILS=true`（仅用于调试） |
 
+## Stage 3（CodeGeneration）常见错误与预防
+
+| 现象 | 可能原因 | 解决步骤 |
+|------|----------|----------|
+| 生成应用在 Stage 4 立刻报大量 **SyntaxError** | LLM 在单个任务中引入了多处 Python 语法错误 | Stage 3 已内置语法检查与自动修复循环；可检查 `data/projects/<id>/logs/` 中与 `CodeGenerationAgent` 相关的日志，确认是否已有多轮修复尝试。必要时可以暂时关闭 `ENABLE_STAGE3_SYNTAX_CHECK=false` 以缩短调试回合，但不推荐长期关闭。 |
+| 运行时报 **ModuleNotFoundError: No module named 'app.xxx'** | 代码引用了不存在的内部模块，或路由/模型文件名与导入不一致 | 利用 Stage 3 的导入健全性检查（`ENABLE_STAGE3_IMPORT_SANITY_CHECK=true`）在生成阶段提前发现此类问题；同时检查生成项目中 `app/routes/*`、`app/models/*` 与导入语句是否一一对应。 |
+| 特定任务一直 fallback 到最小 stub（功能缺失） | 接口信息不完整（pyi / interface_specs 不足）或 Skeleton 存在明显缺陷 | 检查 `EngineeringPlan` 中的 `pyi_stubs` 与 `interface_specs` 是否覆盖了该任务相关文件；查看日志中 Skeleton 校验的 warning（依赖图缺节点、entry_point 异常等），必要时先修复 Stage 2 规划输出再重跑。 |
+
 ## 相关文档
 
 - 代码生成规范：@docs/specs/CODE_GEN_SPEC.md

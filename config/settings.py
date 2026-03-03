@@ -89,6 +89,9 @@ class Settings(BaseSettings):
     max_system_prompt_chars: int = 16000
     use_fast_model_for_syntax_fix: bool = True
     code_gen_syntax_fix_retries: int = 1
+    # Stage 3 correctness checks (syntax/import sanity)
+    enable_stage3_syntax_check: bool = True
+    enable_stage3_import_sanity_check: bool = False
     enable_cross_project_memory: bool = False  # When True, search_similar_snippet may fall back to other projects
     enable_llm_code_adaptation: bool = False  # When True, use LLM to adapt mined code to interface (extra API cost)
     enable_visual_verification: bool = True
@@ -117,6 +120,38 @@ class Settings(BaseSettings):
     image_generation_response_image_path: Optional[str] = None  # e.g. "data[0].url"
     image_generation_timeout: int = 120
 
+    # Video generation (optional: tutorials, demos)
+    enable_video_generation: bool = False
+    video_generation_provider: str = "generic_http"  # generic_http | custom
+    video_generation_base_url: Optional[str] = None
+    video_generation_api_key: Optional[str] = None
+    video_generation_extra_headers: Optional[str] = None  # JSON string for generic_http
+    video_generation_timeout: int = 300
+
+    # PPT generation (optional: slide decks)
+    enable_ppt_generation: bool = False
+    ppt_generation_provider: str = "generic_http"
+    ppt_generation_base_url: Optional[str] = None
+    ppt_generation_api_key: Optional[str] = None
+    ppt_generation_extra_headers: Optional[str] = None
+    ppt_generation_timeout: int = 300
+
+    # LaTeX/PDF generation (optional: exportable documents)
+    enable_latex_generation: bool = False
+    latex_generation_provider: str = "generic_http"
+    latex_generation_base_url: Optional[str] = None
+    latex_generation_api_key: Optional[str] = None
+    latex_generation_extra_headers: Optional[str] = None
+    latex_generation_timeout: int = 300
+
+    # Audio generation (optional: TTS / music)
+    enable_audio_generation: bool = False
+    audio_generation_provider: str = "generic_http"
+    audio_generation_base_url: Optional[str] = None
+    audio_generation_api_key: Optional[str] = None
+    audio_generation_extra_headers: Optional[str] = None
+    audio_generation_timeout: int = 120
+
     # Review: when True, API specs review always runs (SchemePlanningAgent)
     always_review_api_specs: bool = True
     # When > 0, skip API review when endpoint count <= N and no auth
@@ -137,6 +172,8 @@ class Settings(BaseSettings):
     web_search_api_key: Optional[str] = None  # Serper: SERPER_API_KEY or web_search_api_key
     web_search_num_results: int = 5
     web_search_timeout: int = 15
+    # When True, use LLM to help infer external capabilities (video_generation, ppt_generation, etc.) in Stage 2
+    enable_stage2_llm_capability_infer: bool = False
 
     def __init__(self, **kwargs):
         # 临时清除可能存在的环境变量，确保从.env读取；初始化后恢复，避免副作用

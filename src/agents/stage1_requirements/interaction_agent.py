@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Dict, Any, List, Optional, Iterator
+
 from src.core.data_models import Requirements, Feature
 from src.core.context import ExecutionContext
 from src.services.llm_service import LLMService
@@ -19,17 +20,92 @@ _prompt_loader = PromptLoader(_PROMPTS_DIR)
 
 
 @dataclass
+class ClarificationOption:
+    """An answer option for a clarification question."""
+
+    id: str
+    label: str
+
+
+@dataclass
 class ClarificationQuestion:
-    """A clarification question to ask the user."""
+    """A clarification question to ask the user (optionally with choices)."""
+
     id: str
     category: str  # "functional", "technical", "data", "users", "ui"
     question: str
+    options: List[ClarificationOption] = field(default_factory=list)
+    allow_multiple: bool = False
+    allow_other: bool = True
     answer: Optional[str] = None
 
     def ask(self) -> str:
-        """Print the question and get user answer."""
+        """Print the question (with options when available) and get user answer."""
         print(f"\n[{self.category.upper()}] {self.question}")
-        answer = input("> ").strip()
+
+        # If no structured options, fall back to free-text question
+        if not self.options:
+            answer = input("> ").strip()
+            self.answer = answer
+            return answer
+
+        # Render options as numbered list
+        for idx, opt in enumerate(self.options, 1):
+            print(f"  {idx}) {opt.label}")
+        if self.allow_other:
+            print("  0) 其他 / 自定义（直接输入你的想法）")
+
+        raw = input("> ").strip()
+        if not raw:
+            self.answer = ""
+            return ""
+
+        selected_labels: List[str] = []
+        free_text: Optional[str] = None
+
+        def _label_for_index(i: int) -> Optional[str]:
+            if 1 <= i <= len(self.options):
+                return self.options[i - 1].label
+            return None
+
+        # 多选：逗号或空格分隔的数字
+        if self.allow_multiple and any(sep in raw for sep in [",", " ", "，"]):
+            parts = [p.strip() for p in raw.replace("，", ",").split(",") if p.strip()]
+            for p in parts:
+                if p.isdigit():
+                    idx = int(p)
+                    if idx == 0 and self.allow_other:
+                        continue
+                    label = _label_for_index(idx)
+                    if label:
+                        selected_labels.append(label)
+                else:
+                    # 非纯数字视为额外自由输入
+                    free_text = (free_text or "") + (" " if free_text else "") + p
+        elif raw.isdigit():
+            idx = int(raw)
+            if idx == 0 and self.allow_other:
+                # 用户将通过后续输入给出自定义答案
+                print("请输入你的自定义答案：")
+                free_text = input("> ").strip()
+            else:
+                label = _label_for_index(idx)
+                if label:
+                    selected_labels.append(label)
+                else:
+                    # 非法编号，退化为自由文本
+                    free_text = raw
+        else:
+            # 直接文本回答
+            free_text = raw
+
+        combined_parts: List[str] = []
+        if selected_labels:
+            combined_parts.append(", ".join(selected_labels))
+        if free_text:
+            combined_parts.append(free_text)
+
+        answer = " | ".join(combined_parts) if combined_parts else ""
         self.answer = answer
         return answer
 
@@ -240,7 +316,7 @@ class InteractionAgent:
         )
         try:
             result = self.llm_service.generate_json(prompt)
-            questions = []
+            questions: List[ClarificationQuestion] = []
             if isinstance(result, list):
                 items = result
             elif isinstance(result, dict):
@@ -251,11 +327,36 @@ class InteractionAgent:
             for i, q in enumerate(items, 1):
                 if not isinstance(q, dict):
                     continue
-                questions.append(ClarificationQuestion(
-                    id=q.get("id", f"q{i}"),
-                    category=q.get("category", "functional"),
-                    question=q.get("question", q.get("text", ""))
-                ))
+                # Parse options (if provided)
+                raw_options = q.get("options") or []
+                options: List[ClarificationOption] = []
+                if isinstance(raw_options, list):
+                    for j, opt in enumerate(raw_options, 1):
+                        if isinstance(opt, str):
+                            options.append(
+                                ClarificationOption(id=f"opt{j}", label=opt)
+                            )
+                        elif isinstance(opt, dict):
+                            label = opt.get("label") or opt.get("text") or ""
+                            if not label:
+                                continue
+                            options.append(
+                                ClarificationOption(
+                                    id=opt.get("id", f"opt{j}"),
+                                    label=label,
+                                )
+                            )
+
+                questions.append(
+                    ClarificationQuestion(
+                        id=q.get("id", f"q{i}"),
+                        category=q.get("category", "functional"),
+                        question=q.get("question", q.get("text", "")),
+                        options=options,
+                        allow_multiple=bool(q.get("allow_multiple", False)),
+                        allow_other=bool(q.get("allow_other", True)),
+                    )
+                )
 
             logger.info(f"Generated {len(questions)} clarification questions")
             return questions
