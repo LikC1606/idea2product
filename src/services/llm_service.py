@@ -46,14 +46,16 @@ class LLMService:
 
     @classmethod
     def from_settings(cls, settings) -> "LLMService":
-        """Create LLMService from a Settings instance."""
+        """Create LLMService from a Settings instance (uses primary_llm_provider)."""
+        from config.settings import get_primary_llm_config
+        api_key, base_url, model, vlm_model = get_primary_llm_config(settings)
         return cls(
-            api_key=settings.openai_api_key,
-            model=getattr(settings, "openai_model", "gpt-4o"),
-            vlm_model=getattr(settings, "openai_vlm_model", "gpt-4o"),
+            api_key=api_key,
+            model=model,
+            vlm_model=vlm_model,
             max_tokens=getattr(settings, "max_tokens", 4096),
             temperature=getattr(settings, "temperature", 0.7),
-            base_url=getattr(settings, "openai_base_url", "https://api.openai.com/v1"),
+            base_url=base_url,
             max_retries=getattr(settings, "max_retries", 3),
             timeout=getattr(settings, "llm_timeout_seconds", _DEFAULT_TIMEOUT),
         )

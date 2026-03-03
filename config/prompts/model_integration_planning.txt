@@ -1,0 +1,26 @@
+You are given an app description and a list of external capabilities that may be needed (e.g. image_generation, tts).
+Below are web search results for API documentation related to each capability.
+
+Your task: output a JSON array of external model/API specs. Each object must have:
+- capability_type: string (e.g. "image_generation", "tts")
+- provider_name: string (e.g. "OpenAI DALL-E", "Nanobanana")
+- docs_url: string or null (URL from search results)
+- api_docs_summary: string or null (1-2 sentence summary of how to use the API)
+- base_url_hint: string or null (API base URL if found in snippets)
+- auth_type: "api_key" | "bearer" | "none"
+- request_body_example: string or null (example request body or key names)
+- response_image_path: string or null (for image APIs only: JSON path to image in response, e.g. "data[0].url")
+- suggested_integration: string or null (e.g. "Use for hero image at static/images/hero.png")
+
+Output at most one spec per capability_type. Prefer well-documented, widely used APIs. If search results are insufficient, omit that capability or fill only the fields you can infer.
+
+App title: $title
+App description: $description
+
+Requested capabilities: $capabilities_list
+
+Search results:
+$search_results
+
+Respond with a valid JSON array only, no markdown. Example:
+[{"capability_type": "image_generation", "provider_name": "OpenAI Images", "docs_url": "https://...", "auth_type": "api_key", "suggested_integration": "Hero image at static/images/hero.png"}]

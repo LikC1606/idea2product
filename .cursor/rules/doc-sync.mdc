@@ -1,0 +1,28 @@
+---
+description: 修改代码后必须同步更新规范文档并记录变更
+alwaysApply: true
+---
+
+# 文档同步规范
+
+修改以下代码后，**必须**同步更新对应文档并追加 CHANGELOG：
+
+| 修改范围 | 更新文档 |
+|----------|----------|
+| src/agents/** | docs/refs/AGENTS_REF.md |
+| src/core/data_models.py | docs/refs/DATA_MODELS_REF.md |
+| src/web/** 或 API | docs/refs/WEB_FLOW_REF.md |
+| config/prompts/** | docs/refs/PROMPTS_REF.md |
+| 代码生成逻辑、templates/flask_base | docs/specs/CODE_GEN_SPEC.md |
+| src/services/** | docs/refs/SERVICES_REF.md |
+| src/utils/** (skeleton_builder, prompt_loader 等) | docs/specs/CODE_GEN_SPEC.md 或相关 ref |
+| config/settings.py | CLAUDE.md 的 Environment Variables |
+| 修复 bug、排查流程变化 | docs/TROUBLESHOOTING.md |
+
+**任意上述修改** → 追加 docs/CHANGELOG.md：
+```
+## YYYY-MM-DD | [scope] 简要描述
+```
+scope: agents | data-models | web | prompts | code-gen | services | utils | config | troubleshooting | other
+
+**编写新文档、修订 ARCHITECTURE、写设计文档时**：可使用 `npx openskills read doc-coauthoring` 引导结构化 co-authoring 流程。

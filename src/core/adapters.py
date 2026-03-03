@@ -11,6 +11,7 @@ from src.core.data_models import (
     Requirements,
     FileSpec,
     BDDTestCase,
+    ExternalModelSpec,
 )
 from src.utils.skeleton_builder import generate_minimal_pyi_from_interface_specs
 from src.utils.logger import get_logger
@@ -28,6 +29,7 @@ def engineering_plan_from_stage2(
     pyi_stubs: Dict[str, str],
     requirements: Requirements,
     bdd_test_cases: Optional[List[BDDTestCase]] = None,
+    external_model_specs: Optional[List[ExternalModelSpec]] = None,
     default_file_structure_fn=None,
 ) -> EngineeringPlan:
     """
@@ -36,6 +38,13 @@ def engineering_plan_from_stage2(
     Applies fallbacks: when pyi_stubs is empty but interface_specs exist,
     generates minimal pyi stubs. When file_structure is empty, uses default.
     """
+    if requirements is None:
+        raise ValueError("engineering_plan_from_stage2 requires non-None requirements")
+    if tasks is not None and not isinstance(tasks, list):
+        raise TypeError("tasks must be a list")
+    if algorithms is not None and not isinstance(algorithms, dict):
+        raise TypeError("algorithms must be a dict")
+
     effective_file_structure = list(file_structure or [])
     if not effective_file_structure and default_file_structure_fn and tasks:
         effective_file_structure = default_file_structure_fn(tasks)
@@ -73,4 +82,5 @@ def engineering_plan_from_stage2(
         api_specs=api_specs or {},
         pyi_stubs=effective_pyi_stubs,
         bdd_test_cases=bdd_test_cases or [],
+        external_model_specs=external_model_specs or [],
     )

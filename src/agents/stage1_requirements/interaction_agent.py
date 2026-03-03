@@ -1,17 +1,21 @@
 """Interaction Agent for Stage 1 - Requirements Gathering."""
 
 import json
+from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Dict, Any, List, Optional, Iterator
 from src.core.data_models import Requirements, Feature
 from src.core.context import ExecutionContext
 from src.services.llm_service import LLMService
 from src.utils.logger import get_logger
+from src.utils.prompt_loader import PromptLoader
 from pydantic import ValidationError
 from src.core.response_schemas import ExtractedRequirements, RequirementAnalysis, validate_response
-from .requirement_analysis_prompt import get_requirement_analysis_prompt
 
 logger = get_logger(__name__)
+
+_PROMPTS_DIR = Path(__file__).resolve().parents[3] / "config" / "prompts"
+_prompt_loader = PromptLoader(_PROMPTS_DIR)
 
 
 @dataclass
@@ -54,31 +58,10 @@ class InteractionAgent:
         user_requirement = context.user_requirement
         logger.info(f"Processing requirement: {user_requirement}")
 
-        # Use LLM to extract features from requirement
-        prompt = f"""
-Analyze the following user requirement and extract the key features.
-Return a JSON object with the following structure:
-{{
-    "title": "A short title for the application",
-    "description": "A brief description of what the application does",
-    "features": [
-        {{
-            "id": "f1",
-            "name": "Feature name",
-            "description": "Detailed feature description",
-            "priority": 1-5
-        }}
-    ],
-    "constraints": ["any technical constraints mentioned"],
-    "target_users": "Who is this for",
-    "data_requirements": "Any data storage needs mentioned"
-}}
-
-User Requirement:
-{user_requirement}
-
-Respond with valid JSON only.
-"""
+        prompt = _prompt_loader.format(
+            "interaction_extract",
+            user_requirement=user_requirement,
+        )
 
         try:
             result = self.llm_service.generate_json(prompt)
@@ -95,6 +78,10 @@ Respond with valid JSON only.
                     priority=f.get("priority", 3)
                 ))
 
+            dm = getattr(validated, "design_mode", None)
+            if dm in (None, "", "null") or dm not in ("modern", "minimal", "dashboard"):
+                dm = None
+
             requirements = Requirements(
                 title=validated.title,
                 description=validated.description or user_requirement,
@@ -102,6 +89,7 @@ Respond with valid JSON only.
                 constraints=validated.constraints,
                 target_users=validated.target_users,
                 data_requirements=validated.data_requirements,
+                design_mode=dm,
             )
 
             logger.info(f"Extracted {len(features)} features from requirement")
@@ -187,7 +175,7 @@ Respond with valid JSON only.
         """
         logger.info("Analyzing requirement...")
 
-        prompt = get_requirement_analysis_prompt(requirement)
+        prompt = _prompt_loader.format("requirement_analysis", requirement=requirement)
 
         try:
             result = self.llm_service.generate_json(prompt)
@@ -245,47 +233,11 @@ Respond with valid JSON only.
                     + "\n"
                 )
 
-        prompt = f"""You are a requirements analyst. Based on the user requirement below,
-generate 3-6 clarification questions that are **specific to this requirement**.
-
-## Rules
-- Every question MUST address a concrete gap, ambiguity, or missing detail in
-  THIS requirement. Do NOT ask generic questions that could apply to any app.
-- You may optionally assign a category (functional / data / users / ui / technical)
-  but only when the question genuinely belongs to that category. Do NOT force one
-  question per category.
-- The question language should match the user's requirement language.
-
-## Good / bad examples
-
-Requirement: "Build a todo app with add and delete"
-  GOOD: "Should tasks have a due date or priority level?"
-  GOOD: "Do you need to group tasks by category or tag?"
-  BAD:  "Who are the target users?" (too generic)
-  BAD:  "How should data be stored?" (implementation detail, not a requirement gap)
-
-Requirement: "Build a blog with comments"
-  GOOD: "Should comments support nested replies or only top-level?"
-  GOOD: "Can multiple authors publish posts, or is it single-author?"
-  BAD:  "What are the core features?" (already stated: blog + comments)
-
-Requirement: "Build a calculator with add, subtract, multiply, divide"
-  GOOD: "Should it support parentheses and operator precedence?"
-  GOOD: "Do you need a calculation history panel?"
-  BAD:  "What interaction method?" (obvious for a calculator)
-{gaps_section}
-## User Requirement
-
-{requirement}
-
-## Output
-
-Return a JSON array (no markdown fences):
-[
-  {{"id": "q1", "category": "functional", "question": "..."}},
-  ...
-]
-"""
+        prompt = _prompt_loader.format(
+            "interaction_clarification_questions",
+            requirement=requirement,
+            gaps_section=gaps_section,
+        )
         try:
             result = self.llm_service.generate_json(prompt)
             questions = []
@@ -498,35 +450,11 @@ Return a JSON array (no markdown fences):
         for q, a in clarifications.items():
             clarification_text += f"\nQ: {q}\nA: {a}\n"
 
-        prompt = f"""
-You are a requirements analyst. Based on the initial requirement and user's
-clarifications, create a structured requirements specification.
-
-Initial Requirement:
-{requirement}
-
-User Clarifications:
-{clarification_text}
-
-Generate a JSON object with:
-{{
-    "title": "A short catchy title for the application",
-    "description": "2-3 sentence description of what the app does",
-    "features": [
-        {{
-            "id": "f1",
-            "name": "Feature name (action-oriented)",
-            "description": "Detailed feature description",
-            "priority": 1-5 (1 = must have)
-        }}
-    ],
-    "constraints": ["any technical constraints"],
-    "target_users": "Who is this for",
-    "data_requirements": "Data storage needs"
-}}
-
-Respond with valid JSON only.
-"""
+        prompt = _prompt_loader.format(
+            "interaction_final_requirements",
+            requirement=requirement,
+            clarification_text=clarification_text or "(none)",
+        )
         try:
             result = self.llm_service.generate_json(prompt)
             if not isinstance(result, dict):
@@ -608,9 +536,7 @@ Respond with valid JSON only.
         """
         if not messages:
             return "请描述你想要的应用或功能，我会根据你的描述在后台生成产品。你可以随时补充需求，我会在已有基础上改进。"
-        system = """You are a friendly requirements analyst. The user is describing an app they want to build.
-Have a natural conversation to clarify their needs. When you have enough information, you can suggest they're ready;
-the system will automatically generate the app in the background. Keep replies concise. Use the same language as the user."""
+        system = _prompt_loader.load("interaction_chat_system")
         conv = "\n".join(
             f"{'User' if m.get('role') == 'user' else 'Assistant'}: {m.get('content', '')}"
             for m in messages[-20:]
@@ -631,9 +557,7 @@ the system will automatically generate the app in the background. Keep replies c
         if not messages:
             yield "请描述你想要的应用或功能，我会根据你的描述在后台生成产品。你可以随时补充需求，我会在已有基础上改进。"
             return
-        system = """You are a friendly requirements analyst. The user is describing an app they want to build.
-Have a natural conversation to clarify their needs. When you have enough information, you can suggest they're ready;
-the system will automatically generate the app in the background. Keep replies concise. Use the same language as the user."""
+        system = _prompt_loader.load("interaction_chat_system")
         # Build OpenAI-format messages (only user/assistant for context)
         openai_messages = [{"role": "system", "content": system}]
         for m in messages[-20:]:
@@ -686,23 +610,7 @@ the system will automatically generate the app in the background. Keep replies c
             f"{m.get('role', 'user').upper()}: {m.get('content', '')}"
             for m in messages
         )
-        prompt = f"""Based on this conversation about an app, output a single JSON object for the application requirements.
-Conversation:
-{conv}
-
-Output JSON only:
-{{
-    "title": "Short app title",
-    "description": "2-3 sentence description",
-    "features": [{{"id": "f1", "name": "...", "description": "...", "priority": 1}}],
-    "constraints": [],
-    "target_users": "...",
-    "data_requirements": "...",
-    "design_mode": "modern|minimal|dashboard|null"
-}}
-
-design_mode: optional. Use "minimal" for sparse/clean UI, "dashboard" for data-heavy layouts, "modern" or null for default.
-"""
+        prompt = _prompt_loader.format("interaction_conversation", conv=conv)
         try:
             result = self.llm_service.generate_json(prompt)
             if not isinstance(result, dict):
@@ -730,15 +638,12 @@ design_mode: optional. Use "minimal" for sparse/clean UI, "dashboard" for data-h
             extra = "\nRecent messages:\n" + "\n".join(
                 f"{m.get('role')}: {m.get('content', '')}" for m in recent_messages[-5:]
             )
-        prompt = f"""Existing requirements (JSON):
-{existing_str}
-
-New user request: {new_message}
-{extra}
-
-Output the UPDATED requirements as a single JSON object (same structure: title, description, features, constraints, target_users, data_requirements).
-Incorporate the new request into features or description. Do not remove existing features unless the user explicitly asks to remove something.
-Respond with valid JSON only."""
+        prompt = _prompt_loader.format(
+            "interaction_merge",
+            existing_str=existing_str,
+            new_message=new_message,
+            extra=extra,
+        )
         try:
             result = self.llm_service.generate_json(prompt)
             if not isinstance(result, dict):

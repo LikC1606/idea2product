@@ -60,48 +60,57 @@ class FullCycleTestingAgent:
         test_output = ""
         test_stderr = ""
         warnings = []
+        env_install_ok = None
+        env_start_ok = None
 
-        # 1. 使用 subprocess 直接运行 app.py 测试
-        run_errors, env_install_ok, env_start_ok = self._try_run_with_subprocess(generated_path)
-        if run_errors:
-            errors.extend(run_errors)
-            test_stderr = "Run errors found"
-        else:
-            logger.info("App runs successfully!")
-
-        # 1.5 检查 frontend_routes 是否存在（可选）
-        if not errors and context.engineering_plan:
-            route_errors = self._check_frontend_routes(generated_path, context.engineering_plan)
-            if route_errors:
-                errors.extend(route_errors)
-                test_stderr = test_stderr or "Frontend routes missing"
-            # 1.6 检查 auth 流程完整性（当 api_specs 有 auth endpoint 时）
-            auth_errors = self._check_auth_flow(generated_path, context.engineering_plan)
-            if auth_errors:
-                errors.extend(auth_errors)
-                test_stderr = test_stderr or "Auth flow incomplete"
-
-        # 2. 检查未使用的文件
+        # 有语法错误时跳过启应用与 BDD 执行，仍写盘以便 CodeFix/RunAndFix 能修复
         if not errors:
+            # 1. 使用 subprocess 直接运行 app.py 测试
+            run_errors, env_install_ok, env_start_ok = self._try_run_with_subprocess(generated_path)
+            if run_errors:
+                errors.extend(run_errors)
+                test_stderr = "Run errors found"
+            else:
+                logger.info("App runs successfully!")
+
+            # 1.5 检查 frontend_routes 是否存在（可选）
+            if not errors and context.engineering_plan:
+                route_errors = self._check_frontend_routes(generated_path, context.engineering_plan)
+                if route_errors:
+                    errors.extend(route_errors)
+                    test_stderr = test_stderr or "Frontend routes missing"
+                # 1.6 检查 auth 流程完整性（当 api_specs 有 auth endpoint 时）
+                auth_errors = self._check_auth_flow(generated_path, context.engineering_plan)
+                if auth_errors:
+                    errors.extend(auth_errors)
+                    test_stderr = test_stderr or "Auth flow incomplete"
+
+            # 2. 检查未使用的文件（仅 warnings）
             unused_warnings = self._check_unused_files(generated_path)
             if unused_warnings:
                 warnings.extend([str(w.error_message) if hasattr(w, "error_message") else str(w) for w in unused_warnings])
                 logger.info(f"Found {len(unused_warnings)} unused files")
 
-        # 3. BDD → pytest: 生成并执行 BDD 测试（当 enable_bdd_testing 时）
-        bdd_pytest_errors = []
-        bdd_stdout, bdd_stderr = "", ""
-        try:
-            from config.settings import get_settings
-            settings = get_settings()
-            if getattr(settings, "enable_bdd_testing", False) and not errors:
-                self._write_bdd_pytest_file(generated_path, bdd_tests, context)
-                bdd_pytest_errors, bdd_stdout, bdd_stderr = self._run_tests(generated_path, repository)
-                if bdd_pytest_errors:
-                    errors.extend(bdd_pytest_errors)
-                    test_stderr = test_stderr or "BDD tests failed"
-        except Exception as e:
-            logger.debug(f"BDD pytest skipped: {e}")
+            # 3. BDD → pytest: 生成并执行 BDD 测试（当 enable_bdd_testing 时）
+            try:
+                from config.settings import get_settings
+                settings = get_settings()
+                if getattr(settings, "enable_bdd_testing", False) and not errors:
+                    self._write_bdd_pytest_file(generated_path, bdd_tests, context)
+                    bdd_pytest_errors, bdd_stdout, bdd_stderr = self._run_tests(generated_path, repository)
+                    if bdd_pytest_errors:
+                        errors.extend(bdd_pytest_errors)
+                        test_stderr = test_stderr or "BDD tests failed"
+            except Exception as e:
+                logger.debug(f"BDD pytest skipped: {e}")
+        else:
+            # 语法错误：未运行应用与 BDD，明确标志
+            env_install_ok = False
+            env_start_ok = False
+            # 仍可做未使用文件检查（不依赖应用运行）
+            unused_warnings = self._check_unused_files(generated_path)
+            if unused_warnings:
+                warnings.extend([str(w.error_message) if hasattr(w, "error_message") else str(w) for w in unused_warnings])
 
         execution_time = time.time() - start_time
 
@@ -420,7 +429,8 @@ class FullCycleTestingAgent:
         import time
         import signal
 
-        port = 5555
+        from config.settings import get_settings
+        port = get_settings().validation_port
 
         logger.info(f"Starting {entry_file} on port {port}...")
 
@@ -431,7 +441,8 @@ class FullCycleTestingAgent:
                 cwd=str(project_path),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True
+                text=True,
+                env={**os.environ, "PORT": str(port)},
             )
 
             time.sleep(3)
@@ -479,8 +490,14 @@ class FullCycleTestingAgent:
         return errors
 
     def _check_unused_files(self, project_path: Path) -> List[TestError]:
-        """检查是否有生成但从未被引用的文件（孤岛文件）"""
+        """检查是否有生成但从未被引用的文件（孤岛文件）；结果作为 warnings 上报，不加入 errors。"""
         errors = []
+        try:
+            from config.settings import get_settings
+            if not getattr(get_settings(), "warn_unused_files", True):
+                return []
+        except Exception:
+            pass
 
         # 获取所有 Python 文件
         py_files = list(project_path.rglob("*.py"))
@@ -536,18 +553,15 @@ class FullCycleTestingAgent:
                         break
 
             if not is_referenced:
-                # 对于后端文件，生成警告
-                if rel_path.startswith("app/") and not rel_path.startswith("app/"):
-                    # 排除前端文件
+                # 对于后端文件（排除 app/static）生成警告
+                if rel_path.startswith("app/") and not rel_path.startswith("app/static"):
                     errors.append(TestError(
                         error_type=ErrorType.RUNTIME,
                         file_path=rel_path,
                         line_number=0,
                         error_message=f"Unused file: {rel_path} - not imported by any other file",
-                        suggestion=f"Either use this file or remove it"
+                        suggestion="Either use this file or remove it"
                     ))
-
-        return errors
 
         return errors
 
@@ -647,12 +661,14 @@ class FullCycleTestingAgent:
         test_dir = project_path / "tests"
         if test_dir.exists():
             try:
+                from config.settings import get_settings
+                timeout_seconds = getattr(get_settings(), "bdd_test_timeout_seconds", 60)
                 # Run pytest with verbose output
                 result = subprocess.run(
                     [sys.executable, "-m", "pytest", str(test_dir), "-v", "--tb=short", "--no-header"],
                     capture_output=True,
                     text=True,
-                    timeout=60,
+                    timeout=timeout_seconds,
                     cwd=str(project_path)
                 )
                 stdout = result.stdout
@@ -945,43 +961,51 @@ class FineTuningAgent:
         repository = context.code_repository
         fixed = False
 
-        # Try to fix errors
+        # Group errors by type and process in order: SYNTAX → IMPORT → RUNTIME|LOGIC
+        errors_by_type: Dict[ErrorType, List[TestError]] = {}
         for error in test_result.errors:
-            if error.error_type == ErrorType.SYNTAX:
-                # Try to fix syntax errors
-                repository = self._fix_syntax_error(repository, error)
-                fixed = True
-            elif error.error_type == ErrorType.IMPORT:
-                # Try to fix import errors
-                repository = self._fix_import_error(repository, error)
-                fixed = True
-            elif error.error_type in [ErrorType.RUNTIME, ErrorType.LOGIC]:
-                # Try to fix runtime/logic test failures
-                repository = self._fix_test_error(repository, error)
-                fixed = True
+            if error.error_type not in errors_by_type:
+                errors_by_type[error.error_type] = []
+            errors_by_type[error.error_type].append(error)
 
-        # Also fix warnings
+        for error_type in [ErrorType.SYNTAX, ErrorType.IMPORT, ErrorType.RUNTIME, ErrorType.LOGIC]:
+            for error in errors_by_type.get(error_type, []):
+                if error_type == ErrorType.SYNTAX:
+                    repository, changed = self._fix_syntax_error(repository, error)
+                    fixed = fixed or changed
+                elif error_type == ErrorType.IMPORT:
+                    repository, changed = self._fix_import_error(repository, error)
+                    fixed = fixed or changed
+                elif error_type in (ErrorType.RUNTIME, ErrorType.LOGIC):
+                    repository, changed = self._fix_test_error(repository, error)
+                    fixed = fixed or changed
+
+        # Also fix warnings (missing entry point)
         for warning in test_result.warnings:
-            if "No app.py found" in warning or "No main.py found" in warning:
-                repository = self._fix_missing_entry_point(repository)
-                fixed = True
+            if "No app.py found" in warning or "No main.py found" in warning or "No entry point" in warning:
+                repository, changed = self._fix_missing_entry_point(repository)
+                fixed = fixed or changed
+                break
 
         # Visual feedback repair: if alignment_score < 0.7, apply visual fixes
         if need_visual_fix and visual_fb:
-            repository = self._fix_visual_issues(repository, visual_fb, context)
-            fixed = True
+            repository, changed = self._fix_visual_issues(repository, visual_fb, context)
+            fixed = fixed or changed
 
         if fixed:
             logger.info("Applied fixes to code")
 
         return repository, fixed
 
-    def _fix_syntax_error(self, repository: CodeRepository, error: TestError) -> CodeRepository:
-        """Fix syntax errors in code."""
+    def _fix_syntax_error(self, repository: CodeRepository, error: TestError) -> tuple[CodeRepository, bool]:
+        """Fix syntax errors in code. Returns (repository, True) only when a file was actually modified."""
         import ast
 
+        # Normalize path for matching (e.g. backslash to slash)
+        err_path = (error.file_path or "").replace("\\", "/")
+
         for i, f in enumerate(repository.files):
-            if f.path == error.file_path:
+            if (f.path or "").replace("\\", "/") == err_path:
                 logger.info(f"Fixing syntax error in {f.path}")
                 prompt = f"""Fix the syntax error in this Python file:
 
@@ -993,8 +1017,16 @@ Original code:
 
 Return the corrected code only, no explanations.
 """
+                llm = self.llm_service
                 try:
-                    fixed_code = self.llm_service.generate(prompt, max_tokens=2000)
+                    from config.settings import get_settings
+                    if getattr(get_settings(), "use_fast_model_for_fine_tuning_syntax", True):
+                        fast_model = getattr(get_settings(), "fast_model_for_code_gen", "gpt-4o-mini")
+                        llm = self.llm_service.with_model(fast_model)
+                except Exception:
+                    pass
+                try:
+                    fixed_code = llm.generate(prompt, max_tokens=2000)
                     ast.parse(fixed_code)
                     repository.files[i] = CodeFile(
                         path=f.path,
@@ -1004,15 +1036,16 @@ Return the corrected code only, no explanations.
                         dependencies=f.dependencies
                     )
                     logger.info(f"Fixed syntax error in {f.path}")
+                    return repository, True
                 except (APIError, RateLimitError) as e:
                     logger.error(f"LLM API error fixing syntax in {f.path}: {e}")
                 except SyntaxError:
                     logger.warning(f"LLM-generated fix still has syntax errors in {f.path}")
                 except Exception as e:
                     logger.warning(f"Could not fix syntax error in {f.path}: {e}")
-                break
+                return repository, False
 
-        return repository
+        return repository, False
 
     _KNOWN_STUBS: Dict[str, str] = {
         "config": (
@@ -1046,14 +1079,10 @@ Return the corrected code only, no explanations.
         ),
     }
 
-    def _fix_import_error(self, repository: CodeRepository, error: TestError) -> CodeRepository:
-        """Fix import errors by generating missing modules.
-
-        Uses known stub templates for common module names, and falls back to
-        LLM generation for unknown modules.
-        """
+    def _fix_import_error(self, repository: CodeRepository, error: TestError) -> tuple[CodeRepository, bool]:
+        """Fix import errors by generating missing modules. Returns (repository, True) when a stub was added."""
         if "Missing module:" not in error.error_message:
-            return repository
+            return repository, False
 
         module_name = error.error_message.split("Missing module:")[-1].strip()
         logger.info(f"Attempting to fix missing module: {module_name}")
@@ -1062,7 +1091,7 @@ Return the corrected code only, no explanations.
 
         if any(f.path == module_path for f in repository.files):
             logger.debug(f"Module {module_path} already exists in repository")
-            return repository
+            return repository, False
 
         stub_content = None
         module_base = module_name.rsplit(".", 1)[-1].lower()
@@ -1091,11 +1120,10 @@ Return the corrected code only, no explanations.
             dependencies=[],
         ))
         logger.info(f"Generated stub for {module_path}")
+        return repository, True
 
-        return repository
-
-    def _fix_test_error(self, repository: CodeRepository, error: TestError) -> CodeRepository:
-        """Fix test errors by using LLM to understand and fix the issue."""
+    def _fix_test_error(self, repository: CodeRepository, error: TestError) -> tuple[CodeRepository, bool]:
+        """Fix test errors by using LLM to understand and fix the issue. Returns (repository, True) when any file was modified."""
         logger.info(f"Test error in {error.file_path}: {error.error_message}")
 
         # Collect all Python files to provide context to LLM
@@ -1105,10 +1133,17 @@ Return the corrected code only, no explanations.
                 all_files_content.append(f"=== {f.path} ===\n{f.content or ''}")
 
         context = "\n\n".join(all_files_content)
+        try:
+            from config.settings import get_settings
+            max_chars = getattr(get_settings(), "fine_tuning_max_context_chars", 12000)
+            if len(context) > max_chars:
+                context = context[:max_chars] + "\n\n... (truncated)"
+        except Exception:
+            if len(context) > 12000:
+                context = context[:12000] + "\n\n... (truncated)"
 
         # Check if this is a blueprint-related error
         is_blueprint_error = "function" in error.error_message and "register" in error.error_message
-        is_db_error = "db" in error.error_message.lower()
 
         # Use LLM to fix the issue
         if is_blueprint_error:
@@ -1171,6 +1206,7 @@ Return ONLY the fixed content for the file that has the error ({error.file_path}
 If the file doesn't need changes, return the original content unchanged.
 """
 
+        changed = False
         try:
             fixed_content = self.llm_service.generate(prompt, max_tokens=5000)
 
@@ -1183,9 +1219,9 @@ If the file doesn't need changes, return the original content unchanged.
             if matches:
                 # Update all files mentioned in the response
                 for filename, content in matches:
-                    filename = filename.strip()
+                    filename = filename.strip().replace("\\", "/")
                     for i, f in enumerate(repository.files):
-                        if f.path == filename:
+                        if (f.path or "").replace("\\", "/") == filename:
                             try:
                                 # Verify it parses
                                 if filename.endswith('.py'):
@@ -1199,48 +1235,62 @@ If the file doesn't need changes, return the original content unchanged.
                                     dependencies=f.dependencies
                                 )
                                 logger.info(f"Fixed {filename} using LLM")
+                                changed = True
                             except SyntaxError as e:
                                 logger.warning(f"LLM fix resulted in syntax error in {filename}: {e}")
                             break
             else:
-                # Single file response
-                for i, f in enumerate(repository.files):
-                    if f.path == error.file_path:
-                        try:
-                            if error.file_path.endswith('.py'):
-                                import ast
-                                ast.parse(fixed_content)
-                            repository.files[i] = CodeFile(
-                                path=f.path,
-                                content=fixed_content,
-                                language=f.language,
-                                purpose=f.purpose,
-                                dependencies=f.dependencies
-                            )
-                            logger.info(f"Fixed error in {f.path} using LLM")
-                        except SyntaxError as e:
-                            logger.warning(f"LLM fix resulted in syntax error: {e}")
-                        break
+                # Single file response: resolve error.file_path to repository file (normalize, then match by path suffix)
+                err_path = (error.file_path or "").strip().replace("\\", "/")
+                if err_path.endswith(".py"):
+                    pass
+                elif err_path in ("tests", "tests/"):
+                    err_path = None  # pytest reported "tests" as file
+                else:
+                    err_path = err_path + ".py" if not err_path.endswith(".py") else err_path
+                target_idx = None
+                if err_path:
+                    for i, f in enumerate(repository.files):
+                        fp = (f.path or "").replace("\\", "/")
+                        if fp == err_path or fp.endswith("/" + err_path) or fp.endswith(err_path):
+                            target_idx = i
+                            break
+                if target_idx is not None:
+                    f = repository.files[target_idx]
+                    try:
+                        if (f.path or "").endswith('.py'):
+                            import ast
+                            ast.parse(fixed_content)
+                        repository.files[target_idx] = CodeFile(
+                            path=f.path,
+                            content=fixed_content,
+                            language=f.language,
+                            purpose=f.purpose,
+                            dependencies=f.dependencies
+                        )
+                        logger.info(f"Fixed error in {f.path} using LLM")
+                        changed = True
+                    except SyntaxError as e:
+                        logger.warning(f"LLM fix resulted in syntax error: {e}")
 
         except (APIError, RateLimitError) as e:
             logger.error(f"LLM API error fixing test error in {error.file_path}: {e}")
         except Exception as e:
             logger.warning(f"Could not fix test error in {error.file_path}: {e}")
 
-        return repository
+        return repository, changed
 
-    def _fix_missing_entry_point(self, repository: CodeRepository) -> CodeRepository:
-        """Fix missing entry point issue."""
-        # Check if we have app/main.py
-        main_file = None
-        for f in repository.files:
-            if f.path.endswith('/main.py'):
-                main_file = f
-                break
+    def _fix_missing_entry_point(self, repository: CodeRepository) -> tuple[CodeRepository, bool]:
+        """Fix missing entry point: add app.py (or run.py) when absent, aligned with FullCycleTesting which expects app.py or run.py."""
+        def is_entry(p: str) -> bool:
+            n = (p or "").replace("\\", "/").strip("/")
+            return n == "app.py" or n == "run.py" or n.endswith("/app.py") or n.endswith("/run.py")
+        has_app_py = any(is_entry(f.path) for f in repository.files)
+        if has_app_py:
+            return repository, False
 
-        if not main_file:
-            # Generate a simple entry point
-            entry_content = '''"""Application entry point."""
+        # Minimal Flask app.py so FullCycleTesting's _try_run_with_subprocess can find it
+        entry_content = '''"""Application entry point (generated by FineTuningAgent)."""
 from flask import Flask, jsonify
 
 app = Flask(__name__)
@@ -1250,29 +1300,30 @@ def index():
     return jsonify({'message': 'Application running'})
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    import os
+    port = int(os.environ.get("PORT", 5000))
+    app.run(debug=True, host='0.0.0.0', port=port)
 '''
-            repository.files.append(CodeFile(
-                path='app/main.py',
-                content=entry_content,
-                language='python',
-                purpose='Application entry point',
-                dependencies=[]
-            ))
-            logger.info("Generated app/main.py as entry point")
+        repository.files.append(CodeFile(
+            path='app.py',
+            content=entry_content,
+            language='python',
+            purpose='Application entry point',
+            dependencies=[]
+        ))
+        logger.info("Generated app.py as entry point (aligned with FullCycleTesting)")
+        return repository, True
 
-        return repository
 
-
-    def _fix_visual_issues(self, repository: CodeRepository, visual_fb: dict, context: ExecutionContext) -> CodeRepository:
-        """Use LLM to fix visual/UI issues identified by VisualVerificationAgent."""
+    def _fix_visual_issues(self, repository: CodeRepository, visual_fb: dict, context: ExecutionContext) -> tuple[CodeRepository, bool]:
+        """Use LLM to fix visual/UI issues identified by VisualVerificationAgent. Returns (repository, True) when any file was modified."""
         missing = visual_fb.get("missing_elements", [])
         issues = visual_fb.get("issues", [])
         layout_feedback = visual_fb.get("layout_feedback", "")
         alignment_score = visual_fb.get("alignment_score", 0.0)
 
         if not missing and not issues:
-            return repository
+            return repository, False
 
         # Collect HTML/CSS/JS files for context
         frontend_files = []
@@ -1281,9 +1332,17 @@ if __name__ == '__main__':
                 frontend_files.append(f"=== {f.path} ===\n{f.content or ''}")
 
         if not frontend_files:
-            return repository
+            return repository, False
 
-        fe_context = "\n\n".join(frontend_files)[:8000]
+        fe_context = "\n\n".join(frontend_files)
+        try:
+            from config.settings import get_settings
+            max_chars = getattr(get_settings(), "fine_tuning_max_context_chars", 12000)
+            if len(fe_context) > max_chars:
+                fe_context = fe_context[:max_chars] + "\n\n... (truncated)"
+        except Exception:
+            if len(fe_context) > 12000:
+                fe_context = fe_context[:12000] + "\n\n... (truncated)"
 
         requirements_text = ""
         if context.requirements:
@@ -1317,6 +1376,7 @@ Return the fixed files in format:
 
 Only include files that need changes."""
 
+        changed = False
         try:
             fixed_content = self.llm_service.generate(prompt, max_tokens=6000)
 
@@ -1325,9 +1385,9 @@ Only include files that need changes."""
             matches = re.findall(file_pattern, fixed_content, re.DOTALL)
 
             for filename, content in matches:
-                filename = filename.strip()
+                filename = filename.strip().replace("\\", "/")
                 for i, f in enumerate(repository.files):
-                    if f.path == filename:
+                    if (f.path or "").replace("\\", "/") == filename:
                         repository.files[i] = CodeFile(
                             path=f.path,
                             content=content.strip(),
@@ -1336,6 +1396,7 @@ Only include files that need changes."""
                             dependencies=f.dependencies,
                         )
                         logger.info(f"Fixed visual issues in {filename}")
+                        changed = True
                         break
 
         except (APIError, RateLimitError) as e:
@@ -1343,7 +1404,7 @@ Only include files that need changes."""
         except Exception as e:
             logger.warning(f"Could not fix visual issues: {e}", exc_info=True)
 
-        return repository
+        return repository, changed
 
 
 class FrontendTestingAgent:
@@ -2137,7 +2198,8 @@ Return a JSON object with these fields.
 def create_validated_project(
     repository: CodeRepository,
     test_result: TestResult,
-    requirements: Requirements
+    requirements: Requirements,
+    fix_attempts: int = 0,
 ) -> ValidatedProject:
     """Create the final validated project."""
 
@@ -2165,6 +2227,6 @@ def create_validated_project(
         test_results=test_result,
         is_deployable=is_deployable,
         deployment_instructions=deployment_instructions,
-        fix_attempts=0,
+        fix_attempts=fix_attempts,
         validated_at=datetime.now()
     )

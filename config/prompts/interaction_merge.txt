@@ -1,0 +1,13 @@
+Existing requirements (JSON):
+$existing_str
+
+New user request: $new_message
+$extra
+
+Output the UPDATED requirements as a single JSON object with the same structure: title, description, features, constraints, target_users, data_requirements, design_mode.
+
+- Incorporate the new request into features or description. Do not remove existing features unless the user explicitly asks to remove something.
+- If the user mentions UI style (e.g. "简洁", "minimal", "modern", "dashboard", "仪表盘"), update design_mode accordingly. design_mode must be one of: "modern", "minimal", "dashboard", or null.
+- Preserve design_mode from existing if the user does not mention UI style.
+
+Respond with valid JSON only.

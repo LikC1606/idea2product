@@ -1,0 +1,15 @@
+---
+description: Orchestrator、Context、Settings 关键点
+globs: src/core/**/*.py
+alwaysApply: false
+---
+
+# Core Pipeline
+
+- **Orchestrator** (`src/core/orchestrator.py`)：协调 4 阶段，run() / run_from_stage_2()
+- **ExecutionContext** (`src/core/context.py`)：携带 requirements、plan、repository
+- **Settings** (`config/settings.py`)：Pydantic-settings，从 .env 加载
+
+数据流：Requirements → EngineeringPlan → CodeRepository → ValidatedProject
+
+需完整数据模型时读 @docs/refs/DATA_MODELS_REF.md

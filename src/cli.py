@@ -1,6 +1,7 @@
 """Command-line interface for Idea2Product."""
 
 import sys
+import os
 import io
 import click
 from pathlib import Path
@@ -14,13 +15,67 @@ if sys.platform == 'win32':
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
-from config.settings import get_settings
+from config.settings import (
+    get_settings,
+    load_settings_lenient,
+    clear_settings_cache,
+    get_primary_llm_config,
+    _primary_llm_key_name,
+)
 from src.core.orchestrator import Orchestrator
 from src.utils.file_utils import read_json
 from src.agents.stage1_requirements.paper_to_project_agent import PaperToProjectAgent
 from src.services.llm_service import LLMService
 
 console = Console()
+
+
+def prompt_api_key_and_configure(settings) -> None:
+    """
+    When primary LLM API key is missing: show where to set it, optionally accept paste for this session.
+    On paste: sets os.environ and clears settings cache so next get_settings() picks up the key.
+    """
+    primary = (getattr(settings, "primary_llm_provider", None) or "openai").strip().lower()
+    var_name = _primary_llm_key_name(settings)
+    env_path = getattr(settings, "project_root", Path.cwd()) / ".env"
+    provider_labels = {"openai": "OpenAI", "anthropic": "Anthropic (Claude)", "google": "Google (Gemini)"}
+    label = provider_labels.get(primary, primary)
+
+    console.print("\n[bold yellow]API Key not configured[/bold yellow]")
+    console.print(f"Primary LLM is set to [cyan]{label}[/cyan]. You need to set the corresponding API key.\n")
+    console.print("[bold]Where to set:[/bold]")
+    console.print(f"  In project root, edit [cyan]{env_path}[/cyan] and add:")
+    if primary == "openai":
+        console.print("  [dim]OPENAI_API_KEY=sk-...[/dim]")
+    elif primary == "anthropic":
+        console.print("  [dim]ANTHROPIC_API_KEY=sk-ant-...[/dim]")
+        console.print("  [dim](Or use OpenRouter key with ANTHROPIC_BASE_URL=https://openrouter.ai/api/v1)[/dim]")
+    else:
+        console.print("  [dim]GOOGLE_API_KEY=...[/dim]")
+        console.print("  [dim](Or use OpenRouter key with GOOGLE_BASE_URL=https://openrouter.ai/api/v1)[/dim]")
+    console.print("\n[bold]Options:[/bold]")
+    console.print("  [cyan]1[/cyan] – Paste API key now (only for this session)")
+    console.print("  [cyan]2[/cyan] – Exit and configure .env yourself\n")
+
+    try:
+        choice = input("Choice (1 or 2): ").strip() or "2"
+    except EOFError:
+        choice = "2"
+    if choice != "1":
+        console.print(f"\nEdit [cyan]{env_path}[/cyan] then run the command again.")
+        sys.exit(0)
+    console.print("Paste your API key (input hidden): ", end="")
+    try:
+        import getpass
+        key = getpass.getpass("").strip()
+    except Exception:
+        key = input("").strip()
+    if not key:
+        console.print("[yellow]No key entered. Configure .env and try again.[/yellow]")
+        sys.exit(0)
+    os.environ[var_name] = key
+    clear_settings_cache()
+    console.print("[green]Key set for this session. Continuing.[/green]\n")
 
 
 @click.group()
@@ -62,7 +117,21 @@ def create(requirement: str, output: str = None, interactive: bool = False):
         idea2product create -i "Build a todo list app"
     """
     try:
-        settings = get_settings()
+        if interactive:
+            settings = load_settings_lenient()
+            api_key = get_primary_llm_config(settings)[0]
+            if not api_key:
+                prompt_api_key_and_configure(settings)
+                settings = get_settings()
+            else:
+                settings = get_settings()
+        else:
+            settings = get_settings()
+
+        requirement = (requirement or "").strip()
+        if not requirement:
+            console.print("[red]Error: requirement cannot be empty.[/red]")
+            sys.exit(1)
 
         console.print(Panel.fit(
             f"[bold cyan]Creating project from requirement:[/bold cyan]\n{requirement}",

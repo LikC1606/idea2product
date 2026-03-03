@@ -43,6 +43,8 @@ class AlgorithmEntry(BaseModel):
     notes: Optional[str] = None
     hf_models: Optional[List[str]] = None
     hf_usage_notes: Optional[str] = None
+    data_structures: Optional[List[str]] = None
+    algorithm_type: Optional[str] = None
 
 
 class RequirementAnalysis(BaseModel):
@@ -58,6 +60,7 @@ class ExtractedRequirements(BaseModel):
     constraints: List[str] = Field(default_factory=list)
     target_users: Optional[str] = None
     data_requirements: Optional[str] = None
+    design_mode: Optional[str] = None
 
 
 def validate_response(data: dict, model_class: type[BaseModel]) -> BaseModel:

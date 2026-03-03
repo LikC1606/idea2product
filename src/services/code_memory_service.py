@@ -101,7 +101,12 @@ class CodeMemoryService:
         logger.info(f"Code memory database initialized at {self.db_path}")
 
     def add_snippet(self, snippet: CodeSnippet) -> None:
-        """Add a code snippet to memory."""
+        """Add a code snippet to memory.
+
+        FTS5 sync: code_search uses rowid to align with code_snippets. On INSERT OR
+        REPLACE, the old row is removed and a new row gets a new rowid. We must DELETE
+        the old code_search row *before* REPLACE, then INSERT the new row afterward.
+        """
         try:
             conn = sqlite3.connect(self.db_path, timeout=_SQLITE_TIMEOUT)
         except sqlite3.Error as e:
@@ -112,7 +117,7 @@ class CodeMemoryService:
             cursor = conn.cursor()
 
             # Delete old FTS5 row before REPLACE so rowids stay in sync
-            # (INSERT OR REPLACE into code_snippets can change rowid)
+            # (INSERT OR REPLACE into code_snippets removes old row, new row gets new rowid)
             cursor.execute(
                 "DELETE FROM code_search WHERE rowid IN (SELECT rowid FROM code_snippets WHERE id = ?)",
                 (snippet.id,),

@@ -3,6 +3,7 @@
 import json
 import re
 import shutil
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import List, Dict, Optional
 
@@ -16,6 +17,8 @@ from src.core.data_models import (
     CodeFile,
     DirectoryStructure,
     CodeSkeleton,
+    TaskType,
+    TaskComplexity,
 )
 from src.core.context import ExecutionContext
 from src.services.llm_service import LLMService
@@ -26,6 +29,12 @@ from src.agents.stage3_generation.tools import (
     set_project_path,
     set_project_id,
 )
+from src.agents.stage2_planning.task_templates import (
+    detect_pattern_with_score,
+    PATTERN_CONFIDENCE_THRESHOLD,
+)
+from src.agents.stage3_generation.code_gen_templates import generate_fallback_stub
+from src.utils.prompt_loader import PromptLoader
 
 logger = get_logger(__name__)
 
@@ -33,6 +42,7 @@ logger = get_logger(__name__)
 FRAMEWORK_TEMPLATE_PATH = (
     Path(__file__).parent.parent.parent.parent / "templates" / "flask_base"
 )
+_PROMPTS_DIR = Path(__file__).parent.parent.parent.parent / "config" / "prompts"
 
 
 class CodeGenerationAgent:
@@ -111,13 +121,19 @@ class CodeGenerationAgent:
                 "\nEnsure your implementation passes all the above test scenarios.\n"
             )
 
-        # Step 2: 按任务顺序处理
-        mining_by_task = mining_by_task or {}
-        memory_context = memory_context or ""
+        # Step 2: 按任务顺序处理（优先从 context 读，兼容仅传 context 的调用）
+        mining_by_task = mining_by_task or getattr(context, "mining_by_task", None) or {}
+        memory_context = memory_context or getattr(context, "memory_context", None) or ""
 
         for task in plan.tasks:
             logger.info(f"Processing task {task.id}: {task.name}")
             mining_context = mining_by_task.get(task.id, "")
+            if (
+                self.settings
+                and getattr(self.settings, "skip_mining_for_simple_tasks", False)
+                and self._is_simple_task_for_mining(task, plan)
+            ):
+                mining_context = ""
 
             files = self._process_task_with_tools(
                 task=task,
@@ -212,6 +228,71 @@ class CodeGenerationAgent:
 
         logger.info(f"Loaded {len(files)} framework files")
         return files
+
+    def _should_use_fast_model(self, task, plan: EngineeringPlan) -> bool:
+        """Return True if this task is simple enough to use fast model (cost reduction)."""
+        if not self.settings or not getattr(
+            self.settings, "use_fast_model_for_simple_code_tasks", False
+        ):
+            return False
+        task_type = getattr(task.type, "value", str(task.type)) if hasattr(task, "type") else ""
+        complexity = (
+            getattr(task.estimated_complexity, "value", str(task.estimated_complexity))
+            if hasattr(task, "estimated_complexity")
+            else ""
+        )
+        if task_type == "frontend" and complexity == "low":
+            return True
+        paths = self._get_task_relevant_files(task, plan)
+        if not paths:
+            return False
+        simple_paths = ("static/", "templates/", "config.py")
+        return all(any(sp in p for sp in simple_paths) for p in paths)
+
+    def _is_simple_task_for_mining(self, task, plan: EngineeringPlan) -> bool:
+        """Return True if mining context can be skipped for this task (frontend/config-only)."""
+        return _is_simple_task_for_mining_impl(task, plan)
+
+    def _truncate_system_prompt(
+        self,
+        system_prompt: str,
+        max_chars: Optional[int] = None,
+    ) -> str:
+        """Truncate system prompt by priority: keep pyi+api+task, trim low-priority sections."""
+        limit = max_chars or (
+            getattr(self.settings, "max_system_prompt_chars", 16000)
+            if self.settings
+            else 16000
+        )
+        if len(system_prompt) <= limit:
+            return system_prompt
+        suffix = "\n\n[... prompt truncated for token limit ...]"
+        return system_prompt[: limit - len(suffix)] + suffix
+
+    def _fallback_for_task(
+        self,
+        task,
+        plan: EngineeringPlan,
+        requirements: Requirements,
+        project_path: Path,
+    ) -> None:
+        """Generate minimal stub files when agent.invoke fails and pattern matches crud/dashboard/auth/readonly."""
+        parts = [
+            requirements.title or "",
+            requirements.description or "",
+        ]
+        for f in getattr(requirements, "features", []) or []:
+            parts.append(getattr(f, "name", "") or "")
+            parts.append(getattr(f, "description", "") or "")
+        combined = " ".join(str(p) for p in parts)
+        pattern, score = detect_pattern_with_score(combined)
+        if not pattern or score < PATTERN_CONFIDENCE_THRESHOLD:
+            return
+        task_relevant_paths = self._get_task_relevant_files(task, plan)
+        if generate_fallback_stub(task, plan, project_path, task_relevant_paths):
+            logger.info(
+                f"  Task {task.id} fallback: wrote minimal stubs (pattern={pattern}, score={score})"
+            )
 
     def _process_task_with_tools(
         self,
@@ -468,6 +549,17 @@ class CodeGenerationAgent:
 6. Follow ui_guidelines from api_specs if provided (theme, colors, layout)
 7. Generated frontend MUST include: <link rel="stylesheet" href="/static/css/base.css"> before any custom CSS
 8. Extend base.css in static/css/style.css only - do NOT override base design tokens unless ui_guidelines specify"""
+            # Inject frontend design guidelines for frontend tasks (avoids generic AI aesthetics)
+            task_type = getattr(task.type, "value", str(task.type)) if hasattr(task, "type") else ""
+            paths_str = " ".join(task_relevant_paths or [])
+            if task_type == "frontend" or ".html" in paths_str or "templates/" in paths_str or "static/" in paths_str:
+                guidelines_path = Path(__file__).parent.parent.parent.parent / "config" / "prompts" / "frontend_design_guidelines.txt"
+                if guidelines_path.exists():
+                    try:
+                        guidelines = guidelines_path.read_text(encoding="utf-8")
+                        frontend_ui_section += f"\n\n{guidelines}"
+                    except (OSError, UnicodeDecodeError):
+                        pass
 
         # Algorithm / implementation guidance from Stage 2
         algorithm_context = ""
@@ -503,8 +595,35 @@ class CodeGenerationAgent:
 6. 所有新建的 API blueprint 均需在 app/__init__.py 中完成注册（auth_bp, xxx_bp 等）
 """
 
-        # 构建 system prompt
-        system_prompt = f"""You are a Flask development expert. Your job is to complete the given task by reading files, modifying them, and creating new ones.
+        # 构建 system prompt (modular prompts)
+        subs = {
+            "framework_spec": (framework_spec[:2000] if framework_spec else "N/A"),
+            "pyi_info": pyi_info,
+            "interface_specs_info": interface_specs_info,
+            "skeleton_info": skeleton_info,
+            "proactive_sigs": proactive_sigs,
+            "api_info": api_info,
+            "ui_design_spec_context": ui_design_spec_context,
+            "mining_context": mining_context,
+            "memory_context": memory_context,
+            "bdd_constraints": bdd_constraints,
+            "algorithm_context": algorithm_context,
+            "task_name": task.name,
+            "task_description": task.description,
+            "auth_checklist_section": auth_checklist_section,
+            "frontend_ui_section": frontend_ui_section,
+        }
+        try:
+            loader = PromptLoader(
+                self.settings.prompts_dir if self.settings else _PROMPTS_DIR
+            )
+            base = loader.format("code_gen_system_base", **subs)
+            critical = loader.format("code_gen_critical_rules", **subs)
+            quality = loader.format("code_gen_quality", **subs)
+            system_prompt = base + "\n" + critical + "\n" + quality
+        except (FileNotFoundError, OSError) as ex:
+            logger.warning(f"Could not load modular prompts: {ex}, using inline fallback")
+            system_prompt = f"""You are a Flask development expert. Your job is to complete the given task by reading files, modifying them, and creating new ones.
 
 ## Framework Spec (read this first to understand the project structure)
 {framework_spec[:2000] if framework_spec else "N/A"}
@@ -529,91 +648,41 @@ Name: {task.name}
 Description: {task.description}
 
 ## 【CRITICAL】前端代码必须严格遵循 api_specs
-前端发送数据时，必须严格按照 api_specs 中定义的 request 字段和类型生成代码：
-
-1. **字段名必须完全一致**：
-   - api_specs 定义了 `author_id: "int"`，前端就必须发送 `author_id`
-   - 不能省略任何必填字段！
-
-2. **字段类型必须完全一致**：
-   - `"bool"` → JavaScript `true`/`false`（不是字符串 "true"/"false"）
-   - `"int"` → JavaScript 数字（如 `parseInt(value)` 或 `Number(value)`）
-   - `"array"` 或 `["str"]` → JavaScript 数组（如 `["tag1", "tag2"]`）
-
-3. **【强制】关联 ID（如 author_id）必须从 session 获取**：
-   - 如果 api_specs 的 request 中需要 author_id，后端从 session 获取
-   - 前端不需要传递 author_id，后端自己从 session['user_id'] 读取
-   - 例如：创建博客时，后端用 session.get('user_id') 获取当前用户ID
-
-4. 数据格式：所有 API 用 JSON，禁止用 FormData
+前端发送数据时，必须严格按照 api_specs 中定义的 request 字段和类型生成代码。字段名、类型必须一致；关联 ID 从 session 获取；数据格式用 JSON。
 
 ## 【CRITICAL】Session 认证实现
-如果 api_specs 中的 endpoint 有 session_info 说明，必须按要求实现：
-
-1. **后端设置 session**：登录成功后设置 session['user_id'] = user.id（或其他 session_info 指定的变量）
-
-2. **后端获取当前用户**：提供 /api/auth/me 端点，从 session 获取用户ID并返回用户信息
-
-3. **确保 app/__init__.py 设置了 secret_key**：app.secret_key = 'your-secret-key'
+登录后设置 session['user_id']；提供 /api/auth/me；app.secret_key 必须设置。
 {auth_checklist_section}
 ## API Endpoints
 {api_info}
 
 ## Code Quality Requirements
-1. Error handling: Use try/except for file I/O, JSON parsing, and external API calls; return appropriate HTTP status on failure
-2. Type hints: Add type hints to all function parameters and return values
-3. Docstrings: Add docstrings to public functions and classes (one-line for simple, multi-line for complex)
-4. Input validation: Validate request JSON keys and types before use; return 400 with clear message on invalid input
-5. Avoid: bare except, print() for debugging, hardcoded magic strings
+Error handling, type hints, docstrings, input validation. Avoid bare except, print(), hardcoded strings.
 
 ## Frontend UI Requirements
 {frontend_ui_section}
 
 ## Important Requirements
-1. You MUST use tools to explore the project - start by listing files to see what's there
-   - Before implementing, call search_similar_snippet(task-relevant keywords) to find reusable patterns (e.g. "flask crud api", "sqlalchemy model")
-   - When calling other modules, ALWAYS use get_module_signatures(module_name) first to get interface signatures
-   - After creating or modifying a .py file, call validate_syntax(file_path) to verify. If it reports an error, fix the code before proceeding.
-2. Database initialization rule:
-   - CRITICAL: db = SQLAlchemy() MUST be defined ONLY in app/__init__.py
-   - All model files (app/models/*.py) MUST import db from app: from app import db
-   - Do NOT create new SQLAlchemy() instances in model files!
-   - **IMPORTANT**: 使用 SQLite 兼容的类型：
-     - 禁止使用 db.ARRAY (SQLite 不支持)
-     - 数组字段用 db.String 存储（如用逗号分隔： "tag1,tag2,tag3"）
-     - 或者用 JSON 字符串存储
-3. When creating new route files (e.g., app/routes/xxx.py), you MUST also modify app/__init__.py:
-   - Add import: from app.routes.xxx import xxx_bp
-   - Add registration: app.register_blueprint(xxx_bp, url_prefix='/api')
-   - Use: from config import get_config (NOT 'config.get_config' string!)
-   - CRITICAL: Inside the Blueprint, use RELATIVE paths only! Example: @blogs_bp.route('/') NOT @blogs_bp.route('/api/blogs')
-   - If url_prefix='/api/blogs', then routes inside should be @bp.route('/') NOT @bp.route('/api/blogs')
-4. CRITICAL: You MUST add ALL frontend routes in app/__init__.py for EACH template:
-   - For each template (e.g., blog.html, blog_list.html, blog_detail.html), add a route that renders it
-   - Example: @app.route('/blogs/<int:id>') def blog_detail(): return render_template('blog_detail.html')
-   - MUST match the frontend_routes specified above!
-   - IMPORTANT: Frontend routes ONLY render templates, do NOT pass data! All data should be fetched via JavaScript API calls in the template
-5. CRITICAL: index.html links MUST match api_specs.frontend_routes exactly:
-   - If frontend_routes has /blogs, index.html links MUST be /blogs and /api/blogs (NOT /notes or /api/notes)
-   - Page title and description MUST match requirements.title (e.g. "Blog App" not "Notes App" if building a blog)
-6. Generate ACTUAL working HTML with forms, buttons, and API calls - not placeholder text!
-7. **【强制】在修改任何文件之前，必须先阅读文件内容**：
-   - 先用 list_files() 查看所有文件
-   - 再用 read_file() 读取目标文件的内容
-   - 了解现有代码结构后再修改，不能直接覆盖！
-   - 特别注意 app/__init__.py 等入口文件的结构
-9. CRITICAL: Do NOT worry about whether packages are installed in the current environment.
-   Do NOT output messages like "please run pip install" or "dependencies not installed".
-   Just write the code with the correct imports. Dependencies will be installed separately.
-   Your ONLY job is to write correct Python/HTML/CSS/JS code files using the tools.
+Use tools: list_files, read_file, write_file, modify_file, validate_syntax. db only in app/__init__.py. Register blueprints. Add frontend routes. Read files before modifying.
+Reply with "TASK_COMPLETE" when done."""
 
-## When Task is Complete
-Reply with "TASK_COMPLETE" when you have finished the task."""
+        system_prompt = self._truncate_system_prompt(system_prompt)
 
         try:
             logger.info(f"  Agent processing task {task.id}...")
 
-            llm = self.llm_service.create_langchain_llm(temperature=0, max_tokens=8000)
+            use_fast = self._should_use_fast_model(task, plan)
+            if use_fast:
+                fast_model = (
+                    getattr(self.settings, "fast_model_for_code_gen", "gpt-4o-mini")
+                    if self.settings
+                    else "gpt-4o-mini"
+                )
+                llm_svc = self.llm_service.with_model(fast_model)
+                logger.debug(f"  Using fast model {fast_model} for simple task")
+            else:
+                llm_svc = self.llm_service
+            llm = llm_svc.create_langchain_llm(temperature=0, max_tokens=8000)
 
             # 创建 Agent
             agent = create_agent(
@@ -634,6 +703,12 @@ Reply with "TASK_COMPLETE" when you have finished the task."""
                 )
                 if is_simple:
                     frontend_routes_hint += " SINGLE-PAGE: index.html should contain the full UI (add form + list + delete/mark-done buttons). Use fetch() to call API. No separate /new or /edit pages needed."
+
+            generated_images_hint = ""
+            if getattr(context, "generated_image_paths", None):
+                paths = context.generated_image_paths
+                parts = [f"{k}: /{v}" for k, v in paths.items()]
+                generated_images_hint = "\nGenerated image assets (use in templates): " + ", ".join(parts) + ". E.g. <img src=\"/static/images/hero.png\" alt=\"Hero\" /> for hero section."
 
             # Build task-relevant files list and key file excerpts
             task_relevant_files = self._get_task_relevant_files(task, plan)
@@ -663,6 +738,7 @@ Reply with "TASK_COMPLETE" when you have finished the task."""
             user_message = f"""Current project structure:
 {context_md[:1000] if context_md else "No files yet"}
 {frontend_routes_hint}
+{generated_images_hint}
 {task_files_hint}
 
 Start by listing files to see the current state, then complete the task: {task.description}
@@ -681,10 +757,18 @@ Remember to use tools (list_files, read_file, write_file, modify_file, validate_
                 preview = (getattr(final_msg, "content", None) or "")[:200]
                 logger.info(f"  Task {task.id} output: {preview}")
 
-            # Post-task syntax validation and retry (max 1 retry)
+            # Post-task syntax validation and retry (configurable)
             syntax_errors = self._validate_all_python_syntax(project_path)
+            max_retries = (
+                getattr(self.settings, "code_gen_syntax_fix_retries", 1) or 1
+            )
             retry_count = 0
-            while syntax_errors and retry_count < 1:
+            use_fast_for_fix = (
+                getattr(self.settings, "use_fast_model_for_syntax_fix", True)
+                if self.settings
+                else True
+            )
+            while syntax_errors and retry_count < max_retries:
                 err_summary = "\n".join(
                     f"- {fp}: {err}" for fp, err in syntax_errors[:5]
                 )
@@ -697,7 +781,21 @@ Fix one file at a time, then call validate_syntax to verify."""
                     f"  Task {task.id}: {len(syntax_errors)} syntax errors, attempting fix..."
                 )
                 try:
-                    agent.invoke(
+                    fix_llm_svc = self.llm_service
+                    if use_fast_for_fix:
+                        fast_model = (
+                            getattr(self.settings, "fast_model_for_code_gen", "gpt-4o-mini")
+                            if self.settings
+                            else "gpt-4o-mini"
+                        )
+                        fix_llm_svc = self.llm_service.with_model(fast_model)
+                    fix_llm = fix_llm_svc.create_langchain_llm(temperature=0, max_tokens=4000)
+                    fix_agent = create_agent(
+                        model=fix_llm,
+                        tools=tools,
+                        system_prompt="You fix Python syntax errors. Use read_file, modify_file, validate_syntax.",
+                    )
+                    fix_agent.invoke(
                         {"messages": [HumanMessage(content=fix_msg)]},
                         {"recursion_limit": 20},
                     )
@@ -712,6 +810,7 @@ Fix one file at a time, then call validate_syntax to verify."""
             logger.warning(
                 f"  Agent error on task {task.id} ({task.name}): {e}", exc_info=True
             )
+            self._fallback_for_task(task, plan, requirements, project_path)
 
         # 更新 files 列表
         files = self._scan_generated_files(project_path)
@@ -841,14 +940,7 @@ Fix one file at a time, then call validate_syntax to verify."""
 
     def _get_task_relevant_files(self, task, plan: EngineeringPlan) -> List[str]:
         """Get list of file paths relevant to this task."""
-        paths = set()
-        paths.update(getattr(task, "files_to_add", []) or [])
-        paths.update(getattr(task, "files_to_modify", []) or [])
-        for spec in getattr(plan, "file_structure", []) or []:
-            related = getattr(spec, "related_tasks", []) or []
-            if task.id in related:
-                paths.add(getattr(spec, "path", "") or "")
-        return [p for p in sorted(paths) if p]
+        return _get_task_relevant_files_impl(task, plan)
 
     def _get_proactive_signatures(
         self,
@@ -1094,17 +1186,29 @@ class CodeMemoryAgent:
         if not plan:
             return memory_context
 
+        project_id = getattr(context, "project_id", "unknown") or "unknown"
+        max_queries = (
+            getattr(self.settings, "code_memory_prefetch_max_queries", 3) or 3
+        )
+        max_chars = (
+            getattr(self.settings, "code_memory_context_max_chars", 2500) or 2500
+        )
+
+        svc = None
         try:
             from src.services.code_memory_service import CodeMemoryService
 
             svc = CodeMemoryService(self.settings.code_memory_db_path)
-            project_id = getattr(context, "project_id", "unknown") or "unknown"
+        except Exception as e:
+            logger.warning(f"CodeMemoryAgent.pre_execute: could not init service: {e}")
+            return memory_context
 
-            # 1a. Seed symbol table from skeleton (fallback when pyi_stubs empty)
+        # 1a. Seed symbol table from skeleton (isolated try - failure here does not block prefetch)
+        try:
             pyi_stubs = getattr(plan, "pyi_stubs", {}) or {}
             file_structure = getattr(plan, "file_structure", []) or []
             interface_specs = getattr(plan, "interface_specs", None)
-            if pyi_stubs or file_structure or interface_specs:
+            if svc and (pyi_stubs or file_structure or interface_specs):
                 skeleton = build_skeleton_from_pyi_stubs(
                     pyi_stubs=pyi_stubs,
                     file_structure=file_structure,
@@ -1113,52 +1217,81 @@ class CodeMemoryAgent:
                 )
                 if skeleton.interfaces or skeleton.dependency_graph.nodes:
                     svc.add_symbols_from_skeleton(skeleton, project_id)
-
-            # 1b. Optional cross-project snippet prefetch
-            if getattr(self.settings, "enable_cross_project_memory", False):
-                tasks = getattr(plan, "tasks", []) or []
-                queries = []
-                for t in tasks[:5]:
-                    name = getattr(t, "name", "") or ""
-                    desc = getattr(t, "description", "") or ""
-                    task_type = (
-                        getattr(t.type, "value", str(t.type))
-                        if hasattr(t, "type")
-                        else ""
-                    )
-                    if task_type in ("backend", "database"):
-                        queries.append(f"flask {name} {desc[:40]}")
-                    elif task_type == "frontend":
-                        queries.append(f"flask jinja2 template {name}")
-                    else:
-                        queries.append(f"flask {name}")
-                seen = set()
-                snippets_text = []
-                for q in queries[:3]:
-                    if q.strip() in seen:
-                        continue
-                    seen.add(q.strip())
-                    try:
-                        found = svc.search_snippets(
-                            query=q,
-                            limit=2,
-                            project_id=project_id,
-                            cross_project=True,
-                        )
-                        for s in found:
-                            snippets_text.append(
-                                f"=== {s.function_name} ===\n{s.code[:600]}\n"
-                            )
-                    except Exception as ex:
-                        logger.debug(f"Prefetch search failed: {ex}")
-                if snippets_text:
-                    memory_context = (
-                        "\n## Cross-Project Reference Snippets (adapt to your project)\n"
-                        + "\n".join(snippets_text)[:2500]
-                    )
         except Exception as e:
-            logger.warning(f"CodeMemoryAgent.pre_execute failed: {e}")
+            logger.warning(f"CodeMemoryAgent.pre_execute: skeleton seed failed: {e}")
+
+        # 1b. Optional cross-project snippet prefetch (isolated try - failure does not lose skeleton)
+        if svc and getattr(self.settings, "enable_cross_project_memory", False):
+            try:
+                memory_context = self._prefetch_memory_context(
+                    svc, plan, project_id, max_queries, max_chars
+                )
+            except Exception as e:
+                logger.warning(f"CodeMemoryAgent.pre_execute: prefetch failed: {e}")
         return memory_context
+
+    def _prefetch_memory_context(
+        self, svc, plan, project_id: str, max_queries: int, max_chars: int
+    ) -> str:
+        """Build memory_context by prefetching snippets in parallel."""
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        tasks = getattr(plan, "tasks", []) or []
+        queries = []
+        for t in tasks[:5]:
+            name = getattr(t, "name", "") or ""
+            desc = getattr(t, "description", "") or ""
+            task_type = (
+                getattr(t.type, "value", str(t.type)) if hasattr(t, "type") else ""
+            )
+            if task_type in ("backend", "database"):
+                queries.append(f"flask {name} {desc[:40]}")
+            elif task_type == "frontend":
+                queries.append(f"flask jinja2 template {name}")
+            else:
+                queries.append(f"flask {name}")
+
+        seen = set()
+        unique_queries = []
+        for q in queries:
+            qs = q.strip()
+            if qs and qs not in seen:
+                seen.add(qs)
+                unique_queries.append(qs)
+                if len(unique_queries) >= max_queries:
+                    break
+
+        if not unique_queries:
+            return ""
+
+        snippets_text = []
+        with ThreadPoolExecutor(max_workers=min(len(unique_queries), 4)) as ex:
+            futures = {
+                ex.submit(
+                    svc.search_snippets,
+                    query=q,
+                    limit=2,
+                    project_id=project_id,
+                    cross_project=True,
+                ): q
+                for q in unique_queries
+            }
+            for future in as_completed(futures):
+                try:
+                    found = future.result()
+                    for s in found:
+                        snippets_text.append(
+                            f"=== {s.function_name} ===\n{s.code[:600]}\n"
+                        )
+                except Exception as ex:
+                    logger.debug(f"Prefetch search failed: {ex}")
+
+        if not snippets_text:
+            return ""
+        return (
+            "\n## Cross-Project Reference Snippets (adapt to your project)\n"
+            + "\n".join(snippets_text)[:max_chars]
+        )
 
     def execute(self, context: ExecutionContext, repository: CodeRepository) -> None:
         """Save generated code snippets to memory when ENABLE_CODE_MEMORY is True."""
@@ -1188,30 +1321,53 @@ class CodeMemoryAgent:
             logger.warning(f"CodeMemoryAgent save failed: {e}")
 
 
-def _build_mining_context_for_task(
-    task,
-    skeleton: CodeSkeleton,
-    plan: EngineeringPlan,
-    settings,
-    llm_service: Optional[LLMService] = None,
-) -> str:
-    """Fetch external code examples for a task with interface adaptation.
-    Returns formatted markdown string for prompt injection."""
-    from src.services.code_mining_service import CodeMiningService
+def _get_task_relevant_files_impl(task, plan: EngineeringPlan) -> List[str]:
+    """Get list of file paths relevant to this task."""
+    paths = set()
+    paths.update(getattr(task, "files_to_add", []) or [])
+    paths.update(getattr(task, "files_to_modify", []) or [])
+    for spec in getattr(plan, "file_structure", []) or []:
+        related = getattr(spec, "related_tasks", []) or []
+        if getattr(task, "id", None) in related:
+            paths.add(getattr(spec, "path", "") or "")
+    return [p for p in sorted(paths) if p]
 
+
+def _is_simple_task_for_mining_impl(task, plan: EngineeringPlan) -> bool:
+    """Return True if task is simple (frontend/config-only) for mining skip logic."""
+    task_type = (
+        getattr(task.type, "value", str(task.type)) if hasattr(task, "type") else ""
+    )
+    if task_type == "frontend":
+        return True
+    paths = _get_task_relevant_files_impl(task, plan)
+    if not paths:
+        return False
+    simple_paths = ("static/", "templates/", "config.py")
+    return all(any(sp in p for sp in simple_paths) for p in paths)
+
+
+def _should_skip_mining_for_task(task, plan: EngineeringPlan, settings) -> bool:
+    """Return True if mining should be skipped for this task (e.g. frontend/config-only)."""
+    if not settings or not getattr(settings, "skip_mining_for_simple_tasks", False):
+        return False
+    return _is_simple_task_for_mining_impl(task, plan)
+
+
+def _get_mining_query_for_task(task, skeleton: CodeSkeleton, plan: EngineeringPlan):
+    """Build (query, interface_spec, language, task_type) for a task. Returns None for unsupported types."""
     task_type = (
         getattr(task.type, "value", str(task.type)) if hasattr(task, "type") else ""
     )
 
-    # Build interface_spec from skeleton
     interface_spec = {"functions": [], "classes": []}
     task_relevant_paths = set()
     for spec in getattr(plan, "file_structure", []) or []:
-        if task.id in (getattr(spec, "related_tasks", []) or []):
+        if getattr(task, "id", None) in (getattr(spec, "related_tasks", []) or []):
             task_relevant_paths.add(getattr(spec, "path", "") or "")
     task_relevant_paths.update(getattr(task, "files_to_add", []) or [])
     task_relevant_paths.update(getattr(task, "files_to_modify", []) or [])
-    task_name_lower = task.name.lower().replace(" ", "_")
+    task_name_lower = (getattr(task, "name", "") or "").lower().replace(" ", "_")
     norm_rel = {p.replace("\\", "/").replace(".py", "").rstrip("/") for p in task_relevant_paths if p}
 
     for iface in skeleton.interfaces:
@@ -1237,7 +1393,7 @@ def _build_mining_context_for_task(
                 {"name": cls.get("name"), "bases": cls.get("bases", [])}
             )
 
-    algorithms = (plan.algorithms or {}).get(task.id) if plan else None
+    algorithms = (plan.algorithms or {}).get(getattr(task, "id", None)) if plan else None
     algo_extras = []
     if algorithms:
         libs = getattr(algorithms, "libraries", []) or []
@@ -1246,29 +1402,30 @@ def _build_mining_context_for_task(
     extra = " " + " ".join(algo_extras) if algo_extras else ""
 
     if task_type == "frontend":
-        query = f"flask jinja2 template {task.name} {getattr(task, 'description', '')[:40]}{extra}"
+        query = f"flask jinja2 template {getattr(task, 'name', '')} {getattr(task, 'description', '')[:40]}{extra}"
         language = "html"
         interface_spec = {"templates": [], "components": []}
-    elif task_type in ("backend", "database"):
-        query = f"flask {task.name} {getattr(task, 'description', '')[:50]}{extra}"
+        return (query, interface_spec, language, task_type)
+    if task_type in ("backend", "database"):
+        query = f"flask {getattr(task, 'name', '')} {getattr(task, 'description', '')[:50]}{extra}"
         language = "python"
-    else:
-        return ""
+        return (query, interface_spec, language, task_type)
+    return None
 
+
+def _fetch_and_format_mining_context(
+    svc,
+    query: str,
+    interface_spec: dict,
+    language: str,
+    task_type: str,
+    settings,
+    llm_service,
+    max_context_chars: int,
+) -> str:
+    """Call search_and_adapt and format result. Returns formatted markdown string."""
     try:
-        cache_path = None
-        if settings:
-            data_dir = getattr(settings, "data_dir", None)
-            if data_dir:
-                cache_path = Path(data_dir) / "code_mining_cache.json"
-        svc = CodeMiningService(
-            github_token=getattr(settings, "github_token", None),
-            search_limit=getattr(settings, "github_search_limit", 3),
-            cache_path=cache_path,
-        )
-        use_llm = (
-            getattr(settings, "enable_llm_code_adaptation", False) if settings else False
-        )
+        use_llm = getattr(settings, "enable_llm_code_adaptation", False) if settings else False
         results = svc.search_and_adapt(
             query,
             interface_spec,
@@ -1295,10 +1452,31 @@ def _build_mining_context_for_task(
             for cls in interface_spec.get("classes", [])[:3]:
                 out += f"  - class {cls['name']}\n"
 
-        return out[:800] if out else ""
+        return out[:max_context_chars] if out else ""
     except Exception as e:
-        logger.debug(f"Code mining for task {task.id} skipped: {e}")
+        logger.debug(f"Code mining for query {query[:50]} failed: {e}")
         return ""
+
+
+def _build_mining_context_for_task(
+    svc: "CodeMiningService",
+    task,
+    skeleton: CodeSkeleton,
+    plan: EngineeringPlan,
+    settings,
+    llm_service: Optional[LLMService] = None,
+    max_context_chars: int = 800,
+) -> str:
+    """Fetch external code examples for a task with interface adaptation.
+    Returns formatted markdown string for prompt injection."""
+    q = _get_mining_query_for_task(task, skeleton, plan)
+    if not q:
+        return ""
+    query, interface_spec, language, task_type = q
+    return _fetch_and_format_mining_context(
+        svc, query, interface_spec, language, task_type,
+        settings, llm_service, max_context_chars,
+    )
 
 
 class CodeMiningAgent:
@@ -1336,15 +1514,75 @@ class CodeMiningAgent:
             interface_specs=interface_specs,
         )
 
-        for task in getattr(plan, "tasks", []) or []:
-            task_id = getattr(task, "id", None)
-            if not task_id:
-                continue
-            ctx = _build_mining_context_for_task(
-                task, skeleton, plan, self.settings, self.llm_service
+        from src.services.code_mining_service import CodeMiningService
+
+        cache_path = None
+        if self.settings:
+            data_dir = getattr(self.settings, "data_dir", None)
+            if data_dir:
+                cache_path = Path(data_dir) / "code_mining_cache.json"
+        svc = CodeMiningService(
+            github_token=getattr(self.settings, "github_token", None),
+            search_limit=getattr(self.settings, "github_search_limit", 3),
+            cache_path=cache_path,
+        )
+        max_context_chars = getattr(
+            self.settings, "code_mining_max_context_chars", 800
+        )
+        max_workers = getattr(
+            self.settings, "code_mining_parallel_workers", 3
+        )
+        deduplicate = getattr(
+            self.settings, "code_mining_deduplicate_queries", True
+        )
+        tasks_list = getattr(plan, "tasks", []) or []
+        tasks_to_mine = [
+            t for t in tasks_list
+            if getattr(t, "id", None) and not _should_skip_mining_for_task(t, plan, self.settings)
+        ]
+
+        if deduplicate:
+            query_to_tasks: Dict[str, tuple] = {}
+            for task in tasks_to_mine:
+                q = _get_mining_query_for_task(task, skeleton, plan)
+                if not q:
+                    continue
+                query, interface_spec, language, task_type = q
+                if query not in query_to_tasks:
+                    query_to_tasks[query] = ([], interface_spec, language, task_type)
+                query_to_tasks[query][0].append(getattr(task, "id"))
+
+            work_items = [
+                (query, task_ids, interface_spec, language, task_type)
+                for query, (task_ids, interface_spec, language, task_type) in query_to_tasks.items()
+            ]
+        else:
+            work_items = []
+            for task in tasks_to_mine:
+                q = _get_mining_query_for_task(task, skeleton, plan)
+                if q:
+                    work_items.append((
+                        q[0], [getattr(task, "id")], q[1], q[2], q[3]
+                    ))
+
+        def _mine_one(args):
+            query, task_ids, interface_spec, language, task_type = args
+            ctx = _fetch_and_format_mining_context(
+                svc, query, interface_spec, language, task_type,
+                self.settings, self.llm_service, max_context_chars,
             )
-            if ctx:
-                mining_by_task[task_id] = ctx
+            return (task_ids, ctx)
+
+        with ThreadPoolExecutor(max_workers=min(max_workers, len(work_items) or 1)) as ex:
+            futures = {ex.submit(_mine_one, item): item for item in work_items}
+            for future in as_completed(futures):
+                try:
+                    task_ids, ctx = future.result()
+                    if ctx:
+                        for tid in task_ids:
+                            mining_by_task[tid] = ctx
+                except Exception as e:
+                    logger.debug(f"Code mining failed: {e}")
 
         logger.info(
             f"CodeMiningAgent: pre-fetched mining context for {len(mining_by_task)} tasks"

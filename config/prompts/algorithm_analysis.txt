@@ -1,15 +1,24 @@
 For each task, provide a brief implementation approach.
-Return a JSON object with task ID as key:
+tasks_summary format: T1 [backend]: name - description... (task_id, type, name, description preview)
+
+Return a JSON object with task ID as key. Each key must match a task ID from tasks_summary:
 {
     "T1": {
         "implementation_approach": "Brief description of how to implement this task",
         "notes": "Any important notes",
-        "hf_models": ["model-id-1", "model-id-2"],
-        "hf_usage_notes": "How to use the model based on its API docs"
+        "hf_models": ["model-id-1"],
+        "hf_usage_notes": "How to use the model (for ML tasks only)",
+        "data_structures": ["ModelName", "List", "Dict"],
+        "algorithm_type": "crud|ml-pipeline|standard"
     }
 }
 
-If Hugging Face context is provided below, prefer suitable models from it when the task involves ML/NLP/CV. Include hf_models (list of model IDs) and hf_usage_notes (usage based on API docs) when applicable. For non-ML tasks, omit hf_models and hf_usage_notes or leave empty.
+- implementation_approach: required, 1-2 sentences
+- hf_models, hf_usage_notes: only for ML/NLP/CV tasks when HF context is provided
+- data_structures: optional, key data structures (e.g., Model classes, list types)
+- algorithm_type: optional, "crud", "ml-pipeline", or "standard"
+
+If Hugging Face context is provided below, prefer suitable models from it when the task involves ML/NLP/CV.
 
 Tasks: $tasks_summary
 

@@ -1,0 +1,28 @@
+---
+description: 项目上下文 - 新建对话时首读文档
+alwaysApply: true
+---
+
+# 项目上下文
+
+Idea2Product：4 阶段 pipeline，将自然语言需求转化为可运行 Web 应用。
+
+## 新建对话首读
+
+**在回复用户第一条消息前**，先读取 `@docs/CONTEXT_INDEX.md` 以加载项目上下文。
+
+若任务涉及 Agent、数据模型、代码生成、Web API 等，按 CONTEXT_INDEX 中的索引 @ 引用：
+- Agent 输入输出 → @docs/refs/AGENTS_REF.md
+- 数据模型 → @docs/refs/DATA_MODELS_REF.md
+- 代码生成规范 → @docs/specs/CODE_GEN_SPEC.md
+- Web 流程 → @docs/refs/WEB_FLOW_REF.md
+- 提示模板 → @docs/refs/PROMPTS_REF.md
+- 服务层 / 模型选择 → @docs/refs/SERVICES_REF.md
+- 报错 / 调试 → @docs/TROUBLESHOOTING.md
+
+关键入口：CLAUDE.md（命令）、docs/ARCHITECTURE.md（架构图）。
+
+## Skill 建议
+
+- 任务涉及**生成应用的前端设计**时，建议 `npx openskills read frontend-design`
+- 任务涉及**项目文档编写/修订**时，建议 `npx openskills read doc-coauthoring`

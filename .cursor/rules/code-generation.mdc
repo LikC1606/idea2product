@@ -1,0 +1,13 @@
+---
+description: 提示模板、生成模板、Interface-first 策略
+globs: config/prompts/**
+alwaysApply: false
+---
+
+# Code Generation
+
+- Interface-first：pyi_stubs → CodeSkeleton → dependency graph → 按序生成实现
+- skeleton_builder.py 从 pyi 构建 skeleton，不可绕过
+- 模板在 templates/flask_base/
+
+需完整规范时读 @docs/specs/CODE_GEN_SPEC.md，提示映射 @docs/refs/PROMPTS_REF.md

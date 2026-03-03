@@ -1,13 +1,13 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code when working with code in this repository.
 
 ## Quick Start
 
 ```bash
 pip install -r requirements.txt
 pip install -e .
-cp .env.example .env  # Configure OPENAI_API_KEY
+cp .env.example .env  # Configure API key for your primary provider (OPENAI_API_KEY, ANTHROPIC_API_KEY, or GOOGLE_API_KEY)
 ```
 
 ## Common Commands
@@ -16,6 +16,7 @@ cp .env.example .env  # Configure OPENAI_API_KEY
 # CLI
 python -m src.cli create "Build a todo app"
 python -m src.cli create -i "Build a todo app"   # interactive Q&A mode
+python -m src.cli from-paper paper.pdf            # analyze paper and get app ideas (optional: --generate, --context)
 python -m src.cli list
 python -m src.cli status <project_id>
 
@@ -29,7 +30,7 @@ cd frontend && npm run dev
 # Testing & code quality
 pytest tests/ -v
 python -m src.benchmarks.run_small_suite  # requires OPENAI_API_KEY
-python scripts/check_bugs.py markdown  # Phase 1 bug check (ruff, mypy, patterns)
+python scripts/check_bugs.py markdown
 black src/ tests/
 ruff check src/
 mypy src/
@@ -37,75 +38,60 @@ mypy src/
 
 ## Architecture
 
-A 4-stage pipeline with 10 specialized agents that transform natural language requirements into production-ready applications.
-
-### Pipeline Flow
-1. **Stage 1** (Requirements) - InteractionAgent clarifies requirements via dialogue
-2. **Stage 2** (Planning) - FlowSimulation, TaskDivision, AlgorithmAnalysis, SchemePlanning agents create specs
-3. **Stage 3** (Code Generation) - Generates code with interface-first strategy, dependency resolution
-4. **Stage 4** (Validation) - BDD testing, optional visual verification, automatic bug fixing (run-fix loop + FineTuningAgent)
+4-stage pipeline: Requirements → Planning → Code Generation → Validation.
 
 ### Key Files
-- `src/core/orchestrator.py` - Coordinates all stages
-- `src/core/context.py` - ExecutionContext carries state through pipeline
-- `src/core/data_models.py` - Requirements, EngineeringPlan, CodeRepository, ValidatedProject, etc.
-- `config/settings.py` - Application configuration with feature flags
+
+- `src/core/orchestrator.py` — Coordinates all stages
+- `src/core/context.py` — ExecutionContext
+- `src/core/data_models.py` — Requirements, EngineeringPlan, CodeRepository, ValidatedProject
+- `config/settings.py` — Configuration, feature flags
 
 ### Agent Locations
-- `src/agents/stage1_requirements/` - InteractionAgent
-- `src/agents/stage2_planning/` - FlowSimulation, TaskDivision, AlgorithmAnalysis, SchemePlanning
-- `src/agents/stage3_generation/` - CodeGeneration (LangChain), CodeMemory, CodeMining
-- `src/agents/stage4_validation/` - FullCycleTesting, FineTuning, VisualVerification
+
+- `src/agents/stage1_requirements/` — InteractionAgent, PaperToProjectAgent
+- `src/agents/stage2_planning/` — FlowSimulation, TaskDivision, AlgorithmAnalysis, SchemePlanning
+- `src/agents/stage3_generation/` — CodeGeneration, CodeMemory, CodeMining
+- `src/agents/stage4_validation/` — FullCycleTesting, FineTuning, VisualVerification
 
 ### Services
-- `src/services/llm_service.py` - OpenAI API calls (use `LLMService.from_settings(settings)`)
-- `src/services/code_memory_service.py` - SQLite knowledge graph (`data/code_memory.db`)
-- `src/services/code_mining_service.py` - GitHub code retrieval
-- `src/services/execution_service.py` - Reserved (not used in pipeline)
-- `src/web/services/chat_service.py` - Per-project chat persistence (`artifacts/chat.json`)
-- `src/web/services/preview_service.py` - Manages subprocesses for live preview of generated apps
-- `src/web/services/task_service.py` - Background generation with per-project serialization
 
-## Project Structure
-
-```
-config/settings.py                  # Pydantic-settings configuration
-src/core/orchestrator.py            # Main pipeline coordinator
-src/cli.py                          # Click CLI
-src/web/app.py                      # Flask web backend
-src/web/api/projects.py             # REST API endpoints
-src/web/services/chat_service.py    # Chat persistence (artifacts/chat.json)
-src/web/services/preview_service.py # Live preview subprocess manager
-src/web/services/task_service.py    # Background generation tasks
-templates/flask_base/               # Flask app template for code generation
-templates/index.html                # Build Studio UI (chat + code + preview)
-data/projects/{id}/                 # Generated project artifacts
-tests/                              # Unit tests (mocked, no API key needed)
-```
+- `src/services/llm_service.py` — OpenAI API (use `LLMService.from_settings(settings)`)
+- `src/web/services/chat_service.py` — Chat persistence
+- `src/web/services/preview_service.py` — Live preview
+- `src/web/services/task_service.py` — Background generation
 
 ## Environment Variables
 
-Key settings in `.env`:
-- `OPENAI_API_KEY` - Required
-- `OPENAI_MODEL` - Default: gpt-4o
-- `OPENAI_BASE_URL` - Custom endpoint (OpenRouter, Azure, etc.)
-- `ENABLE_CODE_MEMORY`, `ENABLE_CODE_MINING` - On by default (Plan: skeleton-first); set False to reduce API/DB usage
-- `ENABLE_VISUAL_VERIFICATION`, `ENABLE_BDD_TESTING` - Feature flags
+- **Primary LLM** — `PRIMARY_LLM_PROVIDER` = `openai` | `anthropic` | `google`. At least the selected provider's key must be set.
+- **OpenAI** — `OPENAI_API_KEY` (required when primary=openai), `OPENAI_MODEL`, `OPENAI_BASE_URL`, `OPENAI_VLM_MODEL`
+- **Anthropic (Claude)** — `ANTHROPIC_API_KEY` (when primary=anthropic), `ANTHROPIC_BASE_URL` (default OpenRouter), `ANTHROPIC_MODEL`
+- **Google (Gemini)** — `GOOGLE_API_KEY` (when primary=google), `GOOGLE_BASE_URL`, `GOOGLE_MODEL`
+- `ENABLE_CODE_MEMORY`, `ENABLE_CODE_MINING`, `ENABLE_VISUAL_VERIFICATION`, `ENABLE_BDD_TESTING` — Feature flags
+- `ENABLE_CODE_MEMORY`, `ENABLE_CODE_MINING`, `ENABLE_VISUAL_VERIFICATION`, `ENABLE_BDD_TESTING` — Feature flags
+- `VALIDATION_PORT` — Port for FullCycleTesting/FrontendTesting/VisualVerification/CodeFix (default 5555)
+- `WARN_UNUSED_FILES`, `BDD_TEST_TIMEOUT_SECONDS` — FullCycleTesting Agent (unused file warnings, pytest timeout)
+- `FINE_TUNING_MAX_CONTEXT_CHARS`, `USE_FAST_MODEL_FOR_FINE_TUNING_SYNTAX` — FineTuning Agent (LLM context limit, fast model for syntax fix)
+- `CODE_MEMORY_PREFETCH_MAX_QUERIES`, `CODE_MEMORY_CONTEXT_MAX_CHARS` — Code Memory Agent prefetch limits
+- `SKIP_FLOW_EXTRACTION`, `USE_FAST_MODEL_FOR_TASK_REVIEW`, `FAST_MODEL_FOR_REVIEW` — Task Division Agent
+- `SKIP_HF_FOR_SIMPLE_TASKS`, `SKIP_FLOW_IN_ALGORITHM`, `ENABLE_HF_CACHE` — Algorithm Analysis Agent
+- `SKIP_API_REVIEW_WHEN_SIMPLE`, `USE_FAST_MODEL_FOR_API_REVIEW`, `SKIP_FLOW_IN_SCHEME_PLANNING` — Scheme Planning Agent
+- `USE_FAST_MODEL_FOR_SIMPLE_CODE_TASKS`, `FAST_MODEL_FOR_CODE_GEN`, `SKIP_MINING_FOR_SIMPLE_TASKS` — Code Generation Agent
+- `CODE_MINING_PARALLEL_WORKERS`, `CODE_MINING_MAX_CONTEXT_CHARS`, `CODE_MINING_DEDUPLICATE_QUERIES` — Code Mining Agent
+- `ENABLE_PARALLEL_STAGE3_PREFETCH` — When True (default), run CodeMemory pre_execute and CodeMining execute in parallel in Stage 3
+- `MAX_SYSTEM_PROMPT_CHARS`, `USE_FAST_MODEL_FOR_SYNTAX_FIX`, `CODE_GEN_SYNTAX_FIX_RETRIES` — Code Generation Agent
+- `ENABLE_IMAGE_GENERATION`, `IMAGE_GENERATION_PROVIDER` — Image generation (openai | generic_http); when True, Stage 3 runs asset generation (hero/placeholder images to generated/static/images/)
+- `IMAGE_GENERATION_OPENAI_MODEL`, `IMAGE_GENERATION_BASE_URL`, `IMAGE_GENERATION_API_KEY` — OpenAI DALL-E or generic HTTP provider; `IMAGE_GENERATION_RESPONSE_IMAGE_PATH`, `IMAGE_GENERATION_EXTRA_HEADERS`, `IMAGE_GENERATION_TIMEOUT` for generic_http
+- `ENABLE_STAGE2_WEB_SEARCH`, `WEB_SEARCH_PROVIDER`, `WEB_SEARCH_API_KEY` — Stage 2 model discovery: when True, ModelIntegrationPlanningAgent searches web for external APIs and writes plan.external_model_specs; Serper uses WEB_SEARCH_API_KEY or SERPER_API_KEY
+- `EXPOSE_ERROR_DETAILS` — When True, 500 API responses may include error details; when False (default), return generic "Internal server error" only; server always logs full exception
 
 ## Key Patterns
 
-- Agents are standalone classes taking `LLMService` in constructor; they do **not** inherit from `AgentBase`
-- Stage execution happens in `Orchestrator.run()` with run-fix loop in Stage 4
-- Code generation uses interface-first: generates `.pyi` files, then dependency graph, then implementations
-- `CodeSkeleton` is built from pyi stubs via `src/utils/skeleton_builder.py` and injected into the LLM prompt
-- Generated apps are saved to `data/projects/{id}/generated/`
+- Agents are standalone classes taking `LLMService`; they do **not** inherit from AgentBase
+- Interface-first: .pyi stubs → dependency graph → implementations
+- CodeSkeleton built via `src/utils/skeleton_builder.py`
+- Generated apps in `data/projects/{id}/generated/`
 
-## Web Flow (Chat-first)
+## Further Documentation
 
-1. `POST /api/projects {"start_chat": true}` → creates project dirs, returns `project_id`
-2. `POST /api/projects/<id>/chat {"message": "..."}` → appends user msg, gets AI reply, auto-triggers generation
-3. First generation: `conversation_to_requirements()` → `orchestrator.run_from_stage_2()`
-4. Incremental: `merge_requirements(existing, new_msg)` → `orchestrator.run_from_stage_2()`
-5. After generation completes, `preview_service.start_preview()` launches the app on a dynamic port
-6. `GET /api/projects/<id>/preview-url` returns the live URL for iframe embedding
-7. Per-project serialization: only one generation runs per project; subsequent requests queue and re-run
+Detailed architecture, Agent I/O, data models, Web flow, and code-gen specs: **docs/CONTEXT_INDEX.md**

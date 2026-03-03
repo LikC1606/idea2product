@@ -1,0 +1,30 @@
+## 【CRITICAL】前端代码必须严格遵循 api_specs
+前端发送数据时，必须严格按照 api_specs 中定义的 request 字段和类型生成代码：
+
+1. **字段名必须完全一致**：
+   - api_specs 定义了 `author_id: "int"`，前端就必须发送 `author_id`
+   - 不能省略任何必填字段！
+
+2. **字段类型必须完全一致**：
+   - `"bool"` → JavaScript `true`/`false`（不是字符串 "true"/"false"）
+   - `"int"` → JavaScript 数字（如 `parseInt(value)` 或 `Number(value)`）
+   - `"array"` 或 `["str"]` → JavaScript 数组（如 `["tag1", "tag2"]`）
+
+3. **【强制】关联 ID（如 author_id）必须从 session 获取**：
+   - 如果 api_specs 的 request 中需要 author_id，后端从 session 获取
+   - 前端不需要传递 author_id，后端自己从 session['user_id'] 读取
+   - 例如：创建博客时，后端用 session.get('user_id') 获取当前用户ID
+
+4. 数据格式：所有 API 用 JSON，禁止用 FormData
+
+## 【CRITICAL】Session 认证实现
+如果 api_specs 中的 endpoint 有 session_info 说明，必须按要求实现：
+
+1. **后端设置 session**：登录成功后设置 session['user_id'] = user.id（或其他 session_info 指定的变量）
+
+2. **后端获取当前用户**：提供 /api/auth/me 端点，从 session 获取用户ID并返回用户信息
+
+3. **确保 app/__init__.py 设置了 secret_key**：app.secret_key = 'your-secret-key'
+$auth_checklist_section
+## API Endpoints
+$api_info

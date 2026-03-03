@@ -1,0 +1,16 @@
+Based on this conversation about an app, output a single JSON object for the application requirements.
+Conversation:
+$conv
+
+Output JSON only:
+{
+    "title": "Short app title",
+    "description": "2-3 sentence description",
+    "features": [{"id": "f1", "name": "...", "description": "...", "priority": 1}],
+    "constraints": [],
+    "target_users": "...",
+    "data_requirements": "...",
+    "design_mode": "modern|minimal|dashboard|null"
+}
+
+design_mode: optional. Use "minimal" for sparse/clean UI, "dashboard" for data-heavy layouts, "modern" or null for default.

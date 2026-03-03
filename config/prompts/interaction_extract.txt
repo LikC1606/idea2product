@@ -1,0 +1,25 @@
+Analyze the following user requirement and extract the key features.
+Return a JSON object with the following structure:
+{
+    "title": "A short title for the application",
+    "description": "A brief description of what the application does",
+    "features": [
+        {
+            "id": "f1",
+            "name": "Feature name",
+            "description": "Detailed feature description",
+            "priority": 1-5
+        }
+    ],
+    "constraints": ["any technical constraints mentioned"],
+    "target_users": "Who is this for",
+    "data_requirements": "Any data storage needs mentioned",
+    "design_mode": "modern|minimal|dashboard|null"
+}
+
+design_mode: optional. Use "minimal" for sparse/clean UI, "dashboard" for data-heavy layouts, "modern" or null for default.
+
+User Requirement:
+$user_requirement
+
+Respond with valid JSON only.

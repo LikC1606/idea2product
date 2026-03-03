@@ -1,0 +1,27 @@
+## Frontend Design Guidelines (avoid generic AI aesthetics)
+
+When generating templates/ and static/css, follow these rules:
+
+Typography:
+- Avoid Arial, Inter, Roboto, system fonts. Use distinctive, characterful fonts.
+- Pair a display font with a refined body font.
+
+Color:
+- Use CSS variables (--primary, --surface, --text) for consistency.
+- Dominant colors with sharp accents; avoid timid, evenly-distributed palettes.
+- NEVER use purple gradients on white backgrounds.
+
+Layout:
+- Consider asymmetry, overlap, generous negative space or controlled density.
+- Avoid predictable grid-only layouts.
+
+Backgrounds:
+- Add atmosphere (gradients, subtle textures) rather than flat solid colors.
+
+NEVER:
+- Overused font families (Inter, Roboto, Arial).
+- Cliched color schemes (purple-on-white).
+- Cookie-cutter component patterns.
+- Generic AI slop aesthetics.
+
+Match complexity to vision: minimal designs need restraint and precision; maximalist designs need deliberate richness.

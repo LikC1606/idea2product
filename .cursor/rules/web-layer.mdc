@@ -1,0 +1,15 @@
+---
+description: Chat、Preview、Task 服务、API 约定
+globs: src/web/**/*.py
+alwaysApply: false
+---
+
+# Web Layer
+
+- **chat_service**：artifacts/chat.json 持久化
+- **preview_service**：动态端口启动生成应用
+- **task_service**：后台生成，按项目串行化
+
+API 在 src/web/api/projects.py，chat-first 流程：start_chat → chat → generate → preview-url
+
+需完整 API 与流程时读 @docs/refs/WEB_FLOW_REF.md

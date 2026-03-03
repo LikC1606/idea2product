@@ -8,6 +8,7 @@ Description: $description
 Features: $features
 $flow_section
 $algorithms_section
+$pattern_hint
 
 $task_descriptions
 

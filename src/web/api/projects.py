@@ -66,7 +66,7 @@ def create_project():
         project_id = ts.create_chat_project()
         return jsonify({"project_id": project_id, "status": "idle"}), 201
 
-    requirement = data.get("requirement", "")
+    requirement = (data.get("requirement") or "").strip()
     if not requirement:
         return jsonify({"error": "requirement or start_chat is required"}), 400
 
@@ -301,7 +301,8 @@ def get_visual_report(project_id):
 
     try:
         data = json.loads(context_path.read_text(encoding="utf-8"))
-    except Exception:
+    except Exception as e:
+        logger.exception(e)
         return jsonify({"error": "Failed to read context"}), 500
 
     visual = data.get("visual_verification")
@@ -318,7 +319,7 @@ def get_visual_report(project_id):
 @bp.route("/analyze", methods=["POST"])
 def analyze_requirement():
     data = request.get_json(silent=True) or {}
-    requirement = data.get("requirement", "")
+    requirement = (data.get("requirement") or "").strip()
     if not requirement:
         return jsonify({"error": "requirement is required"}), 400
     try:
@@ -328,13 +329,15 @@ def analyze_requirement():
         analysis = agent.analyze_requirement(requirement)
         return jsonify(analysis)
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        logger.exception(e)
+        err_msg = str(e) if getattr(get_settings(), "expose_error_details", False) else "Internal server error"
+        return jsonify({"error": err_msg}), 500
 
 
 @bp.route("/clarify", methods=["POST"])
 def clarify_requirement():
     data = request.get_json(silent=True) or {}
-    requirement = data.get("requirement", "")
+    requirement = (data.get("requirement") or "").strip()
     if not requirement:
         return jsonify({"error": "requirement is required"}), 400
     try:
@@ -349,13 +352,15 @@ def clarify_requirement():
             ]
         })
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        logger.exception(e)
+        err_msg = str(e) if getattr(get_settings(), "expose_error_details", False) else "Internal server error"
+        return jsonify({"error": err_msg}), 500
 
 
 @bp.route("/finalize", methods=["POST"])
 def finalize_requirement():
     data = request.get_json(silent=True) or {}
-    requirement = data.get("requirement", "")
+    requirement = (data.get("requirement") or "").strip()
     clarifications = data.get("clarifications", {})
     if not requirement:
         return jsonify({"error": "requirement is required"}), 400
@@ -380,4 +385,6 @@ def finalize_requirement():
             "data_requirements": final_req.data_requirements,
         })
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        logger.exception(e)
+        err_msg = str(e) if getattr(get_settings(), "expose_error_details", False) else "Internal server error"
+        return jsonify({"error": err_msg}), 500

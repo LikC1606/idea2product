@@ -8,6 +8,7 @@ import pytest
 
 from config.settings import Settings
 from src.core.data_models import Requirements
+from src.core.exceptions import StageExecutionError
 from src.core.orchestrator import Orchestrator
 
 
@@ -56,7 +57,7 @@ def test_stage2_failure_saves_context(temp_settings):
 
     with patch.object(orchestrator, "execute_stage_1", return_value=_make_minimal_requirements()):
         with patch.object(orchestrator, "execute_stage_2", side_effect=RuntimeError("Stage 2 simulated failure")):
-            with pytest.raises(RuntimeError):
+            with pytest.raises(StageExecutionError):
                 orchestrator.run("Build a todo app", interactive=False)
 
     projects_dir = root / "data" / "projects"
@@ -82,7 +83,7 @@ def test_stage1_failure_saves_context(temp_settings):
     with patch.object(
         orchestrator, "execute_stage_1", side_effect=RuntimeError("Stage 1 simulated failure")
     ):
-        with pytest.raises(RuntimeError):
+        with pytest.raises(StageExecutionError):
             orchestrator.run("Build a todo app", interactive=False)
 
     projects_dir = root / "data" / "projects"
@@ -132,7 +133,7 @@ def test_stage3_failure_saves_context(temp_settings):
             with patch.object(
                 orchestrator, "execute_stage_3", side_effect=RuntimeError("Stage 3 simulated failure")
             ):
-                with pytest.raises(RuntimeError):
+                with pytest.raises(StageExecutionError):
                     orchestrator.run("Build a todo app", interactive=False)
 
     projects_dir = root / "data" / "projects"
@@ -159,7 +160,7 @@ def test_stage4_failure_saves_context(temp_settings):
                 with patch.object(
                     orchestrator, "execute_stage_4", side_effect=RuntimeError("Stage 4 simulated failure")
                 ):
-                    with pytest.raises(RuntimeError):
+                    with pytest.raises(StageExecutionError):
                         orchestrator.run("Build a todo app", interactive=False)
 
     projects_dir = root / "data" / "projects"

@@ -1,0 +1,13 @@
+---
+description: Agent 契约、LLMService 用法
+globs: src/agents/**/*.py
+alwaysApply: false
+---
+
+# Agents
+
+- Agents 为独立类，构造函数接收 `LLMService`，**不继承** AgentBase
+- 使用 `LLMService.from_settings(settings)` 创建实例
+- 所有 execute 方法通过 Orchestrator 调用，ExecutionContext 贯穿
+
+需完整 Agent 输入输出时读 @docs/refs/AGENTS_REF.md

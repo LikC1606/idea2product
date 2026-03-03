@@ -4,9 +4,10 @@ import ast
 import hashlib
 import json
 import re
+import time
 from collections import OrderedDict
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 import requests
 from src.utils.logger import get_logger
 
@@ -46,6 +47,9 @@ class CodeMiningService:
             self.session.headers.update({"Authorization": auth})
         self._cache_maxsize = 100
         self._cache: OrderedDict[str, List[Dict[str, Any]]] = OrderedDict()
+        self._raw_cache: OrderedDict[str, List[Tuple[Dict, Optional[str]]]] = OrderedDict()
+        self._adapt_cache: OrderedDict[str, str] = OrderedDict()
+        self._adapt_cache_maxsize = 200
         if self.cache_path and self.cache_path.exists():
             self._load_persisted_cache()
 
@@ -84,6 +88,36 @@ class CodeMiningService:
         except Exception as e:
             logger.debug(f"Could not persist code mining cache: {e}")
 
+    def _get_with_retry(
+        self,
+        url: str,
+        params: Optional[Dict] = None,
+        headers: Optional[Dict] = None,
+        max_retries: int = 2,
+        timeout: int = 15,
+    ) -> Optional[requests.Response]:
+        """GET with exponential backoff on 403 (rate limit)."""
+        merged_headers = {"Accept": "application/vnd.github.v3+json"}
+        if headers:
+            merged_headers.update(headers)
+        for attempt in range(max_retries + 1):
+            try:
+                response = self.session.get(
+                    url, params=params, headers=merged_headers, timeout=timeout
+                )
+                if response.status_code == 403 and attempt < max_retries:
+                    delay = (2 ** attempt) * 7
+                    logger.warning(f"GitHub 403 rate limit, retry in {delay}s (attempt {attempt + 1}/{max_retries + 1})")
+                    time.sleep(delay)
+                    continue
+                return response
+            except requests.exceptions.RequestException:
+                if attempt < max_retries:
+                    time.sleep((2 ** attempt) * 2)
+                else:
+                    raise
+        return None
+
     def search_code(
         self,
         query: str,
@@ -100,13 +134,11 @@ class CodeMiningService:
         # Code Search has strict rate limits (9 req/min); use conservatively
         try:
             q = f"{query} language:{language}"
-            response = self.session.get(
+            response = self._get_with_retry(
                 f"{self.base_url}/search/code",
                 params={"q": q, "per_page": min(per_page, 5)},
-                headers={"Accept": "application/vnd.github.v3+json"},
-                timeout=15,
             )
-            if response.status_code != 200:
+            if not response or response.status_code != 200:
                 return []
             data = response.json()
             items = []
@@ -161,10 +193,14 @@ class CodeMiningService:
         params = {"q": search_query, "sort": "stars", "per_page": self.search_limit}
 
         try:
-            # Search repositories (code search has lower rate limits)
-            response = self.session.get(
-                f"{self.base_url}/search/repositories", params=params, timeout=30
+            response = self._get_with_retry(
+                f"{self.base_url}/search/repositories",
+                params=params,
+                timeout=30,
             )
+            if not response:
+                results = self._fallback_search(query, language)
+                return results
 
             if response.status_code == 200:
                 data = response.json()
@@ -307,9 +343,9 @@ class CodeMiningService:
         """
         try:
             url = f"{self.base_url}/repos/{repo}/contents/{path}"
-            response = self.session.get(url, timeout=30)
+            response = self._get_with_retry(url, timeout=30)
 
-            if response.status_code == 200:
+            if response and response.status_code == 200:
                 data = response.json()
                 if data.get("encoding") == "base64":
                     import base64
@@ -476,6 +512,67 @@ Return ONLY the adapted Python code, no explanation."""
 
         return adapted
 
+    def _fetch_raw_results(self, query: str, language: str) -> List[Tuple[Dict, Optional[str]]]:
+        """Fetch raw (repo_info, content) from GitHub. Uses query-level cache."""
+        raw_key = f"{query.strip().lower()}|{language}"
+        if raw_key in self._raw_cache:
+            self._raw_cache.move_to_end(raw_key)
+            return self._raw_cache[raw_key]
+
+        raw_results: List[Tuple[Dict, Optional[str]]] = []
+        code_hits = self.search_code(query, language, per_page=self.search_limit)
+        if code_hits:
+            for hit in code_hits:
+                full_name = hit.get("full_name", "")
+                path = hit.get("path", "")
+                if full_name and path:
+                    content = self.get_file_content(full_name, path)
+                    repo_info = {
+                        "full_name": full_name,
+                        "url": hit.get("html_url", ""),
+                        "html_url": hit.get("html_url", ""),
+                    }
+                    raw_results.append((repo_info, content))
+            if raw_results:
+                if len(self._raw_cache) >= self._cache_maxsize:
+                    self._raw_cache.popitem(last=False)
+                self._raw_cache[raw_key] = raw_results
+                self._raw_cache.move_to_end(raw_key)
+                return raw_results
+
+        search_results = self.search_github(query, language)
+        for repo in search_results:
+            full_name = repo.get("full_name", "")
+            content = None
+            if full_name:
+                if language == "html":
+                    candidate_paths = [
+                        "templates/index.html",
+                        "templates/base.html",
+                        "templates/layout.html",
+                        "index.html",
+                    ]
+                else:
+                    candidate_paths = [
+                        "app.py",
+                        "app/__init__.py",
+                        "routes.py",
+                        "views.py",
+                        "models.py",
+                    ]
+                for cpath in candidate_paths:
+                    c = self.get_file_content(full_name, cpath)
+                    if c and len(c) > 50:
+                        content = c
+                        break
+            raw_results.append((repo, content))
+
+        if len(self._raw_cache) >= self._cache_maxsize and raw_key not in self._raw_cache:
+            self._raw_cache.popitem(last=False)
+        self._raw_cache[raw_key] = raw_results
+        self._raw_cache.move_to_end(raw_key)
+        return raw_results
+
     def search_and_adapt(
         self,
         query: str,
@@ -487,7 +584,7 @@ Return ONLY the adapted Python code, no explanation."""
         """
         Search GitHub and adapt code to match interface.
         When github_token is set, tries Code Search API first for precise code results.
-        Caches results by (query, interface_hash) within session.
+        Uses layered cache: query-level raw results, then (content_hash, interface_spec) for adaptation.
 
         Args:
             query: Search query
@@ -509,7 +606,6 @@ Return ONLY the adapted Python code, no explanation."""
             self._cache.move_to_end(cache_key)
             return self._cache[cache_key]
 
-        results = []
         has_interface = bool(
             interface_spec.get("functions") or interface_spec.get("classes")
         )
@@ -518,89 +614,37 @@ Return ONLY the adapted Python code, no explanation."""
             if use_llm_adaptation and llm_service and has_interface
             else self.adapt_code_to_interface
         )
+        spec_hash = hashlib.md5(
+            json.dumps(interface_spec, sort_keys=True).encode(),
+            usedforsecurity=False,
+        ).hexdigest()
 
-        code_hits = self.search_code(query, language, per_page=self.search_limit)
-        if code_hits:
-            for hit in code_hits:
-                full_name = hit.get("full_name", "")
-                path = hit.get("path", "")
-                if full_name and path:
-                    content = self.get_file_content(full_name, path)
-                    adapted_code = None
-                    status = "found"
-                    if content and len(content) > 50 and has_interface:
-                        try:
-                            adapted_code = adapt_fn(content, interface_spec)
-                            status = "adapted"
-                        except Exception as e:
-                            logger.debug(
-                                f"Adaptation failed for {full_name}/{path}: {e}"
-                            )
-                            adapted_code = content[:2000]
-                    elif content and len(content) > 50:
-                        adapted_code = content[:2000]
-                    repo_info = {
-                        "full_name": full_name,
-                        "url": hit.get("html_url", ""),
-                        "html_url": hit.get("html_url", ""),
-                    }
-                    results.append(
-                        {
-                            "repo": repo_info,
-                            "adapted_code": adapted_code,
-                            "status": status,
-                        }
-                    )
-            if results:
-                return results
-
-        search_results = self.search_github(query, language)
-
-        for repo in search_results:
+        raw_results = self._fetch_raw_results(query, language)
+        results = []
+        for repo_info, content in raw_results:
             adapted_code = None
             status = "found"
-            full_name = repo.get("full_name", "")
-
-            if full_name:
-                # Try common file paths based on language
-                if language == "html":
-                    candidate_paths = [
-                        "templates/index.html",
-                        "templates/base.html",
-                        "templates/layout.html",
-                        "index.html",
-                    ]
+            if content and len(content) > 50:
+                adapt_key = f"{hashlib.md5(content.encode('utf-8'), usedforsecurity=False).hexdigest()}|{spec_hash}"
+                if adapt_key in self._adapt_cache:
+                    adapted_code = self._adapt_cache[adapt_key]
+                    self._adapt_cache.move_to_end(adapt_key)
+                    status = "adapted"
+                elif has_interface and language == "python":
+                    try:
+                        adapted_code = adapt_fn(content, interface_spec)
+                        status = "adapted"
+                        if len(self._adapt_cache) >= self._adapt_cache_maxsize and adapt_key not in self._adapt_cache:
+                            self._adapt_cache.popitem(last=False)
+                        self._adapt_cache[adapt_key] = adapted_code
+                        self._adapt_cache.move_to_end(adapt_key)
+                    except Exception as e:
+                        logger.debug(f"Adaptation failed: {e}")
+                        adapted_code = content[:2000]
                 else:
-                    candidate_paths = [
-                        "app.py",
-                        "app/__init__.py",
-                        "routes.py",
-                        "views.py",
-                        "models.py",
-                    ]
-                for cpath in candidate_paths:
-                    content = self.get_file_content(full_name, cpath)
-                    if content and len(content) > 50:
-                        if has_interface and language == "python":
-                            try:
-                                adapted_code = adapt_fn(content, interface_spec)
-                                status = "adapted"
-                            except Exception as e:
-                                logger.debug(
-                                    f"Adaptation failed for {full_name}/{cpath}: {e}"
-                                )
-                                adapted_code = content[:2000]
-                        else:
-                            adapted_code = content[:2000]
-                        break
+                    adapted_code = content[:2000]
 
-            results.append(
-                {
-                    "repo": repo,
-                    "adapted_code": adapted_code,
-                    "status": status,
-                }
-            )
+            results.append({"repo": repo_info, "adapted_code": adapted_code, "status": status})
 
         if len(self._cache) >= self._cache_maxsize and cache_key not in self._cache:
             self._cache.popitem(last=False)

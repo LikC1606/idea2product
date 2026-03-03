@@ -125,6 +125,29 @@ class FileSpec(BaseModel):
     related_tasks: List[str] = Field(default_factory=list, description="Related task IDs")
 
 
+class ImageSpec(BaseModel):
+    """Specification for an image to be generated (e.g. hero, placeholder)."""
+
+    id: str = Field(..., description="Unique id (e.g. hero, placeholder)")
+    prompt: str = Field(..., description="Text prompt for image generation")
+    suggested_path: str = Field(..., description="Relative path under static, e.g. static/images/hero.png")
+    role: Optional[str] = Field(None, description="Role: hero | placeholder | icon")
+
+
+class ExternalModelSpec(BaseModel):
+    """Specification for an external model/API to integrate (from Stage 2 web search + LLM)."""
+
+    capability_type: str = Field(..., description="e.g. image_generation, tts, sentiment_api")
+    provider_name: str = Field(..., description="Provider or model name (e.g. OpenAI DALL-E, Nanobanana)")
+    docs_url: Optional[str] = Field(None, description="API documentation URL from search")
+    api_docs_summary: Optional[str] = Field(None, description="Summary or key usage for Stage 3 / human reference")
+    base_url_hint: Optional[str] = Field(None, description="API base URL if parsed from docs")
+    auth_type: str = Field(default="api_key", description="api_key | bearer | none")
+    request_body_example: Optional[str] = Field(None, description="Request body example or JSON path description")
+    response_image_path: Optional[str] = Field(None, description="For image APIs: JSON path to image URL/base64 (e.g. data[0].url)")
+    suggested_integration: Optional[str] = Field(None, description="Integration suggestion (e.g. use for hero image at static/images/hero.png)")
+
+
 class ExportSpec(BaseModel):
     """Specification for an exported class or function."""
 
@@ -162,6 +185,8 @@ class EngineeringPlan(BaseModel):
     api_specs: Dict[str, Any] = Field(default_factory=dict, description="API specifications for frontend-backend connection")
     pyi_stubs: Dict[str, str] = Field(default_factory=dict, description="Python .pyi stub files with type definitions")
     bdd_test_cases: List["BDDTestCase"] = Field(default_factory=list, description="BDD test cases synthesized from requirements (test-driven)")
+    image_specs: Optional[List[ImageSpec]] = Field(None, description="Optional image generation specs (hero, placeholder)")
+    external_model_specs: Optional[List[ExternalModelSpec]] = Field(None, description="External model/API integration specs from Stage 2 web search")
     created_at: datetime = Field(default_factory=datetime.now)
 
 

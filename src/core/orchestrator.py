@@ -1,5 +1,6 @@
 """Main orchestrator for the Idea2Product system."""
 
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Callable, Optional
 from datetime import datetime
@@ -23,6 +24,7 @@ from .data_models import (
     FileSpec,
 )
 from .adapters import engineering_plan_from_stage2
+from .exceptions import StageExecutionError
 
 # Import agents
 from src.agents.stage1_requirements.interaction_agent import InteractionAgent
@@ -31,6 +33,7 @@ from src.agents.stage2_planning.planning_agents import (
     TaskDivisionAgent,
     AlgorithmAnalysisAgent,
     SchemePlanningAgent,
+    ModelIntegrationPlanningAgent,
 )
 from src.services.hf_model_service import HfModelService
 from src.agents.stage3_generation.code_generation_agents import (
@@ -116,6 +119,10 @@ class Orchestrator:
 
         self._apply_random_seed()
 
+        # Stage 1 input contract: user_requirement must be non-empty
+        if not (user_requirement or "").strip():
+            raise ValueError("user_requirement cannot be empty")
+
         # Create execution context
         context = ExecutionContext(user_requirement=user_requirement)
         set_correlation(project_id=context.project_id)
@@ -151,7 +158,8 @@ class Orchestrator:
                 requirements = self.execute_stage_1(context, interactive=interactive)
             except Exception as e:
                 self._save_artifact(artifacts_dir, "context.json", context.to_dict())
-                raise
+                err = StageExecutionError(f"Stage 1 failed: {e}", stage=1, partial_context=context)
+                raise err from e
             context.requirements = requirements
             self._save_artifact(artifacts_dir, "01_requirements.json", requirements.model_dump(mode="json"))
 
@@ -165,7 +173,8 @@ class Orchestrator:
             except Exception as e:
                 context.add_error(f"Stage 2 failed: {e}")
                 self._save_artifact(artifacts_dir, "context.json", {**context.to_dict(), "partial_failure": True, "failed_stage": 2})
-                raise
+                err = StageExecutionError(f"Stage 2 failed: {e}", stage=2, partial_context=context)
+                raise err from e
             context.engineering_plan = engineering_plan
             context.tasks = engineering_plan.tasks
             context.algorithms = engineering_plan.algorithms
@@ -181,7 +190,8 @@ class Orchestrator:
             except Exception as e:
                 context.add_error(f"Stage 3 failed: {e}")
                 self._save_artifact(artifacts_dir, "context.json", {**context.to_dict(), "partial_failure": True, "failed_stage": 3})
-                raise
+                err = StageExecutionError(f"Stage 3 failed: {e}", stage=3, partial_context=context)
+                raise err from e
             context.code_repository = code_repository
             self._save_artifact(artifacts_dir, "03_code_repository.json", code_repository.model_dump(mode="json"))
 
@@ -195,7 +205,8 @@ class Orchestrator:
             except Exception as e:
                 context.add_error(f"Stage 4 failed: {e}")
                 self._save_artifact(artifacts_dir, "context.json", {**context.to_dict(), "partial_failure": True, "failed_stage": 4})
-                raise
+                err = StageExecutionError(f"Stage 4 failed: {e}", stage=4, partial_context=context)
+                raise err from e
 
             # Save final context
             self._save_artifact(artifacts_dir, "context.json", context.to_dict())
@@ -297,6 +308,7 @@ class Orchestrator:
                 hf_service = HfModelService(
                     token=getattr(self.settings, "hf_token", None),
                     search_limit=getattr(self.settings, "hf_search_limit", 5),
+                    use_cache=getattr(self.settings, "enable_hf_cache", False),
                 )
             except Exception as e:
                 self.logger.warning(f"HF model service init failed, continuing without: {e}")
@@ -323,6 +335,22 @@ class Orchestrator:
         bdd_test_cases = self._synthesize_bdd_tests(requirements, api_specs, llm=llm_primary)
         self.logger.info(f"  - Synthesized {len(bdd_test_cases)} BDD test cases (test-driven)")
 
+        # Optional: external model/API discovery via web search (Stage 2 model selection)
+        external_model_specs = []
+        if getattr(self.settings, "enable_stage2_web_search", False):
+            try:
+                from src.services.web_search_service import get_web_search_provider
+                web_provider = get_web_search_provider(self.settings)
+                if web_provider:
+                    model_agent = ModelIntegrationPlanningAgent(llm_fast, web_search_provider=web_provider)
+                    external_model_specs = model_agent.execute(
+                        requirements, tasks, flow_simulation=flow_simulation, settings=self.settings
+                    )
+                    if external_model_specs:
+                        self.logger.info(f"  - External model specs: {len(external_model_specs)}")
+            except Exception as e:
+                self.logger.warning(f"Model integration planning skipped: {e}")
+
         # Create engineering plan via adapter (handles pyi_stubs fallback, file_structure fallback)
         plan = engineering_plan_from_stage2(
             tasks=tasks,
@@ -333,6 +361,7 @@ class Orchestrator:
             pyi_stubs=pyi_stubs,
             requirements=requirements,
             bdd_test_cases=bdd_test_cases,
+            external_model_specs=external_model_specs if external_model_specs else None,
             default_file_structure_fn=self._default_file_structure,
         )
 
@@ -441,13 +470,27 @@ class Orchestrator:
         llm = self._llm_for_stage(3)
         self.logger.info(f"  - Model: {llm.model}")
 
-        # Phase 1: CodeMemoryAgent pre_execute - seed symbol table, prefetch cross-project snippets
+        # Phase 1 & 2: Memory pre_execute and Mining execute (parallel when enabled)
         memory_agent = CodeMemoryAgent(llm, settings=self.settings)
-        memory_context = memory_agent.pre_execute(context)
-
-        # Phase 2: CodeMiningAgent - pre-fetch mining context per task
         mining_agent = CodeMiningAgent(llm, settings=self.settings)
-        mining_by_task = mining_agent.execute(context)
+        if getattr(self.settings, "enable_parallel_stage3_prefetch", True):
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                f_mem = pool.submit(memory_agent.pre_execute, context)
+                f_min = pool.submit(mining_agent.execute, context)
+                memory_context = f_mem.result()
+                mining_by_task = f_min.result()
+            self.logger.info("  - Memory + Mining prefetch done (parallel)")
+        else:
+            memory_context = memory_agent.pre_execute(context)
+            mining_by_task = mining_agent.execute(context)
+
+        context.memory_context = memory_context
+        context.mining_by_task = mining_by_task
+
+        # Optional: generate hero/placeholder images and write to generated/static/images/
+        if getattr(self.settings, "enable_image_generation", False):
+            from src.services.asset_generation import run_asset_generation
+            run_asset_generation(context, self.settings)
 
         # Phase 3: CodeGenerationAgent - generate code with mining/memory context, incremental snippet save
         code_agent = CodeGenerationAgent(llm, settings=self.settings)
@@ -492,8 +535,9 @@ class Orchestrator:
         test_result = testing_agent.execute(context)
 
         self.logger.info(f"  - Initial test: {len(test_result.errors)} errors")
+        context.test_results = test_result
 
-        # Use CodeFixAgent to fix code (replaces run_and_fix_loop)
+        # Use CodeFixAgent to fix code
         from src.agents.stage4_validation.validation_agents import CodeFixAgent
 
         code_fix_agent = CodeFixAgent(llm)
@@ -515,6 +559,7 @@ class Orchestrator:
 
         # Re-run tests to confirm
         test_result = testing_agent.execute(context)
+        context.test_results = test_result
         self.logger.info(f"  - Final test: {len(test_result.errors)} errors, logic_passed={test_result.logic_passed}")
 
         # Frontend API Testing with LangChain Agent (if basic tests pass)
@@ -563,12 +608,15 @@ class Orchestrator:
         need_logic_fix = (test_result.errors or test_result.warnings) and not test_result.logic_passed
         visual_fb = getattr(test_result, "visual_feedback", None)
         need_visual_fix = visual_fb and visual_fb.get("alignment_score", 1.0) < 0.7
+        fix_rounds = 0
         if need_logic_fix or need_visual_fix:
             fine_tuning_agent = FineTuningAgent(llm)
             repository, fixed = fine_tuning_agent.execute(context, test_result)
             if fixed:
+                fix_rounds = 1
                 context.code_repository = repository
                 test_result = testing_agent.execute(context)
+                context.test_results = test_result
                 self.logger.info(f"  - After FineTuning: {len(test_result.errors)} errors, logic_passed={test_result.logic_passed}")
 
         # Create validated project (use context.repository in case FineTuning updated it)
@@ -576,7 +624,8 @@ class Orchestrator:
         validated_project = create_validated_project(
             repository=repository,
             test_result=test_result,
-            requirements=context.requirements
+            requirements=context.requirements,
+            fix_attempts=fix_rounds,
         )
 
         self.logger.info(f"Stage 4 complete: Deployable={validated_project.is_deployable}")

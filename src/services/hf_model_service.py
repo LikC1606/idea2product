@@ -1,5 +1,6 @@
 """Hugging Face Model Search Service - Search and fetch model documentation."""
 
+from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from typing import List, Optional, Dict, Any
 from src.utils.logger import get_logger
@@ -9,6 +10,7 @@ logger = get_logger(__name__)
 # Max chars for model card text to avoid token overflow
 _CARD_MAX_CHARS = 3000
 _MIN_DOWNLOADS = 1000  # Minimum downloads to be considered
+_HF_CACHE_MAX_SIZE = 32  # LRU cache size for search_and_fetch_docs when use_cache=True
 
 # Task type to pipeline_tag mapping (expanded from paper2projecttest)
 _TASK_MAPPING = {
@@ -119,6 +121,7 @@ class HfModelService:
         search_limit: int = 5,
         timeout: int = 30,
         min_downloads: int = _MIN_DOWNLOADS,
+        use_cache: bool = False,
     ):
         """
         Initialize the HF model service.
@@ -128,11 +131,14 @@ class HfModelService:
             search_limit: Maximum number of models to return per search
             timeout: Request timeout in seconds
             min_downloads: Minimum downloads to consider (default 1000)
+            use_cache: When True, cache search_and_fetch_docs results (LRU, max 32)
         """
         self.token = token
         self.search_limit = search_limit
         self.timeout = timeout
         self.min_downloads = min_downloads
+        self.use_cache = use_cache
+        self._cache: OrderedDict = OrderedDict()
 
     def search_models(
         self,
@@ -355,7 +361,7 @@ class HfModelService:
         check_inference: bool = False,
     ) -> List[Dict[str, Any]]:
         """
-        Search models with enhanced filtering and ranking.
+        Search models with enhanced filtering and ranking; optional LRU cache when use_cache=True.
 
         Args:
             query: Search query
@@ -370,10 +376,20 @@ class HfModelService:
         limit = limit or self.search_limit
         keywords = keywords or []
 
+        cache_key = (query[:200], pipeline_tag or "", limit)
+        if self.use_cache and cache_key in self._cache:
+            self._cache.move_to_end(cache_key)
+            return list(self._cache[cache_key])
+
         # Step 1: Search models
         models = self.search_models(query=query, pipeline_tag=pipeline_tag, limit=limit * 5)
 
         if not models:
+            if self.use_cache:
+                self._cache[cache_key] = []
+                self._cache.move_to_end(cache_key)
+                while len(self._cache) > _HF_CACHE_MAX_SIZE:
+                    self._cache.popitem(last=False)
             return []
 
         # Step 2: Optionally check Inference Available
@@ -400,7 +416,6 @@ class HfModelService:
                 relevance = m.get("relevance_score", 0)
                 downloads = m.get("downloads", 0)
                 quality = min(10, downloads / 100000)  # Normalize to 0-10
-                # 60% relevance, 40% quality
                 return relevance * 0.6 + quality * 0.4
 
             models.sort(key=combined_score, reverse=True)
@@ -413,4 +428,10 @@ class HfModelService:
             m.pop("relevance_score", None)
             m.pop("likes", None)
 
-        return models[:limit]
+        result = models[:limit]
+        if self.use_cache:
+            self._cache[cache_key] = result
+            self._cache.move_to_end(cache_key)
+            while len(self._cache) > _HF_CACHE_MAX_SIZE:
+                self._cache.popitem(last=False)
+        return result

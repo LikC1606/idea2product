@@ -1,0 +1,50 @@
+## Code Quality Requirements
+1. Error handling: Use try/except for file I/O, JSON parsing, and external API calls; return appropriate HTTP status on failure
+2. Type hints: Add type hints to all function parameters and return values
+3. Docstrings: Add docstrings to public functions and classes (one-line for simple, multi-line for complex)
+4. Input validation: Validate request JSON keys and types before use; return 400 with clear message on invalid input
+5. Avoid: bare except, print() for debugging, hardcoded magic strings
+
+## Frontend UI Requirements
+$frontend_ui_section
+
+## Important Requirements
+1. You MUST use tools to explore the project - start by listing files to see what's there
+   - Before implementing, call search_similar_snippet(task-relevant keywords) to find reusable patterns (e.g. "flask crud api", "sqlalchemy model")
+   - When calling other modules, ALWAYS use get_module_signatures(module_name) first to get interface signatures
+   - After creating or modifying a .py file, call validate_syntax(file_path) to verify. If it reports an error, fix the code before proceeding.
+2. Database initialization rule:
+   - CRITICAL: db = SQLAlchemy() MUST be defined ONLY in app/__init__.py
+   - All model files (app/models/*.py) MUST import db from app: from app import db
+   - Do NOT create new SQLAlchemy() instances in model files!
+   - **IMPORTANT**: 使用 SQLite 兼容的类型：
+     - 禁止使用 db.ARRAY (SQLite 不支持)
+     - 数组字段用 db.String 存储（如用逗号分隔： "tag1,tag2,tag3"）
+     - 或者用 JSON 字符串存储
+3. When creating new route files (e.g., app/routes/xxx.py), you MUST also modify app/__init__.py:
+   - Add import: from app.routes.xxx import xxx_bp
+   - Add registration: app.register_blueprint(xxx_bp, url_prefix='/api')
+   - Use: from config import get_config (NOT 'config.get_config' string!)
+   - CRITICAL: Inside the Blueprint, use RELATIVE paths only! Example: @blogs_bp.route('/') NOT @blogs_bp.route('/api/blogs')
+   - If url_prefix='/api/blogs', then routes inside should be @bp.route('/') NOT @bp.route('/api/blogs')
+4. CRITICAL: You MUST add ALL frontend routes in app/__init__.py for EACH template:
+   - For each template (e.g., blog.html, blog_list.html, blog_detail.html), add a route that renders it
+   - Example: @app.route('/blogs/<int:id>') def blog_detail(): return render_template('blog_detail.html')
+   - MUST match the frontend_routes specified above!
+   - IMPORTANT: Frontend routes ONLY render templates, do NOT pass data! All data should be fetched via JavaScript API calls in the template
+5. CRITICAL: index.html links MUST match api_specs.frontend_routes exactly:
+   - If frontend_routes has /blogs, index.html links MUST be /blogs and /api/blogs (NOT /notes or /api/notes)
+   - Page title and description MUST match requirements.title (e.g. "Blog App" not "Notes App" if building a blog)
+6. Generate ACTUAL working HTML with forms, buttons, and API calls - not placeholder text!
+7. **【强制】在修改任何文件之前，必须先阅读文件内容**：
+   - 先用 list_files() 查看所有文件
+   - 再用 read_file() 读取目标文件的内容
+   - 了解现有代码结构后再修改，不能直接覆盖！
+   - 特别注意 app/__init__.py 等入口文件的结构
+9. CRITICAL: Do NOT worry about whether packages are installed in the current environment.
+   Do NOT output messages like "please run pip install" or "dependencies not installed".
+   Just write the code with the correct imports. Dependencies will be installed separately.
+   Your ONLY job is to write correct Python/HTML/CSS/JS code files using the tools.
+
+## When Task is Complete
+Reply with "TASK_COMPLETE" when you have finished the task.

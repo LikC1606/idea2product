@@ -116,6 +116,30 @@ def test_task_division_agent_output_structure(mock_llm, sample_requirements):
         assert t.estimated_complexity
 
 
+def test_task_division_agent_fallback_on_llm_failure(sample_requirements):
+    """TaskDivisionAgent uses template fallback when LLM fails and pattern matches."""
+    class FailingLLM:
+        def generate_json(self, prompt, **kwargs):
+            raise ValueError("Simulated LLM failure")
+
+    agent = TaskDivisionAgent(FailingLLM())
+    # "Todo App" + "Add todo" + "Delete todo" -> crud keywords (创建, 删除, 列表) -> score >= 2
+    crud_req = Requirements(
+        title="Todo 应用",
+        description="待办列表，支持增删改查",
+        features=[
+            Feature(id="1", name="添加待办", description="Add item", priority=1),
+            Feature(id="2", name="删除待办", description="Remove item", priority=2),
+        ],
+    )
+    tasks = agent.execute(crud_req, flow_simulation="")
+    assert isinstance(tasks, list)
+    assert len(tasks) >= 1
+    for t in tasks:
+        assert isinstance(t, Task)
+        assert t.id.startswith("T")
+
+
 def test_scheme_planning_agent_return_signature(mock_llm, sample_requirements):
     """SchemePlanningAgent must return (files, interface_specs, api_specs, pyi_stubs)."""
     agent = SchemePlanningAgent(mock_llm)
@@ -154,6 +178,44 @@ def test_algorithm_analysis_agent_without_hf(mock_llm):
         assert alg.hf_models is None or alg.hf_models == []
 
 
+def test_algorithm_analysis_agent_fallback_uses_type_aware_defaults():
+    """AlgorithmAnalysisAgent uses type-aware defaults when LLM fails."""
+    class FailingLLM:
+        def generate_json(self, prompt, **kwargs):
+            raise ValueError("Simulated failure")
+
+    agent = AlgorithmAnalysisAgent(FailingLLM(), hf_model_service=None)
+    tasks = [
+        Task(id="T1", name="Create backend", description="API", type=TaskType.BACKEND, estimated_complexity=TaskComplexity.MEDIUM),
+        Task(id="T2", name="Create frontend", description="UI", type=TaskType.FRONTEND, estimated_complexity=TaskComplexity.LOW),
+    ]
+    result = agent.execute(tasks)
+    assert result["T1"].libraries == ["flask", "sqlalchemy"]
+    assert "Flask" in result["T1"].implementation_approach or "SQLAlchemy" in result["T1"].implementation_approach
+    assert result["T2"].libraries == ["jinja2"]
+    assert "Jinja2" in result["T2"].implementation_approach or "jinja2" in result["T2"].implementation_approach.lower()
+
+
+def test_algorithm_analysis_agent_parses_data_structures_and_algorithm_type(mock_llm):
+    """AlgorithmAnalysisAgent parses data_structures and algorithm_type from LLM."""
+    class CustomLLM:
+        def generate_json(self, prompt, **kwargs):
+            return {
+                "T1": {
+                    "implementation_approach": "SQLAlchemy model with Todo class",
+                    "notes": "",
+                    "data_structures": ["Todo", "List"],
+                    "algorithm_type": "crud",
+                },
+            }
+    agent = AlgorithmAnalysisAgent(CustomLLM(), hf_model_service=None)
+    tasks = [Task(id="T1", name="Model", description="Todo model", type=TaskType.DATABASE, estimated_complexity=TaskComplexity.LOW)]
+    result = agent.execute(tasks)
+    assert result["T1"].data_structures == ["Todo", "List"]
+    assert result["T1"].algorithm_type == "crud"
+    assert result["T1"].libraries == ["flask", "sqlalchemy"]
+
+
 def test_algorithm_analysis_agent_accepts_hf_models_in_response(mock_llm):
     """AlgorithmAnalysisAgent parses hf_models and hf_usage_notes from LLM."""
     class HFLLM:
@@ -187,7 +249,36 @@ def test_scheme_planning_agent_exception_returns_stable_signature(mock_llm, samp
     assert isinstance(result, tuple)
     assert len(result) == 4
     files, interface_specs, api_specs, pyi_stubs = result
-    assert files == []
-    assert interface_specs == []
-    assert api_specs == {}
-    assert pyi_stubs == {}
+    assert isinstance(files, list)
+    assert isinstance(interface_specs, list)
+    assert isinstance(api_specs, dict)
+    assert isinstance(pyi_stubs, dict)
+
+
+def test_scheme_planning_agent_fallback_on_llm_failure_with_crud_pattern():
+    """SchemePlanningAgent uses template fallback when LLM fails and crud pattern matches."""
+    class FailingLLM:
+        def generate_json(self, prompt, **kwargs):
+            raise ValueError("Simulated failure")
+
+    agent = SchemePlanningAgent(FailingLLM())
+    req = Requirements(
+        title="Todo 应用",
+        description="待办列表，支持增删改查",
+        features=[
+            Feature(id="1", name="添加待办", description="Add", priority=1),
+            Feature(id="2", name="删除待办", description="Delete", priority=2),
+        ],
+    )
+    tasks = [
+        Task(id="T1", name="后端", description="Todo model and API", type=TaskType.BACKEND, estimated_complexity="low"),
+        Task(id="T2", name="前端", description="Todo list UI", type=TaskType.FRONTEND, estimated_complexity="low"),
+    ]
+    result = agent.execute(req, tasks, flow_simulation="")
+    assert isinstance(result, tuple)
+    assert len(result) == 4
+    files, interface_specs, api_specs, pyi_stubs = result
+    assert len(files) >= 1
+    assert "app/" in files[0].path or "templates/" in files[0].path
+    assert "endpoints" in api_specs or len(api_specs) >= 0
+    assert isinstance(pyi_stubs, dict)

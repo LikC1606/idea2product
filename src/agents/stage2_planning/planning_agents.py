@@ -1,13 +1,22 @@
 """Stage 2 Planning Agents."""
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
 from src.core.data_models import (
     Requirements, Task, Algorithm, FileSpec, TaskType, TaskComplexity,
-    InterfaceSpec, ExportSpec
+    InterfaceSpec, ExportSpec, ExternalModelSpec,
 )
 from src.services.llm_service import LLMService
-from src.agents.stage2_planning.task_templates import detect_pattern, format_template_hint
+from src.agents.stage2_planning.task_templates import (
+    detect_pattern,
+    detect_pattern_with_score,
+    format_template_hint,
+    format_scheme_pattern_hint,
+    build_fallback_tasks,
+    build_scheme_fallback,
+    PATTERN_CONFIDENCE_THRESHOLD,
+)
 from src.utils.logger import get_logger
 from src.utils.prompt_loader import PromptLoader
 from pydantic import ValidationError
@@ -43,6 +52,35 @@ _ML_TASK_KEYWORDS: Dict[str, str] = {
     "翻译": "translation",
     "translation": "translation",
 }
+
+# Keywords that suggest non-HF external capabilities (image gen, TTS, etc.) for ModelIntegrationPlanningAgent
+_EXTERNAL_CAPABILITY_KEYWORDS: Dict[str, List[str]] = {
+    "image_generation": [
+        "图片生成", "image generation", "hero", "placeholder", "generate image",
+        "图生", "配图", "banner", "头图", "dall", "imagen", "stable diffusion",
+    ],
+    "tts": [
+        "语音", "tts", "text to speech", "read aloud", "朗读", "语音合成",
+    ],
+}
+
+
+def _infer_external_capabilities(requirements: Requirements, tasks: List[Task]) -> List[Tuple[str, str]]:
+    """Infer which external capabilities (image_generation, tts, ...) are needed from requirements and tasks."""
+    text_parts = [
+        requirements.title or "",
+        requirements.description or "",
+        " ".join(f.name + " " + (f.description or "") for f in requirements.features),
+        " ".join(t.name + " " + (t.description or "") for t in tasks),
+    ]
+    combined = " ".join(text_parts).lower()
+    found: List[Tuple[str, str]] = []
+    for cap_type, keywords in _EXTERNAL_CAPABILITY_KEYWORDS.items():
+        if any(kw in combined for kw in keywords):
+            # Brief reason for logging
+            reason = next((kw for kw in keywords if kw in combined), cap_type)
+            found.append((cap_type, reason))
+    return found
 
 
 class FlowSimulationAgent:
@@ -257,10 +295,12 @@ class TaskDivisionAgent:
     def _execute_unified(
         self, requirements: Requirements, flow_simulation: str, settings
     ) -> List[Task]:
-        """Single LLM call: entities + pages + tasks."""
+        """Single LLM call: entities + pages + tasks. Raw flow text injected directly (no extract LLM call)."""
         flow_section = ""
-        if flow_simulation:
-            flow_section = "\n\n" + self._extract_structured_flow(flow_simulation) + "\n"
+        skip_flow = getattr(settings, "skip_flow_extraction", False)
+        if flow_simulation and not skip_flow and len(flow_simulation.strip()) >= 20:
+            raw_flow = flow_simulation.strip()[:1500]
+            flow_section = f"\n\n## 用户操作流程参考\n{raw_flow}\n"
 
         combined_text = f"{requirements.title} {requirements.description} {' '.join(f.name for f in requirements.features)}"
         pattern = detect_pattern(combined_text)
@@ -277,27 +317,31 @@ class TaskDivisionAgent:
         try:
             result = self.llm_service.generate_json(prompt)
             if not isinstance(result, dict):
-                return []
+                return self._fallback_tasks(requirements, combined_text)
             tasks_raw = result.get("tasks", [])
+            if not tasks_raw:
+                return self._fallback_tasks(requirements, combined_text)
             tasks = self._parse_tasks(tasks_raw)
-            skip_review = getattr(settings, "skip_task_review_when_count_low", 0)
-            if skip_review > 0 and len(tasks) <= skip_review:
-                logger.info(f"Skipping task review (count={len(tasks)} <= {skip_review})")
+            if not tasks:
+                return self._fallback_tasks(requirements, combined_text)
+            tasks = self._validate_dag(tasks)
+            if not self._should_run_review(tasks, requirements, combined_text, settings):
                 return tasks
             return self._run_review(tasks, requirements, settings)
         except Exception as e:
-            logger.warning(f"Unified task division failed, falling back to two-phase: {e}")
-            return self._execute_two_phase(requirements, flow_simulation, settings)
+            logger.warning(f"Unified task division failed: {e}")
+            return self._fallback_tasks(requirements, combined_text)
 
     def _execute_two_phase(
         self, requirements: Requirements, flow_simulation: str, settings
     ) -> List[Task]:
         """Legacy two-phase: extract entities/pages, then task division."""
         entity_page_section = self._extract_entities_and_pages(requirements)
-        if flow_simulation:
-            flow_section = "\n\n" + self._extract_structured_flow(flow_simulation) + "\n"
-        else:
-            flow_section = ""
+        flow_section = ""
+        skip_flow = getattr(settings, "skip_flow_extraction", False)
+        if flow_simulation and not skip_flow and len(flow_simulation.strip()) >= 20:
+            raw_flow = flow_simulation.strip()[:1500]
+            flow_section = f"\n\n## 用户操作流程参考\n{raw_flow}\n"
         if entity_page_section:
             flow_section = f"\n\n{entity_page_section}\n{flow_section}"
 
@@ -317,11 +361,18 @@ class TaskDivisionAgent:
             result = self.llm_service.generate_json(prompt)
             if not isinstance(result, list):
                 result = list(result.values()) if isinstance(result, dict) else []
+            if not result:
+                return self._fallback_tasks(requirements, combined_text)
             tasks = self._parse_tasks(result)
+            if not tasks:
+                return self._fallback_tasks(requirements, combined_text)
+            tasks = self._validate_dag(tasks)
+            if not self._should_run_review(tasks, requirements, combined_text, settings):
+                return tasks
             return self._run_review(tasks, requirements, settings)
         except Exception as e:
             logger.warning(f"Task division failed: {e}")
-            return []
+            return self._fallback_tasks(requirements, combined_text)
 
     def _parse_tasks(self, result: List) -> List[Task]:
         """Parse raw task dicts into Task objects."""
@@ -399,10 +450,111 @@ class TaskDivisionAgent:
             ))
         return tasks
 
+    def _fallback_tasks(self, requirements: Requirements, combined_text: str) -> List[Task]:
+        """Return template-based tasks when LLM fails. Empty list if no pattern matches."""
+        pattern, score = detect_pattern_with_score(combined_text)
+        if not pattern or score < PATTERN_CONFIDENCE_THRESHOLD:
+            logger.warning("No high-confidence pattern for fallback, returning empty tasks")
+            return []
+        raw = build_fallback_tasks(pattern, requirements)
+        if not raw:
+            return []
+        tasks = self._parse_tasks(raw)
+        tasks = self._validate_dag(tasks)
+        logger.info(f"Using fallback tasks for pattern={pattern} (score={score})")
+        return tasks
+
+    def _validate_dag(self, tasks: List[Task]) -> List[Task]:
+        """Validate dependencies: remove invalid refs, detect cycles, return topo-sorted list."""
+        task_ids = {t.id for t in tasks}
+        # Fix invalid dependency IDs
+        fixed: List[Task] = []
+        for t in tasks:
+            deps = [d for d in (t.dependencies or []) if d in task_ids]
+            fixed.append(Task(
+                id=t.id, name=t.name, description=t.description, type=t.type,
+                dependencies=deps, priority=t.priority, estimated_complexity=t.estimated_complexity,
+                files_to_add=t.files_to_add, files_to_modify=t.files_to_modify,
+            ))
+        # Topological sort (cycle detection via visited set)
+        order: List[str] = []
+        temp: set = set()
+        perm: set = set()
+
+        def visit(nid: str) -> bool:
+            if nid in perm:
+                return True
+            if nid in temp:
+                return False  # cycle
+            temp.add(nid)
+            task = next((x for x in fixed if x.id == nid), None)
+            if task:
+                for d in task.dependencies:
+                    if not visit(d):
+                        return False
+            temp.discard(nid)
+            perm.add(nid)
+            order.append(nid)
+            return True
+
+        for t in fixed:
+            if not visit(t.id):
+                logger.warning("Cycle detected in task dependencies, returning original order")
+                return fixed
+        ordered = [next(x for x in fixed if x.id == i) for i in reversed(order)]
+        return ordered
+
+    def _dependency_depth(self, tasks: List[Task]) -> int:
+        """Compute max dependency chain depth. Single task = 1, no deps = 1."""
+        task_map = {t.id: t for t in tasks}
+        cache: Dict[str, int] = {}
+
+        def depth(tid: str) -> int:
+            if tid in cache:
+                return cache[tid]
+            t = task_map.get(tid)
+            if not t or not t.dependencies:
+                cache[tid] = 1
+                return 1
+            cache[tid] = 1 + max(depth(d) for d in t.dependencies)
+            return cache[tid]
+
+        return max(depth(t.id) for t in tasks) if tasks else 0
+
+    def _should_run_review(
+        self, tasks: List[Task], requirements: Requirements, combined_text: str, settings
+    ) -> bool:
+        """Decide whether to run task review. Skip when count low unless auth/complex."""
+        skip_review = getattr(settings, "skip_task_review_when_count_low", 0)
+        force_review_threshold = getattr(settings, "force_task_review_when_count_high", 10)
+        dep_depth_threshold = getattr(settings, "force_task_review_dep_depth", 2)
+        auth_keywords = ["登录", "login", "注册", "register", "用户认证", "auth"]
+        text_lower = combined_text.lower()
+        has_auth = any(kw in text_lower for kw in auth_keywords)
+        dep_depth = self._dependency_depth(tasks)
+        count = len(tasks)
+        if count > force_review_threshold:
+            logger.info(f"Running task review (count={count} > {force_review_threshold})")
+            return True
+        if has_auth:
+            logger.info("Running task review (auth-related requirements)")
+            return True
+        if dep_depth > dep_depth_threshold:
+            logger.info(f"Running task review (dep depth={dep_depth} > {dep_depth_threshold})")
+            return True
+        if skip_review > 0 and count <= skip_review:
+            logger.info(f"Skipping task review (count={count} <= {skip_review})")
+            return False
+        return True
+
     def _run_review(self, tasks: List[Task], requirements: Requirements, settings) -> List[Task]:
         """Run task division review and apply refinements if needed."""
         logger.info("Running task division review...")
-        review_agent = ReviewAgent(self.llm_service)
+        llm = self.llm_service
+        if getattr(settings, "use_fast_model_for_task_review", False) and hasattr(llm, "with_model"):
+            fast_model = getattr(settings, "fast_model_for_review", "gpt-4o-mini")
+            llm = llm.with_model(fast_model)
+        review_agent = ReviewAgent(llm)
         initial_tasks_dict = [
             {"id": t.id, "name": t.name, "description": t.description, "type": t.type.value,
              "priority": t.priority, "estimated_complexity": t.estimated_complexity.value,
@@ -431,6 +583,48 @@ def _get_pipeline_tag(task: Task) -> Optional[str]:
         if kw in text:
             return tag
     return None
+
+
+def _default_algorithm_for_task(task: Task) -> Algorithm:
+    """Type-aware default Algorithm when LLM fails."""
+    tt = task.type.value if hasattr(task.type, "value") else str(task.type)
+    if tt in ("backend", "database"):
+        approach = f"Flask Blueprint with SQLAlchemy models and REST API routes for {task.name}. Use db.Model subclasses, CRUD endpoints."
+        libs = ["flask", "sqlalchemy"]
+        ds = ["db.Model", "Blueprint"]
+        alg_type = "crud"
+    elif tt == "frontend":
+        approach = f"Jinja2 templates with fetch() for API calls. Render {task.name} with proper form handling and navigation."
+        libs = ["jinja2"]
+        ds = []
+        alg_type = "standard"
+    else:
+        approach = f"Standard implementation for {task.name}"
+        libs = []
+        ds = []
+        alg_type = "standard"
+    return Algorithm(
+        task_id=task.id,
+        algorithm_type=alg_type,
+        implementation_approach=approach,
+        libraries=libs,
+        data_structures=ds,
+        notes=None,
+        hf_models=None,
+        hf_usage_notes=None,
+    )
+
+
+def _infer_libraries_for_task(task: Task, hf_models: Optional[List[str]]) -> List[str]:
+    """Infer libraries from HF models or task type when LLM omits them."""
+    if hf_models:
+        return ["transformers", "huggingface_hub"]
+    tt = task.type.value if hasattr(task.type, "value") else str(task.type)
+    if tt in ("backend", "database"):
+        return ["flask", "sqlalchemy"]
+    if tt == "frontend":
+        return ["jinja2"]
+    return []
 
 
 class AlgorithmAnalysisAgent:
@@ -517,16 +711,28 @@ Tasks like "user login", "CRUD operations", "display data" are NOT ML tasks.
         self,
         tasks: List[Task],
         flow_simulation: str = "",
+        settings: Any = None,
     ) -> Dict[str, Algorithm]:
         """Analyze algorithms for each task. flow_simulation provides user-flow context for algorithm choice."""
+        if settings is None:
+            try:
+                from config.settings import get_settings
+                settings = get_settings()
+            except Exception:
+                settings = type("_Empty", (), {"skip_hf_for_simple_tasks": 0, "skip_flow_in_algorithm": False})()
+        skip_hf = getattr(settings, "skip_hf_for_simple_tasks", 0) or 0
+        skip_flow = getattr(settings, "skip_flow_in_algorithm", False)
+        has_ml = any(_is_ml_task(t) for t in tasks)
+        run_hf = self.hf_model_service and (skip_hf <= 0 or (skip_hf > 0 and len(tasks) > skip_hf) or has_ml)
+
         hf_context_parts: List[str] = []
 
         flow_section = ""
-        if flow_simulation and len(flow_simulation.strip()) > 20:
+        if flow_simulation and not skip_flow and len(flow_simulation.strip()) > 20:
             flow_section = f"\n## User Operation Flow (consider for algorithm choice)\n{flow_simulation[:1500]}\n"
 
-        # Use LLM to detect ML tasks and search HF
-        if self.hf_model_service:
+        # Use LLM to detect ML tasks and search HF (enhanced: inference check, relevance, diversity)
+        if self.hf_model_service and run_hf:
             for t in tasks:
                 hf_info = self._get_hf_info_for_task(t)
                 if not hf_info or not hf_info.get("models"):
@@ -551,9 +757,14 @@ Tasks like "user login", "CRUD operations", "display data" are NOT ML tasks.
 
         hf_context = "\n\n".join(hf_context_parts) if hf_context_parts else ""
 
+        tasks_summary = "; ".join(
+            f"{t.id} [{t.type.value}]: {t.name} - {(t.description or '')[:80]}"
+            for t in tasks
+        )
+
         prompt = _prompt_loader.format(
             "algorithm_analysis",
-            tasks_summary=", ".join(f"{t.id}: {t.name}" for t in tasks),
+            tasks_summary=tasks_summary,
             flow_section=flow_section,
             hf_context=hf_context,
         )
@@ -570,15 +781,16 @@ Tasks like "user login", "CRUD operations", "display data" are NOT ML tasks.
                 entry = validate_response(alg_data, AlgorithmEntry)
                 hf_models = getattr(entry, "hf_models", None) or []
                 hf_usage_notes = getattr(entry, "hf_usage_notes", None)
-                libraries: List[str] = []
-                if hf_models:
-                    libraries = ["transformers", "huggingface_hub"]
+                task = next((x for x in tasks if x.id == task_id), None)
+                libraries = _infer_libraries_for_task(task, hf_models) if task else (["transformers", "huggingface_hub"] if hf_models else [])
+                ds = getattr(entry, "data_structures", None) or []
+                alg_type = getattr(entry, "algorithm_type", None) or "standard"
                 algorithms[task_id] = Algorithm(
                     task_id=task_id,
-                    algorithm_type="standard",
+                    algorithm_type=alg_type,
                     implementation_approach=entry.implementation_approach or "",
                     libraries=libraries,
-                    data_structures=[],
+                    data_structures=ds if isinstance(ds, list) else [],
                     notes=entry.notes,
                     hf_models=hf_models if hf_models else None,
                     hf_usage_notes=hf_usage_notes,
@@ -586,28 +798,10 @@ Tasks like "user login", "CRUD operations", "display data" are NOT ML tasks.
             return algorithms
         except ValidationError as e:
             logger.warning(f"Algorithm analysis schema mismatch: {e.errors()}, using defaults")
-            return {
-                t.id: Algorithm(
-                    task_id=t.id,
-                    algorithm_type="standard",
-                    implementation_approach=f"Standard implementation for {t.name}",
-                    libraries=[],
-                    data_structures=[],
-                )
-                for t in tasks
-            }
+            return {t.id: _default_algorithm_for_task(t) for t in tasks}
         except Exception as e:
             logger.warning(f"Algorithm analysis failed, using defaults: {e}")
-            return {
-                t.id: Algorithm(
-                    task_id=t.id,
-                    algorithm_type="standard",
-                    implementation_approach=f"Standard implementation for {t.name}",
-                    libraries=[],
-                    data_structures=[],
-                )
-                for t in tasks
-            }
+            return {t.id: _default_algorithm_for_task(t) for t in tasks}
 
 
 class SchemePlanningAgent:
@@ -615,6 +809,93 @@ class SchemePlanningAgent:
 
     def __init__(self, llm_service: LLMService):
         self.llm_service = llm_service
+
+    def _should_run_api_review(
+        self,
+        api_specs: Dict,
+        tasks: List[Task],
+        requirements: Requirements,
+        settings: Any,
+    ) -> bool:
+        """Decide whether to run API specs review."""
+        if not getattr(settings, "always_review_api_specs", True):
+            return False
+        skip_when = getattr(settings, "skip_api_review_when_simple", 0)
+        if skip_when <= 0:
+            return True
+        endpoints = (api_specs or {}).get("endpoints") or []
+        ep_count = len(endpoints)
+        has_auth = any(
+            "auth" in str(ep.get("path", "")).lower()
+            for ep in endpoints
+        )
+        if has_auth:
+            return True
+        if ep_count <= skip_when:
+            logger.info(f"Skipping API review (endpoints={ep_count} <= {skip_when}, no auth)")
+            return False
+        return True
+
+    def _fallback_scheme(
+        self,
+        requirements: Requirements,
+        tasks: List[Task],
+        combined_text: str,
+    ) -> Tuple[List[FileSpec], List[InterfaceSpec], Dict, Dict]:
+        """Return structured scheme from template when LLM fails."""
+        pattern, score = detect_pattern_with_score(combined_text)
+        if not pattern or score < PATTERN_CONFIDENCE_THRESHOLD:
+            logger.warning("No high-confidence pattern for scheme fallback, returning empty")
+            return [], [], {}, {}
+        raw = build_scheme_fallback(pattern, requirements, tasks)
+        if not raw:
+            return [], [], {}, {}
+        return self._parse_scheme_result(raw)
+
+    def _parse_scheme_result(self, result: Dict) -> Tuple[List[FileSpec], List[InterfaceSpec], Dict, Dict]:
+        """Parse scheme result (from LLM or fallback) into 4-tuple."""
+        files: List[FileSpec] = []
+        task_files_dict = result.get("task_files", {}) or {}
+        for task_id, task_file_list in task_files_dict.items():
+            if not isinstance(task_file_list, list):
+                continue
+            for f in task_file_list:
+                if not isinstance(f, dict):
+                    continue
+                path = (f.get("path") or "").strip()
+                if not path:
+                    continue
+                files.append(
+                    FileSpec(
+                        path=path,
+                        purpose=f.get("purpose", "") or "",
+                        dependencies=f.get("dependencies", []) or [],
+                        layer=f.get("layer"),
+                        related_tasks=[task_id],
+                    )
+                )
+        interface_specs: List[InterfaceSpec] = []
+        for f in files:
+            if f.path.endswith(".py") and not f.path.startswith("tests/"):
+                spec = InterfaceSpec(
+                    module_name=f.path.replace("/", ".").replace(".py", ""),
+                    file_path=f.path,
+                    purpose=f.purpose,
+                    layer=f.layer,
+                    exports=[],
+                    imports=[],
+                    database_access="none",
+                    related_files=[],
+                )
+                interface_specs.append(spec)
+        api_specs: Dict = result.get("api_specs") or {}
+        pyi_stubs: Dict = result.get("pyi_stubs") or {}
+        ui_guidelines = result.get("ui_guidelines")
+        if ui_guidelines and isinstance(ui_guidelines, dict):
+            api_specs["ui_guidelines"] = ui_guidelines
+        elif "ui_guidelines" not in api_specs:
+            api_specs["ui_guidelines"] = {"theme": "modern"}
+        return files, interface_specs, api_specs, pyi_stubs
 
     def execute(
         self,
@@ -624,6 +905,11 @@ class SchemePlanningAgent:
         algorithms: Optional[Dict[str, Algorithm]] = None,
     ) -> Tuple[List[FileSpec], List[InterfaceSpec], Dict, Dict]:
         """Create file structure - files grouped by task. Uses algorithms for libraries and implementation context."""
+        from config.settings import get_settings
+        settings = get_settings()
+        skip_flow = getattr(settings, "skip_flow_in_scheme_planning", False)
+        combined_text = f"{requirements.title} {requirements.description} {' '.join(f.name for f in requirements.features)}"
+
         # 构建每个任务的详细描述
         task_descriptions = ""
         for t in tasks:
@@ -635,7 +921,11 @@ Task {t.id}: {t.name} ({t.type})
   Dependencies: {t.dependencies or "none"}
 """
 
-        flow_section = f"\n\n## 用户操作流程参考\n{flow_simulation}\n" if flow_simulation else ""
+        flow_section = ""
+        if flow_simulation and not skip_flow and len(flow_simulation.strip()) > 0:
+            flow_section = f"\n\n## 用户操作流程参考\n{flow_simulation}\n"
+
+        pattern_hint = format_scheme_pattern_hint(detect_pattern(combined_text))
 
         # Algorithm context: libraries, implementation approach - ensures file_structure aligns with algo needs
         algorithms_section = ""
@@ -668,79 +958,33 @@ Task {t.id}: {t.name} ({t.type})
             flow_section=flow_section,
             task_descriptions=task_descriptions,
             algorithms_section=algorithms_section,
+            pattern_hint=pattern_hint,
         )
 
         try:
             result = self.llm_service.generate_json(prompt)
             if not isinstance(result, dict):
                 result = {}
-            # 解析 task_files
-            files: list[FileSpec] = []
-            task_files_dict = result.get("task_files", {}) or {}
+            files, interface_specs, api_specs, pyi_stubs = self._parse_scheme_result(result)
 
-            for task_id, task_file_list in task_files_dict.items():
-                if not isinstance(task_file_list, list):
-                    continue
-                for f in task_file_list:
-                    if not isinstance(f, dict):
-                        continue
-                    path = (f.get("path") or "").strip()
-                    if not path:
-                        continue
-                    files.append(
-                        FileSpec(
-                            path=path,
-                            purpose=f.get("purpose", "") or "",
-                            dependencies=f.get("dependencies", []) or [],
-                            layer=f.get("layer"),
-                            related_tasks=[task_id],
-                        )
-                    )
-
-            # 简化 interface_specs - 从 task_files 推断
-            interface_specs: list[InterfaceSpec] = []
-            for f in files:
-                if f.path.endswith(".py") and not f.path.startswith("tests/"):
-                    # 推断简单的 interface spec
-                    spec = InterfaceSpec(
-                        module_name=f.path.replace("/", ".").replace(".py", ""),
-                        file_path=f.path,
-                        purpose=f.purpose,
-                        layer=f.layer,
-                        exports=[],
-                        imports=[],
-                        database_access="none",
-                        related_files=[],
-                    )
-                    interface_specs.append(spec)
-
-            # 解析 api_specs / pyi_stubs，保证至少返回空 dict
-            api_specs: Dict = result.get("api_specs") or {}
-            pyi_stubs: Dict = result.get("pyi_stubs") or {}
-
-            # Merge ui_guidelines into api_specs (default theme: modern if not provided)
-            ui_guidelines = result.get("ui_guidelines")
-            if ui_guidelines and isinstance(ui_guidelines, dict):
-                api_specs["ui_guidelines"] = ui_guidelines
-            elif "ui_guidelines" not in api_specs:
-                api_specs["ui_guidelines"] = {"theme": "modern"}
-
-            # Merge ui_design_spec into api_specs (Stage 2 plans UI; Stage 3 implements it)
+            # Merge ui_design_spec if LLM provided it
             ui_design_spec = result.get("ui_design_spec")
             if ui_design_spec and isinstance(ui_design_spec, dict):
                 api_specs["ui_design_spec"] = ui_design_spec
 
-            # ===== Stage 2 反思审查机制 - API规范审查 =====
-            from config.settings import get_settings
-            if getattr(get_settings(), "always_review_api_specs", True):
+            # ===== API 规范审查 =====
+            if self._should_run_api_review(api_specs, tasks, requirements, settings):
                 logger.info("Running API specs review...")
-                review_agent = ReviewAgent(self.llm_service)
+                llm = self.llm_service
+                if getattr(settings, "use_fast_model_for_api_review", False) and hasattr(llm, "with_model"):
+                    fast_model = getattr(settings, "fast_model_for_review", "gpt-4o-mini")
+                    llm = llm.with_model(fast_model)
+                review_agent = ReviewAgent(llm)
                 api_review_result = review_agent.review_api_specs(
                     initial_api_specs=api_specs,
                     tasks=tasks,
                     requirements=requirements
                 )
-                # 如果审查发现问题，使用修正后的API规范
                 if api_review_result.get("issues") and api_review_result["issues"]:
                     logger.info(f"Found {len(api_review_result['issues'])} API issues, applying refinements...")
                     refined_api_specs = api_review_result.get("refined_api_specs", {})
@@ -750,6 +994,87 @@ Task {t.id}: {t.name} ({t.type})
             return files, interface_specs, api_specs, pyi_stubs
 
         except Exception as e:
-            # 保证返回值签名稳定，让上游可以做空计划处理或显式报错
-            logger.warning(f"LLM scheme planning failed, returning empty plan: {e}")
-            return [], [], {}, {}
+            logger.warning(f"LLM scheme planning failed: {e}")
+            return self._fallback_scheme(requirements, tasks, combined_text)
+
+
+class ModelIntegrationPlanningAgent:
+    """Stage 2: Infers external capabilities, searches web for API docs, outputs ExternalModelSpec list."""
+
+    def __init__(self, llm_service: LLMService, web_search_provider: Any = None):
+        self.llm_service = llm_service
+        self.web_search_provider = web_search_provider
+
+    def execute(
+        self,
+        requirements: Requirements,
+        tasks: List[Task],
+        flow_simulation: str = "",
+        settings: Any = None,
+    ) -> List[ExternalModelSpec]:
+        if not self.web_search_provider:
+            return []
+        capabilities = _infer_external_capabilities(requirements, tasks)
+        if not capabilities:
+            return []
+        num_results = 5
+        if settings:
+            num_results = getattr(settings, "web_search_num_results", 5) or 5
+        search_results_by_cap: Dict[str, str] = {}
+        for cap_type, _ in capabilities:
+            queries = [f"{cap_type.replace('_', ' ')} API documentation", f"{cap_type.replace('_', ' ')} API 2024"]
+            snippets = []
+            for q in queries[:2]:
+                results = self.web_search_provider.search(q, num_results=num_results)
+                for r in results:
+                    snippets.append(f"- {r.get('title', '')}: {r.get('link', '')}\n  {r.get('snippet', '')}")
+            search_results_by_cap[cap_type] = "\n\n".join(snippets) if snippets else "No results."
+        capabilities_list = ", ".join(f"{c[0]} ({c[1]})" for c in capabilities)
+        search_results = "\n---\n".join(f"## {cap}\n{search_results_by_cap.get(cap, '')}" for cap, _ in capabilities)
+        prompt = _prompt_loader.format(
+            "model_integration_planning",
+            title=requirements.title or "App",
+            description=(requirements.description or "")[:800],
+            capabilities_list=capabilities_list,
+            search_results=search_results[:6000],
+        )
+        import json
+        try:
+            response = self.llm_service.generate(prompt, max_tokens=1500)
+            if not response or not response.strip():
+                return []
+            text = response.strip()
+            if "```json" in text:
+                text = text.split("```json")[-1].split("```")[0].strip()
+            elif "```" in text:
+                text = text.split("```")[1].split("```")[0].strip()
+            data = json.loads(text)
+            if not isinstance(data, list):
+                return []
+            specs = []
+            for item in data:
+                if not isinstance(item, dict):
+                    continue
+                try:
+                    spec = ExternalModelSpec(
+                        capability_type=str(item.get("capability_type", "")),
+                        provider_name=str(item.get("provider_name", "")),
+                        docs_url=item.get("docs_url"),
+                        api_docs_summary=item.get("api_docs_summary"),
+                        base_url_hint=item.get("base_url_hint"),
+                        auth_type=str(item.get("auth_type", "api_key")),
+                        request_body_example=item.get("request_body_example"),
+                        response_image_path=item.get("response_image_path"),
+                        suggested_integration=item.get("suggested_integration"),
+                    )
+                    specs.append(spec)
+                except Exception as ex:
+                    logger.debug("Skip invalid external spec: %s", ex)
+            logger.info("ModelIntegrationPlanningAgent: produced %d external model spec(s)", len(specs))
+            return specs
+        except json.JSONDecodeError as e:
+            logger.warning("Model integration planning JSON parse failed: %s", e)
+            return []
+        except Exception as e:
+            logger.warning("Model integration planning failed: %s", e)
+            return []

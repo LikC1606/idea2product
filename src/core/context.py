@@ -44,6 +44,11 @@ class ExecutionContext(BaseModel):
 
     # Stage 3: Code Generation
     code_repository: Optional[CodeRepository] = None
+    # Optional write-back from Orchestrator after prefetch (for observability / future single-context calls)
+    memory_context: Optional[str] = None
+    mining_by_task: Optional[Dict[str, str]] = None
+    # Optional write-back from AssetGeneration: id -> path string under generated/static/images/
+    generated_image_paths: Optional[Dict[str, str]] = None
 
     # Stage 4: Validation
     test_results: Optional[TestResult] = None

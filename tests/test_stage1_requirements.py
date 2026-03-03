@@ -140,3 +140,54 @@ def test_merge_requirements_returns_existing_on_exception(agent, mock_llm):
     merged = agent.merge_requirements(existing, "Add feature X")
     assert merged is existing
     assert merged.title == "My App"
+
+
+def test_merge_requirements_preserves_design_mode(agent, mock_llm):
+    existing = Requirements(
+        title="Todo App",
+        description="Todo list",
+        features=[Feature(id="f1", name="Add", description="Add task", priority=1)],
+        constraints=[],
+        target_users=None,
+        data_requirements=None,
+        design_mode="minimal",
+    )
+    mock_llm.generate_json_return = {
+        "title": "Todo App",
+        "description": "Todo list with due dates",
+        "features": [
+            {"id": "f1", "name": "Add", "description": "Add task", "priority": 1},
+            {"id": "f2", "name": "Due date", "description": "Set due date", "priority": 2},
+        ],
+        "constraints": [],
+        "target_users": None,
+        "data_requirements": None,
+        "design_mode": "minimal",
+    }
+    merged = agent.merge_requirements(existing, "Add due dates")
+    assert merged.design_mode == "minimal"
+
+
+def test_merge_requirements_updates_design_mode_from_user_request(agent, mock_llm):
+    existing = Requirements(
+        title="Dashboard App",
+        description="Data dashboard",
+        features=[Feature(id="f1", name="Charts", description="Show charts", priority=1)],
+        constraints=[],
+        target_users=None,
+        data_requirements=None,
+        design_mode="modern",
+    )
+    mock_llm.generate_json_return = {
+        "title": "Dashboard App",
+        "description": "Data dashboard with minimal UI",
+        "features": [
+            {"id": "f1", "name": "Charts", "description": "Show charts", "priority": 1},
+        ],
+        "constraints": [],
+        "target_users": None,
+        "data_requirements": None,
+        "design_mode": "minimal",
+    }
+    merged = agent.merge_requirements(existing, "改成简洁风，不要花哨")
+    assert merged.design_mode == "minimal"

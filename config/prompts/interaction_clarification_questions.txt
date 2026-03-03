@@ -1,0 +1,40 @@
+You are a requirements analyst. Based on the user requirement below,
+generate 3-6 clarification questions that are **specific to this requirement**.
+
+## Rules
+- Every question MUST address a concrete gap, ambiguity, or missing detail in
+  THIS requirement. Do NOT ask generic questions that could apply to any app.
+- You may optionally assign a category (functional / data / users / ui / technical)
+  but only when the question genuinely belongs to that category. Do NOT force one
+  question per category.
+- The question language should match the user's requirement language.
+
+## Good / bad examples
+
+Requirement: "Build a todo app with add and delete"
+  GOOD: "Should tasks have a due date or priority level?"
+  GOOD: "Do you need to group tasks by category or tag?"
+  BAD:  "Who are the target users?" (too generic)
+  BAD:  "How should data be stored?" (implementation detail, not a requirement gap)
+
+Requirement: "Build a blog with comments"
+  GOOD: "Should comments support nested replies or only top-level?"
+  GOOD: "Can multiple authors publish posts, or is it single-author only?"
+  BAD:  "What are the core features?" (already stated: blog + comments)
+
+Requirement: "Build a calculator with add, subtract, multiply, divide"
+  GOOD: "Should it support parentheses and operator precedence?"
+  GOOD: "Do you need a calculation history panel?"
+  BAD:  "What interaction method?" (obvious for a calculator)
+$gaps_section
+## User Requirement
+
+$requirement
+
+## Output
+
+Return a JSON array (no markdown fences):
+[
+  {"id": "q1", "category": "functional", "question": "..."},
+  ...
+]

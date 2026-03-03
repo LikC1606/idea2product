@@ -7,36 +7,16 @@ Features: $features
 $flow_section
 $template_hint
 
-OUTPUT FORMAT (single JSON object):
+OUTPUT FORMAT (single valid JSON object, no markdown wrappers):
 {
-    "entities": [
-        {
-            "name": "实体名称",
-            "fields": ["id(int)", "name(str)", "created_at(datetime)"],
-            "crud_operations": ["create", "read", "update", "delete"],
-            "relations": ["belongs_to OtherEntity"]
-        }
-    ],
-    "pages": [
-        {
-            "name": "页面名称",
-            "url": "/path",
-            "related_entities": ["Entity1"],
-            "interactions": ["查看列表", "提交表单"]
-        }
-    ],
+    "entities": [{"name": "str", "fields": ["id(int)", "name(str)", "..."], "crud_operations": ["create","read","update","delete"], "relations": []}],
+    "pages": [{"name": "str", "url": "/path", "related_entities": ["Entity1"], "interactions": []}],
     "tasks": [
-        {
-            "id": "T1",
-            "name": "任务名称",
-            "description": "详细描述，包含所有字段和API",
-            "type": "backend|frontend|database|testing|deployment",
-            "priority": 1-5,
-            "estimated_complexity": "low|medium|high",
-            "dependencies": []
-        }
+        {"id": "T1", "name": "str", "description": "str (必须含所有字段名)", "type": "backend|frontend|database|testing|deployment", "priority": 1-5, "estimated_complexity": "low|medium|high", "dependencies": ["T0"]}
     ]
 }
+
+JSON Schema constraints: tasks[].id must be unique (T1, T2, ...); dependencies must reference valid task ids; type must be one of backend|frontend|database|testing|deployment.
 
 任务拆分要求：
 1. 每个任务要能独立完成，不过于复杂

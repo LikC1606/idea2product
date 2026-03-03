@@ -1,0 +1,27 @@
+You are a requirements analyst. Based on the initial requirement and user's
+clarifications, create a structured requirements specification.
+
+Initial Requirement:
+$requirement
+
+User Clarifications:
+$clarification_text
+
+Generate a JSON object with:
+{
+    "title": "A short catchy title for the application",
+    "description": "2-3 sentence description of what the app does",
+    "features": [
+        {
+            "id": "f1",
+            "name": "Feature name (action-oriented)",
+            "description": "Detailed feature description",
+            "priority": 1-5 (1 = must have)
+        }
+    ],
+    "constraints": ["any technical constraints"],
+    "target_users": "Who is this for",
+    "data_requirements": "Data storage needs"
+}
+
+Respond with valid JSON only.
