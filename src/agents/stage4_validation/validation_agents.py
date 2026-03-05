@@ -25,7 +25,16 @@ FRAMEWORK_TEMPLATE_PATH = Path(__file__).parent.parent.parent.parent / "template
 
 
 class FullCycleTestingAgent:
-    """Stage 4 Agent 1: Full-cycle testing with BDD."""
+    """Stage 4 Agent: Full-cycle testing with BDD and runnability checks.
+
+    Responsibilities:
+    - 将内存中的 CodeRepository 落盘到 `project_path / generated`
+    - 对所有 Python 文件做语法检查
+    - 启动 Flask 应用（子进程）做基本运行性验证与首页探活
+    - 根据工程计划检查前端路由与鉴权流程
+    - 可选地生成并运行 BDD pytest 测试
+    - 汇总错误/警告，产出 `TestResult`，供 FineTuningAgent 使用
+    """
 
     def __init__(self, llm_service: LLMService):
         self.llm_service = llm_service
@@ -938,7 +947,14 @@ class FullCycleTestingAgent:
 
 
 class FineTuningAgent:
-    """Stage 4 Agent 2: Fine-tuning based on test results."""
+    """Stage 4 Agent: Fine-tuning based on TestResult (logic + visual).
+
+    Responsibilities:
+    - 根据 FullCycleTestingAgent / FrontendTestingAgent / VisualVerificationAgent 产出的 TestResult
+      对 CodeRepository 进行精细化修复（语法、导入、入口点、运行/逻辑错误、视觉对齐问题）
+    - 仅在实际修改代码时返回 `fixed=True`，由 Orchestrator 触发下一轮 FullCycleTesting
+    - 配合 Orchestrator 的多轮循环，实现「Full-cycle Testing ↔ Fine-tuning」闭环
+    """
 
     def __init__(self, llm_service: LLMService):
         self.llm_service = llm_service
@@ -946,7 +962,15 @@ class FineTuningAgent:
     def execute(self, context: ExecutionContext, test_result: TestResult) -> tuple[CodeRepository, bool]:
         """Fix issues found during testing (logic errors) or visual verification (alignment < 0.7)."""
         visual_fb = getattr(test_result, "visual_feedback", None)
-        need_visual_fix = visual_fb and visual_fb.get("alignment_score", 1.0) < 0.7
+        # Use configurable threshold for visual alignment/quality
+        try:
+            from config.settings import get_settings
+
+            quality_threshold = getattr(get_settings(), "stage4_quality_threshold", 0.7)
+        except Exception:
+            quality_threshold = 0.7
+
+        need_visual_fix = visual_fb and visual_fb.get("alignment_score", 1.0) < quality_threshold
         need_logic_fix = (test_result.errors or test_result.warnings) and not test_result.logic_passed
 
         if not need_logic_fix and not need_visual_fix:

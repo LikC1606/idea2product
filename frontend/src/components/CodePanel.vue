@@ -74,7 +74,7 @@ watch(
 
 <template>
   <div class="code-pane" role="region" aria-label="Code files">
-    <nav class="file-tree" aria-label="File tree">
+    <nav class="file-tree sidebar-sticky" aria-label="File tree">
       <template v-if="!files?.length">
         <EmptyState
           icon="📂"
@@ -87,7 +87,8 @@ watch(
           v-for="f in groupedFiles.rootFiles"
           :key="f.path"
           type="button"
-          class="file-item root-file"
+          class="file-item root-file interactive-scale-sm"
+          v-reveal-on-scroll
           :class="{
             active: f.path === currentFile,
             'entry-point': ENTRY_POINTS.has(f.path.split('/').pop()),
@@ -99,12 +100,13 @@ watch(
           {{ f.path }}
         </button>
         <template v-for="dir in groupedFiles.sortedDirs" :key="dir">
-          <div class="file-tree-dir">{{ dir }}/</div>
+          <div class="file-tree-dir" v-reveal-on-scroll>{{ dir }}/</div>
           <button
             v-for="f in groupedFiles.dirs[dir]"
             :key="f.path"
             type="button"
-            class="file-item"
+            class="file-item interactive-scale-sm"
+            v-reveal-on-scroll
             :class="{
               active: f.path === currentFile,
               'entry-point': ENTRY_POINTS.has(f.path.split('/').pop()),
@@ -145,11 +147,12 @@ watch(
 
 .file-tree {
   width: 240px;
-  overflow-y: auto;
   border-right: 1px solid var(--border);
   padding: var(--spacing-12) 0;
   background: var(--bg-elevated);
   flex-shrink: 0;
+  max-height: calc(100vh - var(--shell-header-height) - var(--shell-status-height));
+  overflow-y: auto;
 }
 
 .file-tree-dir {

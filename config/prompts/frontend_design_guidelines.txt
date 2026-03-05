@@ -13,10 +13,138 @@ Color:
 
 Layout:
 - Consider asymmetry, overlap, generous negative space or controlled density.
-- Avoid predictable grid-only layouts.
+- Avoid boring, undifferentiated card grids; if you use a grid, make it **intentional** (hierarchy, contrast, rhythm).
+
+### Masonry Grid pattern (for image galleries / portfolios)
+
+Use a Masonry-style image grid when the app needs a **gallery, portfolio, screenshot wall, or image feed**:
+
+- Prefer multi-column layouts where item heights vary naturally:
+  - Use CSS multi-column (`column-width` + `column-gap`) or an equivalent dense grid strategy.
+  - Let the browser decide the exact column count based on container width.
+- Keep **visual rhythm and consistency**:
+  - All tiles share the same border radius (e.g. 12–16px) and elevation treatment.
+  - Use a single gap value for both horizontal and vertical spacing to avoid jagged holes.
+- Reduce large blank areas:
+  - Avoid rigid, equal-height rows that leave “air pockets” when image ratios differ.
+  - Prefer column flow or dense grid (`grid-auto-flow: dense`) so shorter items naturally fill space.
+- Responsiveness:
+  - Small screens: effectively 1–2 columns.
+  - Medium screens: 2–3 columns.
+  - Large screens: 3–5 columns, depending on content density.
+
+### Bento Grid pattern (for dashboards / feature overviews)
+
+Use a Bento Grid layout when the app has a **feature overview, dashboard, or hero section** on the home page:
+
+- Reserve 1–2 **hero cards** (larger) for the most important features or flows.
+- Surround them with 3–4 **supporting cards** (smaller) that explain secondary capabilities.
+- Keep **all cards** using:
+  - The same border radius (e.g. 14–18px).
+  - The same gap between cards (e.g. 12–20px).
+  - A consistent padding scale inside cards.
+- Use CSS Grid with named size variants instead of ad‑hoc widths:
+  - `.bento-card--large` (spans more columns/rows, higher min-height).
+  - `.bento-card--wide` (wide but not tall).
+  - `.bento-card--small` (compact supporting cards).
+- On mobile, automatically stack into 1–2 columns while preserving the visual hierarchy (hero cards still feel more important).
 
 Backgrounds:
 - Add atmosphere (gradients, subtle textures) rather than flat solid colors.
+
+### Gradient + Noise backgrounds (for hero/workspace shells)
+
+When a route's background is specified as a gradient/aurora with noise (for example `background.type = "aurora_parallax_with_noise"` in `ui_design_spec.page_layouts`):
+
+- Base layer:
+  - Use a CSS gradient (or aurora-style gradient) as the **primary background**; avoid large bitmap images for the full viewport.
+  - Keep saturation and contrast moderate so panels, cards, and text remain readable on top.
+- Noise layer:
+  - Add a **fine-grain noise texture** as a separate layer (e.g. a small PNG/SVG or data URL) applied to a pseudo-element or overlay `<div>` above the gradient.
+  - Opacity should be low (typically between **0.04 and 0.08**) so it reads as tactile texture, not as a visible pattern.
+  - Use blending (`mix-blend-mode: soft-light` or `overlay`) only when it does not compromise text contrast; otherwise, keep it as a simple low-opacity overlay.
+  - Ensure the noise tile does not produce visible seams; if using a repeating texture, choose a seamless asset and reasonable background-size.
+- Scope and constraints:
+  - Apply the gradient+noise combo only to **large hero/workspace shells** (e.g. the main hero section or global workspace background), not inside small cards or buttons.
+  - Maintain legible contrast in both light and dark contrast modes; never let noise reduce the minimum contrast for body text.
+  - Respect `prefers-reduced-motion`: background may remain static; the presence of noise is acceptable as long as it does not flicker or animate.
+
+### Micro-interactions for interactive elements
+
+Use subtle hover micro-interactions so clickable elements never feel static or lifeless:
+
+- Scope:
+  - Apply to **primary/secondary buttons, navigation tabs, chips, and clickable cards/tiles** that represent actions or navigation.
+- Motion:
+  - On hover, use a **small scale-up (≈ 1.02)** and slightly deeper shadow to suggest elevation; on press, ease back towards scale 1.0 (or slightly below) so it feels like a physical press.
+  - Keep durations short (around 150–200ms) and easing gentle; avoid bouncy or spring-like curves for core workspace controls.
+- Implementation:
+  - Prefer **shared CSS utilities** (e.g. `.interactive-scale`, `.interactive-scale-sm`) or equivalent helper classes instead of scattering ad‑hoc `transform` rules on individual elements.
+  - Combine these utilities with existing color/border hover states so all interactive elements share a consistent motion language.
+- Accessibility:
+  - Respect `prefers-reduced-motion`: when users prefer reduced motion, disable transform-based animations while preserving hover/focus cues via color and border changes.
+  - Never rely solely on motion to indicate interactivity; always pair with clear affordances (shape, iconography, focus-visible outlines).
+
+### Reveal on Scroll micro-interactions (for cards and sections)
+
+Use subtle reveal-on-scroll animations when the UI has **card lists, sectioned content blocks, or dashboard tiles** that enter the viewport as the user scrolls:
+
+- Motion:
+  - Prefer a **small upward shift (≈ 6–10px)** combined with a gentle fade-in (opacity 0 → 1) over 200–300ms.
+  - Animate each element **once on first entry** to avoid jitter when scrolling back and forth.
+- Implementation:
+  - Use a shared directive/component (e.g. IntersectionObserver-based) that adds a base class for the hidden state and a single \"revealed\" class when intersecting.
+  - Keep the implementation reusable so different sections (cards, empty states, feature blocks) can opt in without duplicating logic.
+- Accessibility:
+  - **Always respect `prefers-reduced-motion`**: when users prefer reduced motion, skip the animated transition and render elements directly in their final state.
+  - Avoid large offsets, springy/bouncy curves, or repeating entrance animations that distract from focused work.
+
+### Parallax background for hero/workspace sections
+
+Use a **parallax aurora/background layer** when the app has a rich hero area, workspace shell, or dashboard canvas:
+
+- Motion relationship:
+  - The parallax background should scroll at roughly **50% of the foreground scroll speed** (a factor between 0.3 and 0.6 is acceptable), creating depth without causing dizziness.
+  - Motion MUST respect `prefers-reduced-motion`; when users prefer reduced motion, freeze the parallax offset (no continuous drift tied to scroll).
+- Structure:
+  - Implement the parallax as a **dedicated background container** behind all content (for example, a full-viewport div with gradients/textures), not as styling duplicated across many components.
+  - Foreground panels (cards, drawers, editors) remain solid and readable, sitting clearly on top of the moving background.
+- Visual constraints:
+  - Keep saturation and contrast of the parallax layer modest so it never competes with text and primary UI elements.
+  - Combine it with existing aurora/grid/noise patterns where appropriate, reusing the same tokenized colors and radii to avoid style drift.
+
+### Glassmorphism floating panels (drawers, banners, overlays)
+
+Use a glassmorphism treatment when the UI has **floating panels, drawers, or overlays** that sit above rich backgrounds:
+
+- Combine a semi‑transparent background with a strong blur:
+  - Use `backdrop-filter: blur(...)` (with a WebKit fallback) and a dark or light translucent fill.
+  - Keep text contrast high; glass is for depth, not to reduce legibility.
+- Add a **very subtle white noise texture** on top:
+  - Low‑contrast noise tiled over the panel surface to avoid flat, plastic gradients.
+  - Keep opacity low (around 0.05–0.1) so it reads as texture, not pattern.
+- Reuse consistent tokens:
+  - Shared radius for all floating panels (e.g. `--glass-radius`).
+  - A unified shadow scale to separate panels from the background without looking \"popup-y\".
+- Provide a graceful fallback:
+  - When `backdrop-filter` is unavailable, degrade to a simple translucent solid background and border, keeping the same radius and shadow.
+
+### Aurora background for workspaces/dashboards
+
+For workspace or dashboard-style apps, you can use a **slowly moving aurora gradient** as the global background to add depth without distracting from content:
+
+- Palette:
+  - Deep navy base with blue and purple aurora bands (e.g. `--aurora-color-1`..`4` in tokens).
+  - Keep saturation moderate so panels and text remain the focus.
+- Motion:
+  - Use long-period animations (30–60s) on `background-position` or `transform` to make the aurora drift slowly.
+  - Avoid aggressive hue shifts or fast loops that feel like a screensaver.
+- Layering:
+  - Combine with a subtle grid/noise layer and glassmorphism panels in the foreground.
+  - Aurora should sit behind all content; floating panels remain solid enough for text to be readable.
+- Accessibility:
+  - Respect `prefers-reduced-motion` by freezing or greatly reducing aurora movement.
+  - Ensure contrast of text on top-level panels still meets readability expectations.
 
 NEVER:
 - Overused font families (Inter, Roboto, Arial).

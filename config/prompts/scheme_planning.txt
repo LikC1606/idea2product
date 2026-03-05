@@ -27,6 +27,16 @@ YOUR JOB:
    - session_info 中用 gets 字段说明需要从 session 获取什么变量
    - 例如：创建博客时 author_id 从 session['user_id'] 获取，不需要前端传递
 10. **【产品级UI】ui_design_spec**：为每个 frontend_route 设计页面 UI 规格，必须包含 page_layouts（sections、empty_state、loading_state）、content_max_width、product_grade_rules。Stage 3 将严格按此规格实现，不在 Stage 3 自行设计。
+    - 对于带有 dashboard / overview / feature grid 需求且 design_mode=modern 的应用，可以在 ui_guidelines 中加入 \"layout\": \"bento_grid\" 的 hint，并在首页的 page_layouts 中用若干不同 size 的卡片 section（类似 Bento Grid：1–2 个大卡 + 若干小卡）组织功能区域。
+    - 对于带有 gallery / portfolio / image grid / 瀑布流 / 图片墙 / 作品展示 等需求的应用，可以在 ui_guidelines 中加入 \"layout\": \"masonry_grid\" 的 hint，并在相关路由（如首页或 /gallery）对应的 page_layouts 中明确 “Masonry-style image grid（多列不规则高度，列数随宽度变化，尽量减少大块空白）” 的 section 描述。
+    - 对于以**内容阅读、报告、案例研究、文章/知识文档**为主的页面（如 overview/report/insights/knowledge 等），当文本较长且存在配图/插图需求时，可以在 ui_guidelines 中加入 `global_layout_style: "editorial_magazine"` 的 hint，并在对应路由（如 `/`, `/overview`, `/report`）的 page_layouts 中标记 `\"layout_archetype\": \"editorial_magazine\"`，并给出 `applicability_score`（0–1）与 `notes`（为什么适合杂志式布局），说明采用**大标题 + 图片交错、非对称分栏、强排版层级与留白**的 editorial/magazine 式版面，而不是平均分布的网格。
+    - 当某个页面在首次加载或触发 AI / 远程计算时存在**明显等待时间**时，loading_state 必须优先使用 skeleton 方案：在说明中清楚描述 Skeleton Screen 的布局（例如列表行骨架、侧边栏骨架、详情卡片骨架等），避免只写成 \"show loading spinner\" 或完全留空。
+    - 对于 design_mode 为 modern 或 dashboard 且首页/工作台存在大面积 hero/背景区块的应用，可以在 ui_guidelines 或 page_layouts 中加入缓慢 aurora/parallax 背景的 hint（例如 \"background\": {\"type\": \"aurora_parallax\", \"parallax_speed\": 0.5}），用以营造纵深感，但不得影响内容可读性；如果希望在渐变上叠加**细腻的噪点纹理以增强质感**，可以使用 `\"type\": \"aurora_parallax_with_noise\"`，并在同一对象中补充 `\"noise_opacity\"`（如 0.04–0.08）与说明该噪点需保持低对比度、不影响文案可读性。
+    - 对于具有明显分区 / 卡片列表 / section 化内容的页面（例如 dashboard 卡片区、功能 overview、分节文档等），可以在 `ui_guidelines.layout_hints` 或 `page_layouts[*].sections` 的描述中自然语言提到 **subtle 的 reveal-on-scroll 动效**（小幅上浮 + 淡入、每个元素仅在首次进入视口时触发一次），同时注明必须尊重 `prefers-reduced-motion`（在 reduced 模式下以无动画或极短静态过渡呈现）。
+    - 对于应用中的主要可点击元素（例如主按钮、导航 tab、可点击卡片/tiles 等），建议在 `ui_guidelines.layout_hints` 或 `ui_design_spec.product_grade_rules` 中用自然语言说明使用 **统一的 hover micro-interactions**：鼠标悬停时轻微放大（约 1.02 倍）并加深阴影，按下时略微回落；整体动效要短促、克制，并且在 `prefers-reduced-motion` 为 true 时关闭 scale 动画，仅保留颜色/边框反馈。
+    - 对于具有「产品入口页 / Landing / 首页 Hero」语义的页面（例如根路由 `/` 或 `/overview`，描述中包含 “landing”、“homepage”、“入口页”、“产品介绍”、“选择生成方向”、“hero”等关键词），如果需要在首屏同时展示左侧主文案与右侧产品界面预览，建议在 `ui_guidelines.hero_layouts` 中为该路由写入一个 **分屏 Hero 布局 archetype**：
+      - `hero_layouts[route] = {"layout_archetype": "split_hero_left_text_right_preview", "primary_column": "left", "contrast_mode": "dark_bg_light_text", "notes": "左列为大标题、副标题、卖点列表与主/次按钮；右列为产品界面预览卡片或截图，尺寸略小于左列，形成 3:2 或 5:4 的左右分屏对比"}`。
+      - 当页面不适合作为入口 Hero（例如纯表单页、二级内容页），可以省略该路由的 hero_layouts，保持默认布局。
 11. **【Auth 完整性】当应用需要用户登录时**：
    - api_specs.endpoints 必须包含：/api/auth/register、/api/auth/login、/api/auth/logout
    - api_specs.frontend_routes 必须包含：/login、/register 及主应用路由（如 / 或 /tasks）
@@ -53,7 +63,24 @@ Output format (JSON):
         "theme": "modern" | "minimal" | "dashboard",
         "primary_color": "#6366f1",
         "font_family": "system-ui, -apple-system, sans-serif",
-        "layout_hints": "e.g. sidebar nav, card grid layout"
+        "layout": "bento_grid | masonry_grid | editorial_magazine",
+        "global_layout_style": "editorial_magazine | dashboard | form_first | null",
+        "layout_hints": "e.g. sidebar nav, card grid layout, aurora/parallax background for workspace shell；对于 overview/report/knowledge 类页面，可写明采用杂志式 editorial layout（大标题+配图、非对称分栏、强层级与留白）",
+        "page_layouts": {
+            "/overview": {
+                "layout_archetype": "editorial_magazine",
+                "applicability_score": 0.85,
+                "notes": "Content-heavy overview with multiple sections, benefit from alternating big headlines and imagery"
+            }
+        },
+        "hero_layouts": {
+            "/": {
+                "layout_archetype": "split_hero_left_text_right_preview",
+                "primary_column": "left",
+                "contrast_mode": "dark_bg_light_text",
+                "notes": "Left: main headline, subheadline, 2–3 key benefits and primary/secondary CTA buttons. Right: product UI preview card with subtle glow, slightly smaller than left column to emphasize copy."
+            }
+        }
     },
     "ui_design_spec": {
         "content_max_width": "min(90vw, 960px)",
@@ -62,11 +89,24 @@ Output format (JSON):
         "page_layouts": {
             "/": {
                 "sections": [
-                    {"id": "add-form", "description": "顶部添加任务表单，输入框+提交按钮"},
-                    {"id": "task-list", "description": "任务列表，每项包含 checkbox、文本、删除按钮"}
+                    {"id": "add-form", "description": "顶部添加任务表单，输入框+提交按钮，主按钮在 hover 时有轻微放大+阴影加深的 micro-interaction 效果"},
+                    {"id": "task-list", "description": "任务列表，每项包含 checkbox、文本、删除按钮；任务行在滚动进入视口时以小幅上浮+淡入的 subtle reveal-on-scroll 动效出现，尊重 prefers-reduced-motion"}
                 ],
                 "empty_state": {"message": "暂无任务，添加一个吧", "cta": "添加任务", "show_when": "列表为空"},
-                "loading_state": {"type": "skeleton" | "spinner", "description": "首次加载时显示骨架屏或加载指示器"}
+                "loading_state": {
+                    "type": "skeleton",
+                    "description": "首次加载时，在顶部保留输入框和按钮的占位条，在主列表区域显示多行任务行骨架",
+                    "skeleton_layout": {
+                        "toolbar": {"type": "bar", "position": "top"},
+                        "list_items": {"type": "rows", "count": 4}
+                    }
+                },
+                "background": {
+                    "type": "aurora_parallax_with_noise",
+                    "parallax_speed": 0.5,
+                    "noise_opacity": 0.06,
+                    "notes": "Aurora-style gradient background scrolling at about half of the foreground speed, with a very fine noise texture layered on top at low opacity to add tactile depth without distracting from text."
+                }
             },
             "/login": {
                 "sections": [{"id": "login-form", "description": "用户名、密码输入框和登录按钮"}],
@@ -77,7 +117,15 @@ Output format (JSON):
                 "auth_cross_links": {"text": "已有账号？去登录", "href": "/login"}
             }
         },
-        "product_grade_rules": ["空状态必显", "加载态必显", "操作反馈(toast/内联)", "表单校验与错误提示", "列表项 hover/完成态", "登录/注册页必有互相跳转链接"]
+                "product_grade_rules": [
+                    "空状态必显",
+                    "加载态必显",
+                    "操作反馈(toast/内联)",
+                    "表单校验与错误提示",
+                    "列表项 hover/完成态",
+                    "主按钮、Tab 与可点击卡片在 hover 时使用统一的微交互（轻微 scale + 阴影加深），在 prefers-reduced-motion 模式下关闭 scale 动画",
+                    "登录/注册页必有互相跳转链接"
+                ]
     },
     "task_files": {
         "T1": [{"path": "...", "layer": "...", "purpose": "..."}],
@@ -112,6 +160,7 @@ Output format (JSON):
 IMPORTANT:
 - ui_guidelines is optional; if omitted, default theme "modern" will be used
 - ui_design_spec: For Todo/Notes/simple CRUD apps, MUST output complete page_layouts (every frontend_route), content_max_width (min 720px or min(90vw,960px)), product_grade_rules. Stage 3 implements exactly this spec.
+- For any page with noticeable waiting time (initial data load, AI generation, heavy export/import), loading_state should PREFER a detailed skeleton layout over a generic spinner, and describe skeleton blocks that mirror the final layout (list rows, detail cards, sidebars, charts, etc.).
 - Each file should appear exactly ONCE
 - Include all necessary files (templates, static, routes, models, app factory, entry point)
 - task_goals should describe what this task should achieve

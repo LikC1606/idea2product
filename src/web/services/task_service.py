@@ -20,10 +20,24 @@ from pathlib import Path
 from typing import Dict, Any, Optional, List
 
 from config.settings import Settings
+from src.core.exceptions import LLMServiceError
 from src.utils.file_utils import read_json, read_json_safe, write_json
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def _is_transient_error(exc: BaseException) -> bool:
+    """True if the exception is typically transient (network/LLM timeout, 5xx)."""
+    if isinstance(exc, (LLMServiceError, TimeoutError)):
+        return True
+    try:
+        from openai import APITimeoutError, APIConnectionError, APIError, RateLimitError
+        if isinstance(exc, (APITimeoutError, APIConnectionError, APIError, RateLimitError)):
+            return True
+    except ImportError:
+        pass
+    return False
 
 _TASK_STATUS_FILE = "task_status.json"
 
@@ -53,18 +67,15 @@ class TaskService:
         return self.settings.projects_dir / project_id / "artifacts" / _TASK_STATUS_FILE
 
     def _persist_task(self, project_id: str):
-        """Write current task dict to disk for crash recovery."""
+        """Write current task dict to disk for crash recovery. May raise on I/O error."""
         with self._lock:
             task = self.tasks.get(project_id)
         if not task:
             return
         serializable = {k: v for k, v in task.items() if k != "result" or v is None or isinstance(v, dict)}
-        try:
-            path = self._status_path(project_id)
-            path.parent.mkdir(parents=True, exist_ok=True)
-            write_json(path, serializable)
-        except Exception as e:
-            logger.warning(f"Failed to persist task status for {project_id}: {e}")
+        path = self._status_path(project_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        write_json(path, serializable)
 
     def _restore_persisted_tasks(self):
         """On startup, scan projects_dir and reload last-known task status."""
@@ -204,63 +215,77 @@ class TaskService:
         from src.web.services.chat_service import get_messages
 
         start_time = time.time()
+        retry_on_transient = getattr(self.settings, "task_generation_retry_on_transient", False)
+        last_exception = None
 
-        try:
-            messages = get_messages(self.settings, project_id)
-            if not messages:
-                return
+        for attempt in range(2):
+            if attempt > 0:
+                logger.warning("Retrying generation for %s after transient error", project_id)
+            try:
+                messages = get_messages(self.settings, project_id)
+                if not messages:
+                    return
 
-            self._update(project_id, status="processing", progress=5, stage="Preparing requirements")
+                self._update(project_id, status="processing", progress=5, stage="Preparing requirements")
 
-            llm_service = LLMService.from_settings(self.settings)
-            agent = InteractionAgent(llm_service)
-            orchestrator = Orchestrator(self.settings)
+                llm_service = LLMService.from_settings(self.settings)
+                agent = InteractionAgent(llm_service)
+                orchestrator = Orchestrator(self.settings)
 
-            req_path = self.settings.projects_dir / project_id / "artifacts" / "01_requirements.json"
-            existing_data = read_json_safe(req_path)
-            is_incremental = existing_data is not None
+                req_path = self.settings.projects_dir / project_id / "artifacts" / "01_requirements.json"
+                existing_data = read_json_safe(req_path)
+                is_incremental = existing_data is not None
 
-            if is_incremental:
-                self._update(project_id, progress=10, stage="Merging requirements")
-                try:
-                    from src.core.data_models import Requirements
-                    existing_req = Requirements(**existing_data)
-                except Exception as e:
-                    logger.warning(f"Invalid requirements.json for {project_id}, falling back to first-time: {e}")
-                    is_incremental = False
+                if is_incremental:
+                    self._update(project_id, progress=10, stage="Merging requirements")
+                    try:
+                        from src.core.data_models import Requirements
+                        existing_req = Requirements(**existing_data)
+                    except Exception as e:
+                        logger.warning("Invalid requirements.json for %s, falling back to first-time: %s", project_id, e)
+                        is_incremental = False
 
-            if is_incremental:
-                last_user_msg = ""
-                for m in reversed(messages):
-                    if m.get("role") == "user":
-                        last_user_msg = m.get("content", "")
-                        break
-                requirements = agent.merge_requirements(existing_req, last_user_msg, messages[-5:])
-            else:
-                self._update(project_id, progress=10, stage="Analyzing conversation")
-                requirements = agent.conversation_to_requirements(messages)
+                if is_incremental:
+                    last_user_msg = ""
+                    for m in reversed(messages):
+                        if m.get("role") == "user":
+                            last_user_msg = m.get("content", "")
+                            break
+                    requirements = agent.merge_requirements(existing_req, last_user_msg, messages[-5:])
+                else:
+                    self._update(project_id, progress=10, stage="Analyzing conversation")
+                    requirements = agent.conversation_to_requirements(messages)
 
-            with self._lock:
-                self.tasks.setdefault(project_id, {})["requirement"] = (
-                    requirements.description or requirements.title or ""
+                with self._lock:
+                    self.tasks.setdefault(project_id, {})["requirement"] = (
+                        requirements.description or requirements.title or ""
+                    )
+
+                def _on_progress(progress: int, stage: str) -> None:
+                    self._update(project_id, progress=progress, stage=stage)
+
+                self._update(project_id, progress=20, stage="Stage 2: Planning")
+                result = orchestrator.run_from_stage_2(
+                    project_id, requirements, progress_callback=_on_progress
                 )
 
-            def _on_progress(progress: int, stage: str) -> None:
-                self._update(project_id, progress=progress, stage=stage)
+                elapsed = round(time.time() - start_time, 1)
+                logger.info("Generation completed for %s in %ss", project_id, elapsed)
+                self._complete(project_id, result)
 
-            self._update(project_id, progress=20, stage="Stage 2: Planning")
-            result = orchestrator.run_from_stage_2(
-                project_id, requirements, progress_callback=_on_progress
-            )
+                self._try_start_preview(project_id)
+                return
 
-            elapsed = round(time.time() - start_time, 1)
-            logger.info(f"Generation completed for {project_id} in {elapsed}s")
-            self._complete(project_id, result)
+            except Exception as e:
+                last_exception = e
+                if attempt == 0 and retry_on_transient and _is_transient_error(e):
+                    logger.warning("Transient error for %s (will retry once): %s", project_id, e)
+                    continue
+                self._fail(project_id, e)
+                return
 
-            self._try_start_preview(project_id)
-
-        except Exception as e:
-            self._fail(project_id, e)
+        if last_exception is not None:
+            self._fail(project_id, last_exception)
 
     def _try_start_preview(self, project_id: str):
         """Try to start/restart preview after generation completes."""
@@ -283,7 +308,10 @@ class TaskService:
                 task["progress"] = progress
             if stage:
                 task["current_stage"] = stage
-        self._persist_task(project_id)
+        try:
+            self._persist_task(project_id)
+        except Exception as e:
+            logger.warning("Failed to persist task status for %s: %s", project_id, e)
 
     def _complete(self, project_id: str, result):
         with self._lock:
@@ -302,18 +330,25 @@ class TaskService:
                 }
             else:
                 task["result"] = {"is_deployable": True, "files_count": 0, "test_passed": False}
-        self._persist_task(project_id)
+        try:
+            self._persist_task(project_id)
+        except Exception as e:
+            logger.warning("Failed to persist task status for %s: %s", project_id, e)
 
     def _fail(self, project_id: str, error: Exception):
         msg = str(error)
-        logger.error(f"Generation failed for {project_id}: {msg}")
-        logger.debug(traceback.format_exc())
+        logger.error("Generation failed for %s: %s", project_id, msg)
+        logger.debug("%s", traceback.format_exc())
         with self._lock:
             task = self.tasks.setdefault(project_id, {})
             task["status"] = "failed"
             task["error"] = msg
             task["current_stage"] = f"Error: {msg[:80]}"
-        self._persist_task(project_id)
+        try:
+            self._persist_task(project_id)
+        except Exception:
+            logger.exception("Failed to persist task status after failure for %s", project_id)
+            # Do not re-raise so the original failure reason is not masked
 
     # ------------------------------------------------------------------
     # Query methods

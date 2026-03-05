@@ -100,7 +100,7 @@ watch(
       title="App preview"
       class="preview-iframe"
     ></iframe>
-    <div v-else class="no-preview">
+    <div v-else class="no-preview" v-reveal-on-scroll>
       <ErrorBanner
         v-if="errorMsg"
         :message="errorMsg"

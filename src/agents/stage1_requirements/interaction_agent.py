@@ -158,6 +158,11 @@ class InteractionAgent:
             if dm in (None, "", "null") or dm not in ("modern", "minimal", "dashboard"):
                 dm = None
 
+            # Optional: layout preferences (e.g. editorial_magazine, data_dashboard)
+            lp = getattr(validated, "layout_preferences", None)
+            if not lp or not isinstance(lp, list):
+                lp = None
+
             requirements = Requirements(
                 title=validated.title,
                 description=validated.description or user_requirement,
@@ -166,6 +171,7 @@ class InteractionAgent:
                 target_users=validated.target_users,
                 data_requirements=validated.data_requirements,
                 design_mode=dm,
+                layout_preferences=lp,
             )
 
             logger.info(f"Extracted {len(features)} features from requirement")
@@ -692,6 +698,9 @@ class InteractionAgent:
         dm = result.get("design_mode")
         if dm and dm not in ("modern", "minimal", "dashboard"):
             dm = fallback.design_mode if fallback else None
+        lp = result.get("layout_preferences")
+        if not lp or not isinstance(lp, list):
+            lp = fallback.layout_preferences if fallback else None
         return Requirements(
             title=result.get("title", fallback.title if fallback else "Generated Application"),
             description=result.get("description", fallback.description if fallback else ""),
@@ -700,6 +709,7 @@ class InteractionAgent:
             target_users=result.get("target_users") or (fallback.target_users if fallback else None),
             data_requirements=result.get("data_requirements") or (fallback.data_requirements if fallback else None),
             design_mode=dm or (fallback.design_mode if fallback else None),
+            layout_preferences=lp,
         )
 
     def conversation_to_requirements(self, messages: List[Dict[str, str]]) -> Requirements:

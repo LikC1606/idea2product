@@ -22,6 +22,14 @@ CORS(app)
 from src.web.api import projects
 app.register_blueprint(projects.bp)
 
+# Lightweight startup config checks (warnings only; do not block server start)
+try:
+    from config.settings import load_settings_lenient, validate_startup_config_log_warnings
+    _startup_settings = load_settings_lenient()
+    validate_startup_config_log_warnings(_startup_settings)
+except Exception:
+    pass
+
 
 @app.before_request
 def check_request_size():
@@ -63,10 +71,12 @@ def handle_validation_error(e):
 @app.route("/api/projects/<project_id>/generate", methods=["POST"])
 def trigger_generate_app(project_id):
     """Generate endpoint - at app level to ensure routing works."""
-    from src.web.api.projects import _get_task_service
+    from src.web.api.projects import _get_task_service, _validate_project_id
     from src.web.services import chat_service
     from config.settings import get_settings
 
+    if not _validate_project_id(project_id):
+        return jsonify({"error": "Invalid project id"}), 400
     ts = _get_task_service()
     project = ts.get_project(project_id)
     if not project:
@@ -136,8 +146,19 @@ def handle_404(e):
 
 @app.errorhandler(500)
 def handle_500(e):
-    """Return JSON for 500 errors so frontend gets valid JSON instead of HTML."""
-    return jsonify({"error": "Internal server error"}), 500
+    """Return JSON for 500 errors. Log full exception; expose details only when configured."""
+    from src.utils.logger import get_logger
+    get_logger(__name__).exception("Unhandled exception")
+    msg = "Internal server error"
+    if request.path.startswith("/api/"):
+        try:
+            from config.settings import get_settings
+            if get_settings().expose_error_details:
+                msg = str(e) if e else "Internal server error"
+        except Exception:
+            pass
+        return jsonify({"error": msg}), 500
+    return jsonify({"error": msg}), 500
 
 
 @app.errorhandler(405)

@@ -72,6 +72,12 @@ def engineering_plan_from_stage2(
                 continue
             dependencies.add(lib_normalized)
 
+    ui_guidelines = None
+    if isinstance(api_specs, dict):
+        maybe_ui = api_specs.get("ui_guidelines")
+        if isinstance(maybe_ui, dict):
+            ui_guidelines = maybe_ui
+
     return EngineeringPlan(
         tasks=tasks,
         algorithms=algorithms,
@@ -83,4 +89,5 @@ def engineering_plan_from_stage2(
         pyi_stubs=effective_pyi_stubs,
         bdd_test_cases=bdd_test_cases or [],
         external_model_specs=external_model_specs or [],
+        ui_guidelines=ui_guidelines,
     )

@@ -6,6 +6,43 @@
 
 ---
 
+## 2026-03-05 | agents, core, web, config 全流程 Agent 结构与可读性重构
+
+- **Agent 规范**：在 `AGENTS_REF` 顶部增加「Agent 设计规范」小节，约定目录结构、构造函数签名、主入口 `execute` 方法以及日志前缀格式，统一 Stage 1–4 Agent 的风格。
+- **Orchestrator 日志与结构**：`src/core/orchestrator.py` 中为 Stage 1–4 的执行方法补充 `[StageN][AgentName]` 风格的日志前缀，并细化 Stage 2/3 的日志（FlowSimulation/TaskDivision/AlgorithmAnalysis/SchemePlanning、CodeMemoryAgent/CodeMiningAgent/CodeGenerationAgent），Stage 4 日志显式标注 FullCycleTesting / FrontendTesting / VisualVerification / FineTuning 循环及收敛条件。
+- **Stage 4 Agent 文档**：`validation_agents.py` 中为 `FullCycleTestingAgent` 与 `FineTuningAgent` 增强 class-level docstring，清晰描述它们在闭环中的职责与输入输出；`execute_stage_4` 文档与日志前缀同步更新为「Validation & iterative FineTuning loop」。
+- **文档对齐**：`docs/ARCHITECTURE.md` 新增 Orchestrator ↔ Agent 调用关系 mermaid 图；`AGENTS_REF` 新增「Orchestrator ↔ Agent 调用关系（代码导航）」小节，标注每个 Agent 与 Orchestrator 包装方法的映射关系；`run_from_stage_2` 的 progress 回调文案细化为包含主要 Agent 名称的阶段描述，便于前端展示当前阶段/Agent。
+
+---
+
+## 2026-03-05 | agents, config, data-models, web Stage 4 验证循环与 FineTuning 多轮迭代
+
+- **配置**：`config/settings.py` 新增 `max_stage4_rounds` 与 `stage4_quality_threshold`，控制 Stage 4 FineTuning 最大迭代轮数与视觉对齐阈值（alignment_score）。
+- **Stage 4 Orchestrator**：`execute_stage_4` 重构为「FullCycleTesting → FrontendTesting（逻辑通过时） → VisualVerification → FineTuning」闭环循环，直到测试与视觉对齐都达标、FineTuning 不再修改代码或达到 `max_stage4_rounds` / `max_fix_attempts`。
+- **FineTuningAgent**：改用可配置的 `stage4_quality_threshold` 判断是否需要视觉修复（替代硬编码 0.7），并沿用 `fix_attempts` 统计修复轮数。
+- **文档**：更新 ARCHITECTURE 中 Stage 4 流程图、AGENTS_REF Stage 4 调用顺序说明、DATA_MODELS_REF 对 `ValidatedProject.fix_attempts` 的解释，以及 CLAUDE.md 环境变量列表；保证与实际实现一致。
+
+---
+
+## 2026-03-05 | agents, web 项目评估改进（高优先级）
+
+- **Orchestrator**：删除重复的 `_save_artifact` 方法定义，仅保留一处
+- **Web API**：`post_chat_stream` 中移除未使用的 `generate()` 死代码，仅保留 `generate_and_persist()` 以正确持久化流式回复
+- **文档**：AGENTS_REF Stage 4 表格增加 CodeFixAgent、FrontendTestingAgent（输入/输出/关键方法），并补充「Stage 4 调用顺序与职责」说明（CodeFix 负责 run-fix 循环，FineTuning 负责按 TestResult/视觉的精细化修复）
+
+---
+
+## 2026-03-03 | agents, web, config, services, troubleshooting 全流程鲁棒性与稳定性优化
+
+- **Orchestrator**：`run_from_stage_2` 与 `run()` 对齐，按 Stage 2/3/4 分别 try/except；阶段失败时写入 `context.json`（`partial_failure`、`failed_stage`）并抛出 `StageExecutionError`，保证部分产物落盘
+- **API**：`project_id` 校验（`_validate_project_id`）拒绝 `..`、路径分隔符及非 `proj_[a-zA-Z0-9_-]+` 格式，非法返回 400；500 统一 JSON，`EXPOSE_ERROR_DETAILS` 时返回详情，服务端始终 `logger.exception`
+- **配置**：`validate_startup_config_log_warnings(settings)` 校验 `projects_dir` 可写、主用 LLM API Key 存在，仅打 log 不阻塞启动；Web 启动时调用
+- **TaskService**：`_persist_task` 失败时在 `_update`/`_complete` 中 log.warning、在 `_fail` 中 logger.exception 且不 re-raise；可选 `task_generation_retry_on_transient`，瞬时错误（LLMServiceError、超时、5xx）重试一次
+- **前端**：`useStatus` 暴露 `statusError`；StatusBar 在 `status === 'failed'` 时展示错误摘要与「重试生成」按钮，点击调用 `triggerGeneration` 并重新轮询
+- **文档**：TROUBLESHOOTING 新增「阶段部分失败与恢复」小节（context.json、产物、日志、恢复方式）；CHANGELOG
+
+---
+
 ## 2026-03-03 | agents, services 合并 bench5 HF 提交（7d1baaa）
 
 - **拉取**：`git pull origin bench5` 引入 `feat: enhance HF model search + add PaperToProject agent`
@@ -213,3 +250,66 @@
 
 - 新增 `docs/OPTIMIZATION_FLOW.md`，给出面向 4 阶段流水线的统一设计优化循环（问题发现→现状建模→指标设计→方案与优先级→实验→实施→验证与回滚）
 - 在 `docs/DEVELOPMENT_PLAN.md` 中增加指向 OPTIMIZATION_FLOW 的说明，约定后续优化专题可复用该流程与模板
+
+---
+
+## 2026-03-05 | code-gen, prompts Skeleton Screen 加载规范与 Stage 2 规划增强
+
+- 在 `docs/specs/CODE_GEN_SPEC.md` 中新增「Loading 状态与 Skeleton 设计」章节，明确长耗时场景下优先使用 Skeleton Screen（浅灰骨架 + shimmer，支持 `prefers-reduced-motion`）承载加载状态，并给出列表页、详情页、Dashboard、代码浏览器等典型骨架布局建议。
+- 更新 `config/prompts/scheme_planning.txt`：在 ui_design_spec 约束中要求对存在明显等待的页面优先规划 skeleton 式 loading_state，并将示例 JSON 中 `/` 路由的 loading_state 改为带有 skeleton_layout 描述的 skeleton 方案，同时在 IMPORTANT 段强调「有明显等待的页面应优先使用结构化 skeleton 布局而非 generic spinner」。
+
+---
+
+## 2026-03-05 | code-gen, prompts, web Aurora Parallax 背景规范与 Stage 2 规划支持
+
+- 在 `config/prompts/frontend_design_guidelines.txt` 中新增「Parallax background for hero/workspace sections」小节，约定在工作台、Dashboard 或 hero 区域使用视差 aurora/背景时，背景滚动速度约为前景的 50%（0.3–0.6 区间），并必须尊重 `prefers-reduced-motion`，以独立背景容器形式实现且不影响前景可读性。
+- 在 `docs/specs/CODE_GEN_SPEC.md` 的 Loading/Skeleton 章节末尾补充说明：当 Stage 2 在 `ui_design_spec` 中给出 aurora_parallax + parallax_speed 提示时，Stage 3 应将视差背景实现为独立背景层，使用滚动驱动 transform 实现约 50% 速度，并同样遵守运动偏好设置。
+- 更新 `config/prompts/scheme_planning.txt`：在 ui_design_spec 规则中加入对 modern/dashboard 应用可选的 aurora/parallax 背景 hint，并在示例 JSON 中为 `/` 路由增加 `background: {\"type\": \"aurora_parallax\", \"parallax_speed\": 0.5}` 字段，作为 Stage 2 规划时参考的前端背景模式。
+
+---
+
+## 2026-03-05 | code-gen, prompts, other Reveal on Scroll 微交互规范与 Stage 2 规划支持
+
+- 在 `config/prompts/frontend_design_guidelines.txt` 中新增「Reveal on Scroll micro-interactions」小节，说明在卡片列表、section 化内容等场景下应使用小幅上浮 + 淡入、仅首次触发的 subtle 滚动进场动画，并明确必须遵守 `prefers-reduced-motion`（在 reduced 模式下降级为无动画或静态过渡）。
+- 在 `config/prompts/scheme_planning.txt` 中扩展 ui_design_spec 规则与示例 JSON：允许 Stage 2 在具有明显分区 / 卡片列表 / section 化内容的页面中，用自然语言 hint 推荐使用 subtle 的 reveal-on-scroll 动效（示例中为 `/` 路由的 `task-list` section 补充描述），并要求提示尊重运动偏好设置。
+- 在 `docs/specs/CODE_GEN_SPEC.md` 的 Loading/Skeleton 章节中挂钩 Reveal on Scroll 指南：当 Stage 2 在 `ui_design_spec` 中明确提到 “reveal on scroll” 之类的动效时，Stage 3 在实现时应优先采用 IntersectionObserver 等机制，实现小幅上浮 + 淡入、每个元素仅首次进入视口触发的 subtle 动画，并强制遵守 `prefers-reduced-motion`。
+
+---
+
+## 2026-03-05 | code-gen, prompts, other Hover Micro-interactions 规范与 Stage 2 规划支持
+
+- 在 `config/prompts/frontend_design_guidelines.txt` 中新增「Micro-interactions for interactive elements」小节，推荐为按钮、Tab、Chip、可点击卡片等交互元素设计轻微的 hover 微交互（小幅 scale + 阴影加深），给出 scale 因子与时长约束，并要求在 `prefers-reduced-motion` 模式下降级为无缩放动画，仅保留颜色/边框反馈。
+- 在 `config/prompts/scheme_planning.txt` 中扩展 ui_design_spec 规则与示例 JSON：鼓励 Stage 2 在 `ui_guidelines.layout_hints` 或 `ui_design_spec.product_grade_rules` 中用自然语言说明主要可点击元素使用统一的 hover micro-interactions，并在 `/` 路由示例中补充「主按钮、Tab 与可点击卡片在 hover 时使用统一的微交互（轻微 scale + 阴影加深），在 prefers-reduced-motion 模式下关闭 scale 动画」等提示。
+- 在 `docs/specs/CODE_GEN_SPEC.md` 中新增「Hover Micro-interactions」章节，约定当 Stage 2 在 `ui_design_spec` 中提到 hover 微交互时，Stage 3 应通过共享 CSS 工具类（而非散落内联样式）统一实现 scale+shadow 效果，并严格遵守 `prefers-reduced-motion` 约束，确保前端代码在交互和可访问性之间取得平衡。
+
+## 2026-03-05 | code-gen, prompts, troubleshooting 将平滑转场上升为 Vue Web 生成规范
+
+- 在 `docs/specs/CODE_GEN_SPEC.md` 中新增「Page & Stage Transitions（页面与阶段平滑转场）」章节，约定 Vue Web 应用在路由级页面、主视图 tab（如 Plan/Code/Preview）以及状态栏 Stage 文案更新时，应优先使用 `<Transition>` + CSS（`page-transition`、`tab-fade`、`stage-fade` 等）实现短时淡入+轻微位移的平滑转场，并在 `prefers-reduced-motion` 下关闭 transition/transform；同时将这些结构规划为未来 Vue 脚手架/骨架中的可复用模版片段。
+- 在 `docs/refs/PROMPTS_REF.md` 中补充「Stage 2/Stage 3 中与平滑转场相关的 prompts 规划」小节，明确 SchemePlanning/FlowSimulation 的 prompt 应在 `architecture_notes` 或 `ui_design_spec` 中用自然语言标注页面/Stage 转场风格，而 CodeGeneration 相关 prompts（尤其是 `frontend_design_guidelines.txt` 与 `code_gen_system_base.txt`）应在 Vue 前端场景下要求使用上述转场模式并遵守运动偏好设置。
+- 在 `docs/TROUBLESHOOTING.md` 中新增「前端转场（Page & Stage Transitions）相关问题」小节，给出路由切换闪白、主视图瞬间跳变、Stage 文案生硬更新以及 reduced-motion 下仍存在明显位移动画等常见现象的排查清单（检查根组件/工作台 Shell/状态栏是否使用规范的 `<Transition>` 结构与 CSS，并确保存在对应的 `@media (prefers-reduced-motion: reduce)` 降级规则）。
+
+## 2026-03-05 | data-models 为 Stage 2/3 增加杂志式布局偏好
+
+- Requirements 增加 layout_preferences，用于记录用户/Stage 1 对布局 archetype（如 editorial_magazine）的偏好。
+- EngineeringPlan 增加 ui_guidelines，用于 Stage 2 写入全局/分页面布局风格（含 editorial_magazine），供 Stage 3/4 消费。
+
+## 2026-03-05 | data-models, agents, prompts, code-gen Hero Split Layout Archetype（split_hero_left_text_right_preview）
+
+- **数据模型**：在 `src/core/data_models.py` 中细化 `Requirements.layout_preferences` 与 `EngineeringPlan.ui_guidelines` 的描述，明确支持通过 `ui_guidelines.hero_layouts[route]` 为路由标记分屏 Hero 布局（`layout_archetype: "split_hero_left_text_right_preview"`、`primary_column`、`contrast_mode`、`notes` 等），并在 `DATA_MODELS_REF` 中补充 hero_layouts 的字段语义。
+- **Stage 2 SchemePlanningAgent**：更新 `SchemePlanningAgent.execute` 的 prompt 逻辑（`scheme_planning.txt` + planning_agents.py），当需求中存在 Landing/Homepage/入口 Hero 语义或 layout_preferences 显式包含 `split_hero_left_text_right_preview` 时，引导 LLM 在 `engineering_plan.ui_guidelines.hero_layouts` 中为首页（通常 `/` 或 `/overview`）写入分屏 Hero 布局标记。
+- **Stage 3 CodeGenerationAgent**：在 `code_generation_agents.py` 中从 `plan.api_specs.ui_guidelines.hero_layouts` 读取 hero 布局，并在 system prompt 的「UI Guidelines」下追加「Hero Layouts (per route)」说明，要求在标记为 `split_hero_left_text_right_preview` 的路由模板中实现左文案 / 右产品预览的分屏 Hero（左列主文案+CTA，右列预览卡片，比例约 3:2/5:4，遵守 contrast_mode）。
+- **文档与映射**：更新 `AGENTS_REF` 中 SchemePlanningAgent 与 CodeGenerationAgent 的行为说明，`CODE_GEN_SPEC` 中新增 Split Hero 布局章节，`PROMPTS_REF` 标注 scheme_planning.txt 已支持 hero_layouts；整体让「左文案 / 右预览」首页结构从单个项目实现上升为可复用的 UI layout archetype。
+
+## 2026-03-05 | code-gen, prompts Hero Gradient + Noise Background（aurora_parallax_with_noise）
+
+- **Prompts**：在 `config/prompts/scheme_planning.txt` 中扩展 ui_guidelines/ui_design_spec 示例，为首页 `/` 的 `background` 增加 `type: "aurora_parallax_with_noise"`、`parallax_speed` 与 `noise_opacity` 字段，并在规则说明中约定噪点纹理应细腻、低不透明度且不影响文字可读性；在 `frontend_design_guidelines.txt` 中新增「Gradient + Noise backgrounds」小节，详细约束渐变+噪点背景的实现方式（渐变为基底，噪点通过伪元素/覆盖层叠加，透明度约 0.04–0.08，避免可见平铺与对比度下降）。
+- **Agents**：更新 `SchemePlanningAgent`（`planning_agents.py`），在 Hero 布局 hint 中补充当首页 Hero 需要 aurora + noise 时可选择 `aurora_parallax_with_noise` 并写出 `noise_opacity`；更新 `CodeGenerationAgent`（`code_generation_agents.py`），在构建 UI Design Spec context 时读取 `page_layouts[route].background`，当 `type == "aurora_parallax_with_noise"` 时向 system prompt 注入「渐变基底 + 细腻噪点覆盖层」的实现提示与约束。
+- **文档**：在 `CODE_GEN_SPEC.md` 中新增「Gradient + Noise Hero 背景（aurora_parallax_with_noise）」小节，说明 Stage 2/3 如何通过 `ui_design_spec.page_layouts[route].background` 约定/消费渐变+噪点 Hero 背景；在 `PROMPTS_REF.md` 标注 `scheme_planning.txt` 与 `frontend_design_guidelines.txt` 现在也负责该背景 archetype 的规划与实现规范。
+
+---
+
+## 2026-03-05 | agents, web 全流程健康检查修复（Stage 3 & 前端构建）
+
+- **Stage 3 CodeGenerationAgent**：修复 `_process_task_with_tools` 中对 `skeleton_warnings` 的 NameError，将 skeleton 校验产生的 warning 以参数形式传入并注入 modular prompts/system prompt，避免 Stage 3 在首个任务上直接抛出 `StageExecutionError`。
+- **CodeGenerationAgent 兼容 generated_image_paths**：在 `_process_task_with_tools` 中对 `context.generated_image_paths` 的访问增加容错封装，保证在未启用图片生成（或缺少该字段）时不会因 NameError 中断整段任务流程，而是降级为无图片提示继续生成代码。
+- **前端构建占位资源**：在 Vue 前端的 `directionVisuals` 中将缺失的 hero/directions 占位图片统一指向现有的 `vue.svg`，保证 `npm run build` 在没有专门插画资源的情况下也能成功通过 Rollup 资源解析。

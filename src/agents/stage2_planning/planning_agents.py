@@ -961,7 +961,10 @@ class SchemePlanningAgent:
                 interface_specs.append(spec)
         api_specs: Dict = result.get("api_specs") or {}
         pyi_stubs: Dict = result.get("pyi_stubs") or {}
+        # ui_guidelines may be returned either at top-level or nested inside api_specs.
         ui_guidelines = result.get("ui_guidelines")
+        if not ui_guidelines and isinstance(api_specs, dict):
+            ui_guidelines = api_specs.get("ui_guidelines")
         if ui_guidelines and isinstance(ui_guidelines, dict):
             api_specs["ui_guidelines"] = ui_guidelines
         elif "ui_guidelines" not in api_specs:
@@ -1020,9 +1023,79 @@ Task {t.id}: {t.name} ({t.type})
         else:
             design_mode_hint = ""
 
+        # Layout preference hint: allow Stage 2 to bias toward certain layout archetypes.
+        layout_prefs = getattr(requirements, "layout_preferences", None) or []
+        layout_prefs_set = {str(v).strip() for v in layout_prefs if v}
+        editorial_hint = ""
+        combined_text_lower = combined_text.lower()
+        content_keywords = [
+            "report",
+            "whitepaper",
+            "case study",
+            "analysis",
+            "article",
+            "blog",
+            "portfolio",
+            "magazine",
+            "杂志",
+            "报告",
+            "案例研究",
+            "长文",
+            "文档",
+        ]
+        editorial_pref = "editorial_magazine" in layout_prefs_set
+        editorial_by_content = any(kw in combined_text_lower for kw in content_keywords)
+        if editorial_pref or editorial_by_content:
+            editorial_hint = (
+                "## Layout Archetype Hint: editorial_magazine\n"
+                "- Some overview/report/knowledge pages in this app are content-heavy and should prefer an\n"
+                "  editorial/magazine layout archetype instead of evenly split grids.\n"
+                "- When appropriate, set ui_guidelines.global_layout_style = \"editorial_magazine\" and add\n"
+                "  entries under ui_guidelines.page_layouts for routes like \"/\", \"/overview\", \"/report\".\n"
+                "- For each such page, describe an asymmetric layout with alternating big headlines and\n"
+                "  supporting visuals (images/diagrams), strong typographic hierarchy, and generous\n"
+                "  whitespace. Avoid uniform card grids.\n"
+                "- In page_layouts[route], you MAY include layout_archetype=\"editorial_magazine\",\n"
+                "  applicability_score (0–1), and notes explaining why this layout fits that page.\n\n"
+            )
+
+        # Hero layout hint: split hero with left text / right preview for landing/entry pages.
+        hero_keywords = [
+            "landing",
+            "homepage",
+            "home page",
+            "入口页",
+            "首页",
+            "产品介绍",
+            "项目介绍",
+            "选择生成方向",
+            "hero",
+        ]
+        hero_pref = "split_hero_left_text_right_preview" in layout_prefs_set
+        hero_by_content = any(kw in combined_text_lower for kw in hero_keywords)
+        hero_hint = ""
+        if hero_pref or hero_by_content:
+            hero_hint = (
+                "## Hero Layout Hint: split_hero_left_text_right_preview\n"
+                "- 当应用存在典型「产品入口页 / Landing / 首页 Hero」场景时（如根路由 `/` 或 `/overview`），"
+                "并且需要在首屏左侧展示主标题、副标题、卖点与操作按钮，右侧展示产品界面预览卡片或截图时，"
+                "请在 `ui_guidelines.hero_layouts` 中为对应路由写入分屏 Hero 布局 archetype。\n"
+                "- 示例（首页 `/`）：\n"
+                "  hero_layouts[\"/\"] = {\n"
+                "    \"layout_archetype\": \"split_hero_left_text_right_preview\",\n"
+                "    \"primary_column\": \"left\",\n"
+                "    \"contrast_mode\": \"dark_bg_light_text\",\n"
+                "    \"notes\": \"左列为大标题、副标题、2–3 个卖点要点与主/次 CTA 按钮；右列为产品界面预览卡片，略小于左列，形成 3:2 或 5:4 的左右分屏对比。\"\n"
+                "  }\n"
+                "- 非入口/介绍性质的页面（例如纯表单页、次级设置页等）无需在 hero_layouts 中登记，保持默认布局即可。\n"
+                "- 如果首页 hero 需要在渐变背景上叠加细腻噪点纹理以增强质感，可以在对应路由的 ui_design_spec.page_layouts[route].background 中，\n"
+                "  使用 `\"type\": \"aurora_parallax_with_noise\"`，并补充 `\"parallax_speed\"`（如 0.5）与 `\"noise_opacity\"`（如 0.04–0.08），\n"
+                "  说明该噪点纹理应保持低对比度、不产生明显网格或拼接痕迹，且不得影响标题与正文的可读性。\n\n"
+            )
+
         prompt = _prompt_loader.format(
             "scheme_planning",
-            design_mode_hint=design_mode_hint,
+            design_mode_hint=design_mode_hint + editorial_hint + hero_hint,
             title=requirements.title,
             description=requirements.description,
             features=", ".join(f.name for f in requirements.features),

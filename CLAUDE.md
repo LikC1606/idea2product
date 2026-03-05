@@ -88,6 +88,8 @@ mypy src/
 - `ENABLE_AUDIO_GENERATION`, `AUDIO_GENERATION_PROVIDER`, `AUDIO_GENERATION_BASE_URL`, `AUDIO_GENERATION_API_KEY` — Optional 音频生成服务（TTS/音乐）
 - `ENABLE_STAGE2_WEB_SEARCH`, `WEB_SEARCH_PROVIDER`, `WEB_SEARCH_API_KEY` — Stage 2 model discovery: when True, ModelIntegrationPlanningAgent searches web for external APIs and writes plan.external_model_specs; Serper uses WEB_SEARCH_API_KEY or SERPER_API_KEY
 - `EXPOSE_ERROR_DETAILS` — When True, 500 API responses may include error details; when False (default), return generic "Internal server error" only; server always logs full exception
+- `TASK_GENERATION_RETRY_ON_TRANSIENT` — When True, TaskService retries generation once on transient errors (LLM/network timeouts, 5xx); default False
+- `MAX_STAGE4_ROUNDS`, `STAGE4_QUALITY_THRESHOLD` — Stage 4 验证循环配置：最大 FineTuning 轮数与视觉对齐阈值（alignment_score，默认 0.7）
 
 ## Key Patterns
 

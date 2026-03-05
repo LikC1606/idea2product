@@ -11,7 +11,7 @@ defineEmits(['select-project'])
 
 <template>
   <aside
-    class="history-drawer"
+    class="history-drawer glass-panel"
     :class="{ open }"
     role="navigation"
     aria-label="Project history"
@@ -51,11 +51,8 @@ defineEmits(['select-project'])
 .history-drawer {
   width: 0;
   overflow: hidden;
-  background: var(--bg-elevated);
-  border-right: 1px solid var(--border);
   transition: width var(--transition-normal);
   flex-shrink: 0;
-  box-shadow: 2px 0 12px rgba(0, 0, 0, 0.2);
   will-change: width;
 }
 

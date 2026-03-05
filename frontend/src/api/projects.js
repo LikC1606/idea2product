@@ -182,3 +182,15 @@ export async function getPreviewUrl(projectId) {
   if (!res.ok) throw new Error(data.error || 'Failed to get preview')
   return data
 }
+
+/**
+ * Fetch Stage 2 EngineeringPlan JSON for a project.
+ * Returns the full plan object as produced by the backend.
+ */
+export async function getPlan(projectId) {
+  const url = `${API_BASE}/${projectId}/plan`
+  const res = await fetch(url)
+  const data = await parseJson(res, url)
+  if (!res.ok) throw new Error(data.error || 'Failed to get plan')
+  return data
+}

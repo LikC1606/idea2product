@@ -246,7 +246,7 @@ class Orchestrator:
 
     def execute_stage_1(self, context: ExecutionContext, interactive: bool = False) -> Requirements:
         """
-        Execute Stage 1: Requirements gathering.
+        Execute Stage 1: Requirements gathering via InteractionAgent.
 
         Args:
             context: Execution context
@@ -255,10 +255,10 @@ class Orchestrator:
         Returns:
             Structured requirements
         """
-        self.logger.info("Stage 1: Interaction Agent")
+        self.logger.info("[Stage1][InteractionAgent] Requirements gathering")
 
         llm = self._llm_for_stage(1, use_fast=True)
-        self.logger.info(f"  - Model: {llm.model}")
+        self.logger.info(f"[Stage1][InteractionAgent] Using model: {llm.model}")
         agent = InteractionAgent(llm)
 
         if interactive:
@@ -268,12 +268,14 @@ class Orchestrator:
             # Run non-interactive mode
             requirements = agent.execute(context)
 
-        self.logger.info(f"Stage 1 complete: {len(requirements.features)} features extracted")
+        self.logger.info(
+            f"[Stage1][InteractionAgent] Completed, extracted {len(requirements.features)} features"
+        )
         return requirements
 
     def execute_stage_2(self, context: ExecutionContext) -> EngineeringPlan:
         """
-        Execute Stage 2: Technical planning.
+        Execute Stage 2: Technical planning (FlowSimulation, TaskDivision, AlgorithmAnalysis, SchemePlanning, ModelIntegration).
 
         Args:
             context: Execution context with requirements
@@ -281,7 +283,7 @@ class Orchestrator:
         Returns:
             Complete engineering plan
         """
-        self.logger.info("Stage 2: Task Division → Algorithm Analysis → Scheme Planning")
+        self.logger.info("[Stage2] FlowSimulation → TaskDivision → AlgorithmAnalysis → SchemePlanning")
 
         # Stage2Input pre-check
         requirements = context.requirements
@@ -290,17 +292,19 @@ class Orchestrator:
 
         llm_primary = self._llm_for_stage(2)
         llm_fast = self._llm_for_stage(2, use_fast=True)
-        self.logger.info(f"  - Model: {llm_primary.model} (fast for flow/algo: {llm_fast.model})")
+        self.logger.info(
+            f"[Stage2] Models: primary={llm_primary.model}, fast={llm_fast.model} (for flow/algo)"
+        )
 
         # Flow Simulation Agent (Stage 2 Agent 0) - use fast model
         flow_agent = FlowSimulationAgent(llm_fast)
         flow_simulation = flow_agent.execute(requirements)
-        self.logger.info("  - Flow simulation completed")
+        self.logger.info("[Stage2][FlowSimulationAgent] Flow simulation completed")
 
         # Task Division Agent - use primary (complex JSON structure)
         task_agent = TaskDivisionAgent(llm_primary)
         tasks = task_agent.execute(requirements, flow_simulation)
-        self.logger.info(f"  - Created {len(tasks)} tasks")
+        self.logger.info(f"[Stage2][TaskDivisionAgent] Created {len(tasks)} tasks")
 
         # Algorithm Analysis Agent (optional HF model search)
         hf_service = None
@@ -320,7 +324,7 @@ class Orchestrator:
             hf_check_inference=getattr(self.settings, "hf_check_inference", True),
         )
         algorithms = algo_agent.execute(tasks, flow_simulation=flow_simulation)
-        self.logger.info(f"  - Analyzed {len(algorithms)} algorithms")
+        self.logger.info(f"[Stage2][AlgorithmAnalysisAgent] Analyzed {len(algorithms)} algorithms")
 
         # Scheme Planning Agent - use primary (critical for code gen)
         scheme_agent = SchemePlanningAgent(llm_primary)
@@ -329,12 +333,14 @@ class Orchestrator:
         )
 
         self.logger.info(
-            f"  - Planned {len(file_structure)} files with {len(interface_specs)} interface specs"
+            f"[Stage2][SchemePlanningAgent] Planned {len(file_structure)} files with {len(interface_specs)} interface specs"
         )
 
         # BDD test-driven: synthesize BDD test cases from requirements + api_specs
         bdd_test_cases = self._synthesize_bdd_tests(requirements, api_specs, llm=llm_primary)
-        self.logger.info(f"  - Synthesized {len(bdd_test_cases)} BDD test cases (test-driven)")
+        self.logger.info(
+            f"[Stage2][BDD] Synthesized {len(bdd_test_cases)} BDD test cases (test-driven)"
+        )
 
         # Optional: external model/API discovery via web search (Stage 2 model selection)
         external_model_specs = []
@@ -348,7 +354,9 @@ class Orchestrator:
                         requirements, tasks, flow_simulation=flow_simulation, settings=self.settings
                     )
                     if external_model_specs:
-                        self.logger.info(f"  - External model specs: {len(external_model_specs)}")
+                        self.logger.info(
+                            f"[Stage2][ModelIntegrationPlanningAgent] External model specs: {len(external_model_specs)}"
+                        )
             except Exception as e:
                 self.logger.warning(f"Model integration planning skipped: {e}")
 
@@ -366,7 +374,7 @@ class Orchestrator:
             default_file_structure_fn=self._default_file_structure,
         )
 
-        self.logger.info("Stage 2 complete: Engineering plan created")
+        self.logger.info("[Stage2] Complete: EngineeringPlan created")
         return plan
 
     def _default_file_structure(self, tasks: list) -> list:
@@ -450,7 +458,7 @@ class Orchestrator:
 
     def execute_stage_3(self, context: ExecutionContext) -> CodeRepository:
         """
-        Execute Stage 3: Code generation.
+        Execute Stage 3: Code generation (CodeMemoryAgent, CodeMiningAgent, CodeGenerationAgent).
 
         Args:
             context: Execution context with engineering plan
@@ -458,7 +466,7 @@ class Orchestrator:
         Returns:
             Complete code repository
         """
-        self.logger.info("Stage 3: Code Generation (with Memory and Mining support)")
+        self.logger.info("[Stage3] Code Generation (with CodeMemoryAgent + CodeMiningAgent support)")
 
         # Stage3Input pre-check
         if context.requirements is None:
@@ -469,7 +477,7 @@ class Orchestrator:
             raise ValueError("Stage 3 requires a non-empty file_structure in EngineeringPlan")
 
         llm = self._llm_for_stage(3)
-        self.logger.info(f"  - Model: {llm.model}")
+        self.logger.info(f"[Stage3] Using model: {llm.model}")
 
         # Phase 1 & 2: Memory pre_execute and Mining execute (parallel when enabled)
         memory_agent = CodeMemoryAgent(llm, settings=self.settings)
@@ -480,7 +488,9 @@ class Orchestrator:
                 f_min = pool.submit(mining_agent.execute, context)
                 memory_context = f_mem.result()
                 mining_by_task = f_min.result()
-            self.logger.info("  - Memory + Mining prefetch done (parallel)")
+            self.logger.info(
+                "[Stage3][CodeMemoryAgent+CodeMiningAgent] Prefetch done (parallel)"
+            )
         else:
             memory_context = memory_agent.pre_execute(context)
             mining_by_task = mining_agent.execute(context)
@@ -501,7 +511,9 @@ class Orchestrator:
             memory_context=memory_context,
         )
 
-        self.logger.info(f"Stage 3 complete: Generated {len(repository.files)} files")
+        self.logger.info(
+            f"[Stage3][CodeGenerationAgent] Complete, generated {len(repository.files)} files"
+        )
 
         # Phase 4: CodeMemoryAgent.execute - final persist of snippets to memory
         memory_agent.execute(context, repository)
@@ -510,7 +522,7 @@ class Orchestrator:
 
     def execute_stage_4(self, context: ExecutionContext) -> ValidatedProject:
         """
-        Execute Stage 4: Validation and testing with code fix agent.
+        Execute Stage 4: Validation and testing with iterative FineTuning loop.
 
         Args:
             context: Execution context with code repository
@@ -518,7 +530,7 @@ class Orchestrator:
         Returns:
             Validated and tested project
         """
-        self.logger.info("Stage 4: Code Fix with LangChain Agent")
+        self.logger.info("[Stage4] Validation & iterative FineTuning loop (FullCycleTesting ↔ FineTuning)")
 
         # Stage4Input pre-check
         if context.requirements is None:
@@ -529,68 +541,61 @@ class Orchestrator:
             raise ValueError("Stage 4 requires code_repository in context (Stage4Input contract)")
 
         llm = self._llm_for_stage(4)
-        self.logger.info(f"  - Model: {llm.model}")
+        self.logger.info(f"[Stage4] Using model: {llm.model}")
 
         # Full-cycle Testing Agent - saves files and generates tests
         testing_agent = FullCycleTestingAgent(llm)
-        test_result = testing_agent.execute(context)
-
-        self.logger.info(f"  - Initial test: {len(test_result.errors)} errors")
-        context.test_results = test_result
-
-        # Use CodeFixAgent to fix code
-        from src.agents.stage4_validation.validation_agents import CodeFixAgent
-
-        code_fix_agent = CodeFixAgent(llm)
-        generated_path = context.project_path / "generated"
-
-        try:
-            code_fix_agent.execute(generated_path)
-        except Exception as e:
-            self.logger.warning(f"CodeFixAgent failed ({e}), falling back to _fallback_run_and_fix")
-            context.code_repository = testing_agent._fallback_run_and_fix(
-                context.project_path,
-                context.code_repository,
-                context.requirements,
-                getattr(context.engineering_plan, "interface_specs", None) if context.engineering_plan else None,
-                max_iterations=5,
-            )
-            # Re-save fixed files to disk
-            testing_agent._save_files(generated_path, context.code_repository)
-
-        # Re-run tests to confirm
+        self.logger.info("[Stage4][FullCycleTestingAgent] Running full-cycle tests")
         test_result = testing_agent.execute(context)
         context.test_results = test_result
-        self.logger.info(f"  - Final test: {len(test_result.errors)} errors, logic_passed={test_result.logic_passed}")
+        self.logger.info(
+            f"[Stage4][FullCycleTestingAgent] Initial test: {len(test_result.errors)} errors, "
+            f"logic_passed={test_result.logic_passed}"
+        )
 
-        # Frontend API Testing with LangChain Agent (if basic tests pass)
+        # Frontend API Testing with LangChain Agent (if basic tests pass on logic)
         from src.agents.stage4_validation.validation_agents import FrontendTestingAgent
-        if test_result.logic_passed:
-            self.logger.info("  - Running frontend API testing...")
+
+        def _run_frontend_tests(current_result):
+            if not current_result.logic_passed:
+                return current_result
+            self.logger.info("[Stage4][FrontendTestingAgent] Running frontend API testing...")
             frontend_agent = FrontendTestingAgent(llm)
             frontend_errors = frontend_agent.execute(context.project_path / "generated")
             if frontend_errors:
-                test_result.errors.extend(frontend_errors)
-                test_result.logic_passed = False
-                self.logger.info(f"  - Frontend API testing found {len(frontend_errors)} errors")
+                current_result.errors.extend(frontend_errors)
+                current_result.logic_passed = False
+                self.logger.info(
+                    f"[Stage4][FrontendTestingAgent] Found {len(frontend_errors)} API-related errors"
+                )
             else:
-                self.logger.info("  - Frontend API testing passed!")
+                self.logger.info("[Stage4][FrontendTestingAgent] Frontend API testing passed")
+            return current_result
+
+        test_result = _run_frontend_tests(test_result)
 
         # Visual Verification Agent (runs BEFORE FineTuning so FineTuning can use visual_feedback)
-        if getattr(self.settings, "enable_visual_verification", False):
+        def _run_visual_verification(current_result):
+            if not getattr(self.settings, "enable_visual_verification", False):
+                self.logger.info(
+                    "[Stage4][VisualVerificationAgent] Disabled by settings; skipping UI analysis"
+                )
+                return current_result
+
             vlm_llm = self._llm_for_stage(4, requires_vision=True)
-            self.logger.info(f"  - VLM Model: {vlm_llm.model}")
+            self.logger.info(f"[Stage4][VisualVerificationAgent] Using VLM model: {vlm_llm.model}")
             visual_agent = VisualVerificationAgent(vlm_llm)
             visual_result = visual_agent.execute(context)
-            test_result.visual_feedback = {
+            current_result.visual_feedback = {
                 "alignment_score": visual_result.get("alignment_score", 0.0),
                 "missing_elements": visual_result.get("missing_elements", []),
                 "issues": visual_result.get("issues", []),
                 "layout_feedback": visual_result.get("layout_feedback", ""),
             }
             from src.core.data_models import VisualVerificationResult
+
             try:
-                test_result.visual_verification = VisualVerificationResult(
+                current_result.visual_verification = VisualVerificationResult(
                     screenshot_path=visual_result.get("screenshots", [""])[0] if visual_result.get("screenshots") else "",
                     requirement_text=context.requirements.title if context.requirements else "",
                     alignment_score=visual_result.get("alignment_score", 0.0),
@@ -601,24 +606,80 @@ class Orchestrator:
                 )
             except Exception as ex:
                 self.logger.debug("Could not create visual result: %s", ex)
-            self.logger.info(f"  - Visual alignment_score={visual_result.get('alignment_score', 0.0)}")
-        else:
-            self.logger.info("Visual verification disabled by settings; skipping UI analysis")
+            self.logger.info(
+                f"[Stage4][VisualVerificationAgent] alignment_score={visual_result.get('alignment_score', 0.0)}"
+            )
+            return current_result
 
-        # FineTuningAgent: logic fixes (syntax/import/entry-point) OR visual fixes (alignment < 0.7)
-        need_logic_fix = (test_result.errors or test_result.warnings) and not test_result.logic_passed
-        visual_fb = getattr(test_result, "visual_feedback", None)
-        need_visual_fix = visual_fb and visual_fb.get("alignment_score", 1.0) < 0.7
+        test_result = _run_visual_verification(test_result)
+
+        # Iterative FineTuning loop: Testing → (optional Frontend/Visual) → FineTuning, up to max_stage4_rounds
+        max_rounds = getattr(self.settings, "max_stage4_rounds", 1)
+        quality_threshold = getattr(self.settings, "stage4_quality_threshold", 0.7)
+        max_fix_attempts = max(1, getattr(self.settings, "max_fix_attempts", 2))
         fix_rounds = 0
-        if need_logic_fix or need_visual_fix:
-            fine_tuning_agent = FineTuningAgent(llm)
+
+        fine_tuning_agent = FineTuningAgent(llm)
+
+        for round_idx in range(max_rounds):
+            # Success condition: logic passed, no errors, and visual alignment above threshold (if present)
+            visual_fb = getattr(test_result, "visual_feedback", None)
+            alignment_score = (
+                visual_fb.get("alignment_score", 1.0) if visual_fb else 1.0
+            )
+            if (
+                test_result.logic_passed
+                and not test_result.errors
+                and alignment_score >= quality_threshold
+            ):
+                self.logger.info(
+                    f"[Stage4][FineTuningLoop] Converged at round {round_idx} "
+                    f"(errors=0, logic_passed=True, alignment_score={alignment_score:.2f})"
+                )
+                break
+
+            need_logic_fix = (test_result.errors or test_result.warnings) and not test_result.logic_passed
+            need_visual_fix = visual_fb and alignment_score < quality_threshold
+
+            if not (need_logic_fix or need_visual_fix):
+                self.logger.info(
+                    f"[Stage4][FineTuningLoop] No further fixes suggested at round {round_idx}; stopping loop"
+                )
+                break
+
+            if fix_rounds >= max_fix_attempts:
+                self.logger.info(
+                    f"[Stage4][FineTuningLoop] Reached max_fix_attempts={max_fix_attempts}; stopping loop"
+                )
+                break
+
+            self.logger.info(
+                f"[Stage4][FineTuningAgent] Round {round_idx + 1}/{max_rounds} "
+                f"(errors={len(test_result.errors)}, logic_passed={test_result.logic_passed}, "
+                f"alignment_score={alignment_score:.2f})"
+            )
+
             repository, fixed = fine_tuning_agent.execute(context, test_result)
-            if fixed:
-                fix_rounds = 1
-                context.code_repository = repository
-                test_result = testing_agent.execute(context)
-                context.test_results = test_result
-                self.logger.info(f"  - After FineTuning: {len(test_result.errors)} errors, logic_passed={test_result.logic_passed}")
+            if not fixed:
+                self.logger.info(
+                    "[Stage4][FineTuningAgent] No code changes applied; stopping loop"
+                )
+                break
+
+            fix_rounds += 1
+            context.code_repository = repository
+
+            # Re-run full-cycle tests after fixes
+            test_result = testing_agent.execute(context)
+            context.test_results = test_result
+            self.logger.info(
+                f"[Stage4][FineTuningAgent] After round {fix_rounds}: "
+                f"{len(test_result.errors)} errors, logic_passed={test_result.logic_passed}"
+            )
+
+            # Re-run frontend and visual checks with updated code
+            test_result = _run_frontend_tests(test_result)
+            test_result = _run_visual_verification(test_result)
 
         # Create validated project (use context.repository in case FineTuning updated it)
         repository = context.code_repository
@@ -636,8 +697,6 @@ class Orchestrator:
         except Exception as ex:
             self.logger.debug("Failed to record validation run: %s", ex)
         return validated_project
-
-    def _save_artifact(self, artifacts_dir: Path, filename: str, data: dict) -> None:
 
     def _save_artifact(self, artifacts_dir: Path, filename: str, data: dict) -> None:
         """
@@ -738,30 +797,68 @@ class Orchestrator:
         try:
             self._save_artifact(artifacts_dir, "01_requirements.json", requirements.model_dump(mode="json"))
 
-            _report(25, "Stage 2: Planning")
+            _report(25, "Stage 2: Planning (FlowSimulation + TaskDivision + AlgorithmAnalysis + SchemePlanning)")
             context.update_stage(2)
-            engineering_plan = self.execute_stage_2(context)
+            try:
+                engineering_plan = self.execute_stage_2(context)
+            except Exception as e:
+                context.add_error(f"Stage 2 failed: {e}")
+                self._save_artifact(
+                    artifacts_dir,
+                    "context.json",
+                    {**context.to_dict(), "partial_failure": True, "failed_stage": 2},
+                )
+                self.logger.error("run_from_stage_2 Stage 2 failed for %s: %s", project_id, e, exc_info=True)
+                raise StageExecutionError(f"Stage 2 failed: {e}", stage=2, partial_context=context) from e
             context.engineering_plan = engineering_plan
+            context.tasks = engineering_plan.tasks
+            context.algorithms = engineering_plan.algorithms
             self._save_artifact(artifacts_dir, "02_engineering_plan.json", engineering_plan.model_dump(mode="json"))
 
-            _report(50, "Stage 3: Code Generation")
+            _report(50, "Stage 3: Code Generation (CodeMemoryAgent + CodeMiningAgent + CodeGenerationAgent)")
             context.update_stage(3)
-            code_repository = self.execute_stage_3(context)
+            try:
+                code_repository = self.execute_stage_3(context)
+            except Exception as e:
+                context.add_error(f"Stage 3 failed: {e}")
+                self._save_artifact(
+                    artifacts_dir,
+                    "context.json",
+                    {**context.to_dict(), "partial_failure": True, "failed_stage": 3},
+                )
+                self.logger.error("run_from_stage_2 Stage 3 failed for %s: %s", project_id, e, exc_info=True)
+                raise StageExecutionError(f"Stage 3 failed: {e}", stage=3, partial_context=context) from e
             context.code_repository = code_repository
             self._save_artifact(artifacts_dir, "03_code_repository.json", code_repository.model_dump(mode="json"))
 
-            _report(75, "Stage 4: Validation & Testing")
+            _report(75, "Stage 4: Validation & Testing (FullCycleTestingAgent ↔ FineTuningAgent loop)")
             context.update_stage(4)
-            validated_project = self.execute_stage_4(context)
+            try:
+                validated_project = self.execute_stage_4(context)
+            except Exception as e:
+                context.add_error(f"Stage 4 failed: {e}")
+                self._save_artifact(
+                    artifacts_dir,
+                    "context.json",
+                    {**context.to_dict(), "partial_failure": True, "failed_stage": 4},
+                )
+                self.logger.error("run_from_stage_2 Stage 4 failed for %s: %s", project_id, e, exc_info=True)
+                raise StageExecutionError(f"Stage 4 failed: {e}", stage=4, partial_context=context) from e
             self._save_artifact(artifacts_dir, "context.json", context.to_dict())
 
-            self.logger.info(f"run_from_stage_2 complete for {project_id}")
+            self.logger.info("run_from_stage_2 complete for %s", project_id)
             return validated_project
 
+        except StageExecutionError:
+            raise
         except Exception as e:
-            self.logger.error(f"run_from_stage_2 failed for {project_id}: {e}", exc_info=True)
+            self.logger.error("run_from_stage_2 failed for %s: %s", project_id, e, exc_info=True)
             context.add_error(str(e))
-            self._save_artifact(artifacts_dir, "context.json", context.to_dict())
+            to_save = context.to_dict()
+            if context.current_stage >= 2:
+                to_save["partial_failure"] = True
+                to_save["failed_stage"] = min(context.current_stage, 4)
+            self._save_artifact(artifacts_dir, "context.json", to_save)
             raise
         finally:
             clear_correlation()

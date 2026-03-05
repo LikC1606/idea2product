@@ -6,6 +6,7 @@ export const status = ref('idle') // idle | processing | completed | failed
 export const statusText = ref('Ready')
 export const currentStage = ref('')
 export const progress = ref(0)
+export const statusError = ref('') // error message when status === 'failed'
 
 function statusLabel(s, p) {
   if (s === 'processing') return `Generating... ${p || 0}%`
@@ -22,12 +23,14 @@ export function useStatus() {
     statusText.value = text || statusLabel(s, prog)
     currentStage.value = stage || ''
     progress.value = prog || 0
+    if (s !== 'failed') statusError.value = ''
   }
 
   const updateFromPayload = (payload) => {
     const s = payload.status || 'idle'
     const stage = payload.current_stage || ''
     const prog = payload.progress ?? 0
+    statusError.value = (s === 'failed' && payload.error) ? String(payload.error) : ''
     setStatus(s, statusLabel(s, prog), stage, prog)
   }
 
@@ -59,6 +62,7 @@ export function useStatus() {
     statusText: readonly(statusText),
     currentStage: readonly(currentStage),
     progress: readonly(progress),
+    statusError: readonly(statusError),
     setStatus,
     updateFromPayload,
     pollStatus,

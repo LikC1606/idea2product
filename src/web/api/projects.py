@@ -21,6 +21,7 @@ Endpoints:
 """
 
 import json
+import re
 import time
 from flask import Blueprint, Response, jsonify, request
 
@@ -34,6 +35,18 @@ from src.utils.logger import get_logger
 logger = get_logger(__name__)
 
 bp = Blueprint("projects", __name__, url_prefix="/api/projects")
+
+# project_id format: proj_<date>_<time>_<hex> (e.g. proj_20250103_123456_abc123)
+_PROJECT_ID_RE = re.compile(r"^proj_[a-zA-Z0-9_-]+$")
+
+
+def _validate_project_id(project_id: str) -> bool:
+    """Reject path traversal and invalid format. Returns True if valid."""
+    if not project_id:
+        return False
+    if ".." in project_id or "/" in project_id or "\\" in project_id:
+        return False
+    return bool(_PROJECT_ID_RE.match(project_id))
 
 
 def _get_task_service():
@@ -84,6 +97,8 @@ def post_chat(project_id):
     Body: {"message": "I want a todo app with ..."}
     Returns: {"reply": "...", "project_id": "..."}
     """
+    if not _validate_project_id(project_id):
+        return jsonify({"error": "Invalid project id"}), 400
     try:
         data = request.get_json(silent=False) or {}
     except Exception:
@@ -114,6 +129,8 @@ def post_chat(project_id):
 @bp.route("/<project_id>/chat/stream", methods=["POST"])
 def post_chat_stream(project_id):
     """Stream assistant reply via SSE. Body: {"message": "..."}. Appends user msg first, then streams AI reply."""
+    if not _validate_project_id(project_id):
+        return jsonify({"error": "Invalid project id"}), 400
     data = request.get_json(silent=True) or {}
     message = data.get("message", "").strip()
     if not message:
@@ -123,25 +140,6 @@ def post_chat_stream(project_id):
     chat_service.append_message(settings, project_id, "user", message)
     messages = chat_service.get_messages(settings, project_id)
 
-    def generate():
-        try:
-            llm_service = LLMService.from_settings(settings)
-            agent = InteractionAgent(llm_service)
-            for chunk in agent.reply_in_chat_stream(messages):
-                yield f"data: {json.dumps({'chunk': chunk})}\n\n"
-            full_reply = ""
-            # We need to collect and persist the full reply; the stream yields chunks
-            # so we accumulate in the generator - but we can't easily get the full text here
-            # without duplicating. Alternative: yield a final event with the full reply.
-            # Simpler: persist after stream. We'll need to accumulate.
-            yield "data: {\"done\": true}\n\n"
-        except Exception as e:
-            logger.warning(f"Chat stream failed for {project_id}: {e}")
-            fallback = "已收到你的需求。你可以继续补充说明，或点击 Generate 开始生成。"
-            yield f"data: {json.dumps({'chunk': fallback, 'done': True})}\n\n"
-
-    # We need to persist the full reply after streaming. Refactor: accumulate in generator and persist at end.
-    # For now: use a wrapper that collects chunks, then persists when done.
     def generate_and_persist():
         buffer = []
         try:
@@ -169,6 +167,8 @@ def post_chat_stream(project_id):
 @bp.route("/<project_id>/chat", methods=["GET"])
 def get_chat(project_id):
     """Get chat history for a project."""
+    if not _validate_project_id(project_id):
+        return jsonify({"error": "Invalid project id"}), 400
     settings = get_settings()
     messages = chat_service.get_messages(settings, project_id)
     return jsonify({"messages": messages})
@@ -177,6 +177,8 @@ def get_chat(project_id):
 @bp.route("/<project_id>/generate", methods=["POST"])
 def trigger_generate(project_id):
     """Explicitly trigger generation for a project."""
+    if not _validate_project_id(project_id):
+        return jsonify({"error": "Invalid project id"}), 400
     ts = _get_task_service()
     project = ts.get_project(project_id)
     if not project:
@@ -203,6 +205,8 @@ def list_projects():
 
 @bp.route("/<project_id>", methods=["GET"])
 def get_project(project_id):
+    if not _validate_project_id(project_id):
+        return jsonify({"error": "Invalid project id"}), 400
     project = _get_task_service().get_project(project_id)
     if not project:
         return jsonify({"error": "Project not found"}), 404
@@ -211,6 +215,8 @@ def get_project(project_id):
 
 @bp.route("/<project_id>/status", methods=["GET"])
 def get_project_status(project_id):
+    if not _validate_project_id(project_id):
+        return jsonify({"error": "Invalid project id"}), 400
     status = _get_task_service().get_status(project_id)
     if not status:
         return jsonify({"error": "Project not found"}), 404
@@ -219,6 +225,8 @@ def get_project_status(project_id):
 
 @bp.route("/<project_id>/files", methods=["GET"])
 def list_project_files(project_id):
+    if not _validate_project_id(project_id):
+        return jsonify({"error": "Invalid project id"}), 400
     files = _get_task_service().list_files(project_id)
     if files is None:
         return jsonify({"error": "Project not found"}), 404
@@ -227,6 +235,8 @@ def list_project_files(project_id):
 
 @bp.route("/<project_id>/file/<path:file_path>", methods=["GET"])
 def get_project_file(project_id, file_path):
+    if not _validate_project_id(project_id):
+        return jsonify({"error": "Invalid project id"}), 400
     content = _get_task_service().get_file(project_id, file_path)
     if content is None:
         return jsonify({"error": "File not found"}), 404
@@ -236,6 +246,8 @@ def get_project_file(project_id, file_path):
 @bp.route("/<project_id>/preview-url", methods=["GET"])
 def get_preview_url(project_id):
     """Return the live preview URL (if preview is running)."""
+    if not _validate_project_id(project_id):
+        return jsonify({"error": "Invalid project id"}), 400
     url = preview_service.get_preview_url(project_id)
     if not url:
         # Check if project is completed and auto-start preview
@@ -252,6 +264,8 @@ def get_preview_url(project_id):
 
 @bp.route("/<project_id>", methods=["DELETE"])
 def delete_project(project_id):
+    if not _validate_project_id(project_id):
+        return jsonify({"error": "Invalid project id"}), 400
     preview_service.stop_preview(project_id)
     success = _get_task_service().delete_project(project_id)
     if not success:
@@ -270,6 +284,8 @@ def stream_status(project_id):
     Usage (JS): new EventSource('/api/projects/<id>/events')
     Each event is JSON: {"status": "...", "progress": N, "current_stage": "...", "error": ...}
     """
+    if not _validate_project_id(project_id):
+        return jsonify({"error": "Invalid project id"}), 400
     def generate():
         ts = _get_task_service()
         prev = None
@@ -294,6 +310,8 @@ def stream_status(project_id):
 @bp.route("/<project_id>/visual-report", methods=["GET"])
 def get_visual_report(project_id):
     """Return visual verification results if available."""
+    if not _validate_project_id(project_id):
+        return jsonify({"error": "Invalid project id"}), 400
     settings = get_settings()
     context_path = settings.projects_dir / project_id / "artifacts" / "context.json"
     if not context_path.exists():
@@ -320,6 +338,8 @@ def get_visual_report(project_id):
 @bp.route("/<project_id>/plan", methods=["GET"])
 def get_project_plan(project_id):
     """Return persisted EngineeringPlan for a project, if available."""
+    if not _validate_project_id(project_id):
+        return jsonify({"error": "Invalid project id"}), 400
     ts = _get_task_service()
     plan = ts.get_plan(project_id)
     if plan is None:
@@ -330,6 +350,8 @@ def get_project_plan(project_id):
 @bp.route("/<project_id>/plan", methods=["PATCH"])
 def patch_project_plan(project_id):
     """Patch EngineeringPlan (safe fields only, currently task-level name/description/priority/complexity)."""
+    if not _validate_project_id(project_id):
+        return jsonify({"error": "Invalid project id"}), 400
     try:
         data = request.get_json(silent=False) or {}
     except Exception:
@@ -352,6 +374,8 @@ def patch_project_plan(project_id):
 @bp.route("/<project_id>/validation-runs", methods=["GET"])
 def list_validation_runs(project_id):
     """List validation runs for a project (if any)."""
+    if not _validate_project_id(project_id):
+        return jsonify({"error": "Invalid project id"}), 400
     ts = _get_task_service()
     project = ts.get_project(project_id)
     if not project:
@@ -380,6 +404,8 @@ def list_validation_runs(project_id):
 @bp.route("/<project_id>/validation-runs/<run_id>", methods=["GET"])
 def get_validation_run(project_id, run_id):
     """Get details for a single validation run."""
+    if not _validate_project_id(project_id):
+        return jsonify({"error": "Invalid project id"}), 400
     settings = get_settings()
     artifacts = settings.projects_dir / project_id / "artifacts"
     runs_file = artifacts / "validation_runs.json"
@@ -402,6 +428,8 @@ def get_validation_run(project_id, run_id):
 @bp.route("/<project_id>/overview", methods=["GET"])
 def get_project_overview(project_id):
     """Return aggregated overview: project status, timeline, plan & latest validation summary."""
+    if not _validate_project_id(project_id):
+        return jsonify({"error": "Invalid project id"}), 400
     settings = get_settings()
     ts = _get_task_service()
     project = ts.get_project(project_id)

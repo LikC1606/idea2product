@@ -14,7 +14,7 @@
 ## 核心模型
 
 ### Stage 1
-- **Requirements**: title, description, features (List[Feature]), constraints, target_users, data_requirements, user_clarifications, design_mode
+- **Requirements**: title, description, features (List[Feature]), constraints, target_users, data_requirements, user_clarifications, design_mode, layout_preferences（可包含布局 archetype 名称，如 `editorial_magazine`、`split_hero_left_text_right_preview`，用于提示 Stage 2/3 在首页或入口页采用对应布局）
 - **Feature**: id, name, description, priority, user_story
 
 ### Stage 2
@@ -24,7 +24,22 @@
 - **ImageSpec**: id, prompt, suggested_path, role（可选；hero | placeholder | icon）
 - **ExternalModelSpec**: capability_type, provider_name, docs_url, api_docs_summary, base_url_hint, auth_type, request_body_example, response_image_path, suggested_integration（Stage 2 联网搜索 + LLM 产出，供 Stage 3/4 可选使用；capability_type 示例：image_generation、tts、video_generation、ppt_generation、latex_generation、audio_tts、audio_music）
 - **InterfaceSpec**: module_name, file_path, purpose, layer, exports, imports, database_access
-- **EngineeringPlan**: tasks, algorithms, file_structure, interface_specs, dependencies, architecture_notes, api_specs, pyi_stubs, bdd_test_cases, image_specs（可选）, external_model_specs（可选）
+- **EngineeringPlan**: tasks, algorithms, file_structure, interface_specs, dependencies, architecture_notes, api_specs, pyi_stubs, bdd_test_cases, image_specs（可选）, external_model_specs（可选）, ui_guidelines（可选；包含 global_layout_style、page_layouts 以及 hero_layouts 等布局/主题提示）
+
+其中 `engineering_plan.ui_guidelines` 约定：
+
+- `global_layout_style: str | null`：整体页面布局风格，如 `"editorial_magazine"`、`"dashboard"`、`"form_first"` 等。
+- `page_layouts: Dict[str, Dict]`：按路由划分的页面布局提示，例如：
+  - `"/overview": {"layout_archetype": "editorial_magazine", "applicability_score": 0.85, "notes": "Content-heavy overview page"}`。
+- `hero_layouts: Dict[str, Dict]`（可选）：按路由划分的首屏 Hero 布局 archetype，支持将首页使用的「左文案 / 右产品预览」模式上升为可复用语义：
+  - key：路由或页面标识（如 `"/"`, `"/overview"`）
+  - value 字段约定：
+    - `layout_archetype: str`：例如 `"split_hero_left_text_right_preview"`（左列为主文案与 CTA，右列为界面预览/产品卡片）
+    - `primary_column: "left" | "right"`：主要信息/行动所在列
+    - `contrast_mode: "dark_bg_light_text" | "light_bg_dark_text"`：首屏 Hero 的对比模式
+    - `notes: str`：补充 Hero 结构要素说明（如大标题、副标题、卖点列表、主/次按钮、预览卡片类型与层级关系等）
+
+Stage 2 的 SchemePlanningAgent 会根据 Requirements 与路由语义，在适合用分屏 Hero 的页面（如 `/` 入口页）为 `ui_guidelines.hero_layouts[route]` 写入 `split_hero_left_text_right_preview` 等标记，Stage 3 CodeGenerationAgent 在生成对应模板时消费这些标记以稳定首屏布局。
 
 ### Stage 3
 - **CodeSkeleton**: interfaces, dependency_graph, symbol_table
@@ -34,7 +49,7 @@
 ### Stage 4
 - **TestResult**: logic_passed, bdd_test_cases, errors, visual_verification, execution_time
 - **ValidationRun**: run_id, project_id, stage, status, started_at, finished_at, metrics（errors/warnings/logic_passed/visual_passed 等）, summary（可选，用于 Dashboard 简要说明）
-- **ValidatedProject**: repository, test_results, is_deployable, deployment_instructions
+- **ValidatedProject**: repository, test_results, is_deployable, deployment_instructions, fix_attempts（FineTuning 修复迭代次数）
 
 ## ExecutionContext（context.py）
 

@@ -3,6 +3,8 @@ import { ref, nextTick, onMounted } from 'vue'
 import { marked } from 'marked'
 import hljs from 'highlight.js'
 import 'highlight.js/styles/github-dark.min.css'
+import BentoGrid from './BentoGrid.vue'
+import SkeletonChat from './SkeletonChat.vue'
 
 const props = defineProps({
   messages: Array,
@@ -30,6 +32,37 @@ const QUICK_CHIPS = [
   { text: 'Build a blog with create, edit, delete posts and comments', label: 'Blog' },
   { text: 'Build a Markdown note-taking app with live preview', label: 'Notes App' },
   { text: 'Build a weather dashboard that shows forecasts', label: 'Weather' },
+]
+
+const FEATURE_ITEMS = [
+  {
+    id: 'pipeline',
+    title: '4 阶段 Agent Pipeline',
+    description: '从需求 → 规划 → 代码生成 → 验证，整条链路由专门 Agent 协同完成。',
+    accent: 'Pipeline',
+    sizeVariant: 'large',
+  },
+  {
+    id: 'fullstack',
+    title: '全栈代码一键生成',
+    description: '自动产出 Flask 后端 + 前端模板 + BDD 测试，直接在浏览器内预览与调试。',
+    accent: 'Full‑stack',
+    sizeVariant: 'wide',
+  },
+  {
+    id: 'validation',
+    title: '验证 & 微调闭环',
+    description: 'Full‑cycle Testing 与 Fine‑tuning 轮流运行，直到测试通过并认可产品效果。',
+    accent: 'Validation',
+    sizeVariant: 'small',
+  },
+  {
+    id: 'multimodal',
+    title: '多模态能力扩展',
+    description: '按需接入图像、视频、PPT、PDF 等外部生成服务，形成一体化产品体验。',
+    accent: 'Multimodal',
+    sizeVariant: 'small',
+  },
 ]
 
 marked.setOptions({
@@ -89,6 +122,12 @@ onMounted(() => {
 })
 
 import { watch, computed } from 'vue'
+
+const showChatSkeleton = computed(() => {
+  if (!props.generating) return false
+  const len = props.messages?.length || 0
+  return len > 0 && len <= 4
+})
 watch(
   () => props.messages?.length,
   () => {
@@ -103,8 +142,13 @@ watch(
 
 <template>
   <div class="panel-chat" role="region" aria-label="Chat">
-    <div ref="messagesEl" class="chat-messages" role="log" aria-label="Chat messages">
-      <div v-if="showWelcome" class="welcome">
+    <div
+      ref="messagesEl"
+      class="chat-messages"
+      role="log"
+      aria-label="Chat messages"
+    >
+      <div v-if="showWelcome" class="welcome" v-reveal-on-scroll>
         <h2>What would you like to build?</h2>
         <p>Describe your app idea. Add details in the chat, then click Generate when ready.</p>
         <div class="quick-chips">
@@ -112,23 +156,33 @@ watch(
             v-for="(chip, i) in QUICK_CHIPS"
             :key="i"
             type="button"
-            class="chip"
+            class="chip interactive-scale-sm"
             @click="quickSend(chip.text)"
           >
             {{ chip.label }}
           </button>
         </div>
+        <BentoGrid :items="FEATURE_ITEMS" />
       </div>
 
       <template v-for="(m, i) in messages" :key="i">
-        <div v-if="m.role === 'user'" class="msg user">{{ m.content }}</div>
-        <div v-else-if="m.role === 'system'" class="msg system">{{ m.content }}</div>
+        <div v-if="m.role === 'user'" class="msg user" v-reveal-on-scroll>
+          {{ m.content }}
+        </div>
+        <div v-else-if="m.role === 'system'" class="msg system" v-reveal-on-scroll>
+          {{ m.content }}
+        </div>
         <div
           v-else
           class="msg assistant"
+          v-reveal-on-scroll
           v-html="renderContent('assistant', m.content)"
         ></div>
       </template>
+
+      <div v-if="!showWelcome && showChatSkeleton" class="chat-skeleton-wrapper">
+        <SkeletonChat />
+      </div>
 
       <div
         v-if="typing"
@@ -164,7 +218,7 @@ watch(
         ></textarea>
         <button
           type="button"
-          class="send-btn"
+          class="send-btn interactive-scale"
           aria-label="Send message"
           :disabled="sending"
           @click="doSend"
@@ -175,7 +229,7 @@ watch(
       <button
         v-if="canGenerate"
         type="button"
-        class="generate-btn"
+        class="generate-btn interactive-scale"
         :class="{ 'generating': generating }"
         :disabled="generating"
         aria-label="Generate app"

@@ -59,6 +59,47 @@
   background: var(--bg-active, var(--bg-hover));
 }
 
+/* Shared hover micro-interactions */
+.interactive-scale {
+  transition:
+    transform var(--transition-fast),
+    box-shadow var(--transition-fast),
+    background-color var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast);
+  will-change: transform, box-shadow;
+}
+
+.interactive-scale:hover {
+  transform: translateY(-1px) scale(1.02);
+  box-shadow: var(--shadow-glow);
+}
+
+.interactive-scale:active {
+  transform: scale(0.99);
+  box-shadow: var(--shadow-sm);
+}
+
+.interactive-scale-sm {
+  transition:
+    transform var(--transition-fast),
+    box-shadow var(--transition-fast),
+    background-color var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast);
+  will-change: transform, box-shadow;
+}
+
+.interactive-scale-sm:hover {
+  transform: translateY(-0.5px) scale(1.01);
+  box-shadow: var(--shadow-sm);
+}
+
+.interactive-scale-sm:active {
+  transform: scale(0.995);
+  box-shadow: none;
+}
+
 /* Inputs */
 .input {
   width: 100%;
@@ -142,14 +183,55 @@
   margin-bottom: var(--spacing-24);
 }
 
+/* Page transition (route view) */
+.page-transition-enter-active,
+.page-transition-leave-active {
+  transition:
+    opacity var(--transition-fast),
+    transform var(--transition-fast);
+}
+
+.page-transition-enter-from,
+.page-transition-leave-to {
+  opacity: 0;
+  transform: translateY(12px);
+}
+
+.page-transition-enter-to,
+.page-transition-leave-from {
+  opacity: 1;
+  transform: translateY(0);
+}
+
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
   .btn,
-  .card {
+  .card,
+  .interactive-scale,
+  .interactive-scale-sm {
     transition: none;
   }
 
   .btn-primary:hover:not(:disabled) {
+    transform: none;
+  }
+  .interactive-scale:hover,
+  .interactive-scale:active,
+  .interactive-scale-sm:hover,
+  .interactive-scale-sm:active {
+    transform: none;
+    box-shadow: none;
+  }
+
+  .page-transition-enter-active,
+  .page-transition-leave-active {
+    transition: none;
+  }
+
+  .page-transition-enter-from,
+  .page-transition-enter-to,
+  .page-transition-leave-from,
+  .page-transition-leave-to {
     transform: none;
   }
 }

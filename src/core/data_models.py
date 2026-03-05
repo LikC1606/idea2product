@@ -75,6 +75,15 @@ class Requirements(BaseModel):
     design_mode: Optional[str] = Field(
         None, description="UI style: modern | minimal | dashboard. Affects ui_guidelines."
     )
+    layout_preferences: Optional[List[str]] = Field(
+        default=None,
+        description=(
+            "Preferred layout archetypes for key pages, e.g. "
+            'editorial_magazine, split_hero_left_text_right_preview, '
+            "data_dashboard, notebook_style. Used by Stage 2 to shape "
+            "ui_guidelines and hero_layouts."
+        ),
+    )
     created_at: datetime = Field(default_factory=datetime.now)
 
 
@@ -187,6 +196,21 @@ class EngineeringPlan(BaseModel):
     bdd_test_cases: List["BDDTestCase"] = Field(default_factory=list, description="BDD test cases synthesized from requirements (test-driven)")
     image_specs: Optional[List[ImageSpec]] = Field(None, description="Optional image generation specs (hero, placeholder)")
     external_model_specs: Optional[List[ExternalModelSpec]] = Field(None, description="External model/API integration specs from Stage 2 web search")
+    ui_guidelines: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description=(
+            "High-level UI planning hints, including global_layout_style, "
+            "per-page layout_archetypes, and optional hero_layouts for page "
+            "heroes. Example: {'global_layout_style': 'editorial_magazine', "
+            "'page_layouts': {'/overview': {'layout_archetype': "
+            "'editorial_magazine', 'applicability_score': 0.9, 'notes': "
+            "'Content-heavy overview page'}}, 'hero_layouts': {'/': {"
+            "'layout_archetype': 'split_hero_left_text_right_preview', "
+            "'primary_column': 'left', 'contrast_mode': "
+            "'dark_bg_light_text', 'notes': 'Left column: title/subtitle/"
+            "CTA; right column: product UI preview card'}}}."
+        ),
+    )
     created_at: datetime = Field(default_factory=datetime.now)
 
 

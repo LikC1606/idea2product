@@ -106,6 +106,12 @@ class Settings(BaseSettings):
     # When True, _fix_syntax_error uses fast model (e.g. fast_model_for_code_gen)
     use_fast_model_for_fine_tuning_syntax: bool = True
 
+    # Stage 4 validation loop configuration
+    # Maximum number of FineTuning + re-test rounds per validation run
+    max_stage4_rounds: int = 3
+    # Visual alignment / quality threshold (0.0–1.0); used with alignment_score
+    stage4_quality_threshold: float = 0.7
+
     # Validation port (shared by FullCycleTesting, FrontendTesting, VisualVerification, CodeFix)
     validation_port: int = 5555
 
@@ -165,6 +171,9 @@ class Settings(BaseSettings):
     skip_flow_in_algorithm: bool = False
     # When True, HfModelService caches search_and_fetch_docs results (LRU)
     enable_hf_cache: bool = False
+
+    # Task generation: when True, retry once on transient errors (LLM/network timeouts, 5xx)
+    task_generation_retry_on_transient: bool = False
 
     # Stage 2 web search (for ModelIntegrationPlanningAgent: discover external APIs/models)
     enable_stage2_web_search: bool = False
@@ -325,6 +334,30 @@ def load_settings_lenient() -> Settings:
 def clear_settings_cache() -> None:
     """Clear the cached settings so next get_settings() reloads from env (e.g. after setting API key)."""
     _get_settings_cached.cache_clear()
+
+
+def validate_startup_config_log_warnings(settings: Settings) -> None:
+    """
+    Lightweight startup checks: projects_dir writable and primary LLM key present.
+    Only logs warnings; does not raise. Call from web app init so config issues are visible early.
+    """
+    import logging
+    log = logging.getLogger(__name__)
+    try:
+        settings.projects_dir.mkdir(parents=True, exist_ok=True)
+        test_file = settings.projects_dir / ".health_write_test"
+        test_file.touch()
+        test_file.unlink()
+    except OSError as e:
+        log.warning("projects_dir not writable: %s - %s", settings.projects_dir, e)
+    provider = (getattr(settings, "primary_llm_provider", None) or "openai").strip().lower()
+    key_name = _primary_llm_key_name(settings)
+    api_key, _, _, _ = get_primary_llm_config(settings)
+    if not (api_key or "").strip():
+        log.warning(
+            "%s is not set (primary_llm_provider=%s). LLM calls will fail until configured.",
+            key_name, provider,
+        )
 
 
 @lru_cache()

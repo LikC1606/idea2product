@@ -8,7 +8,7 @@ defineEmits(['action'])
 </script>
 
 <template>
-  <div class="empty-state">
+  <div class="empty-state" v-reveal-on-scroll>
     <span class="empty-state__icon" aria-hidden="true">{{ icon }}</span>
     <h3 v-if="title" class="empty-state__title">{{ title }}</h3>
     <p v-if="description" class="empty-state__desc">{{ description }}</p>

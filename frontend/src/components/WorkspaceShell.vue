@@ -6,6 +6,7 @@ import HistoryDrawer from './HistoryDrawer.vue'
 import ChatPanel from './ChatPanel.vue'
 import CodePanel from './CodePanel.vue'
 import PreviewPanel from './PreviewPanel.vue'
+import Stage2PlanPanel from './Stage2PlanPanel.vue'
 import StatusBar from './StatusBar.vue'
 import { useProject } from '../composables/useProject'
 import { useChat } from '../composables/useChat'
@@ -29,16 +30,18 @@ const {
 const { messages, sending, typing, sendMessage, setMessages, clearMessages, appendSystemMessage } =
   useChat()
 
-const { status, statusText, currentStage, setStatus, updateFromPayload, pollStatus, createEventSource } =
+const { status, statusText, currentStage, statusError, setStatus, updateFromPayload, pollStatus, createEventSource } =
   useStatus()
 
 const historyOpen = ref(false)
 const historyProjects = ref([])
-const activeTab = ref('code') // 'code' | 'preview'
+const activeTab = ref('plan') // 'plan' | 'code' | 'preview'
 const evtSource = ref(null)
 const pollTimer = ref(null)
 const backendConnected = ref(true)
 let backendCheckInterval = null
+const mainEl = ref(null)
+const parallaxOffset = ref(0)
 
 const showWelcome = computed(() => messages.value.length === 0)
 const buildingVisible = computed(() => status.value === 'processing')
@@ -165,16 +168,39 @@ async function checkBackendConnection() {
   backendConnected.value = ok
 }
 
+function handleScroll() {
+  const el = mainEl.value
+  if (!el) return
+  const prefersReduced =
+    typeof window !== 'undefined' &&
+    window.matchMedia &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  if (prefersReduced) {
+    parallaxOffset.value = 0
+    return
+  }
+  parallaxOffset.value = el.scrollTop * 0.5
+}
+
 onMounted(() => {
   window.addEventListener('keydown', handleKeydown)
   checkBackendConnection()
   backendCheckInterval = setInterval(checkBackendConnection, 10000)
+  const el = mainEl.value
+  if (el && typeof el.addEventListener === 'function') {
+    el.addEventListener('scroll', handleScroll, { passive: true })
+    handleScroll()
+  }
 })
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown)
   if (backendCheckInterval) clearInterval(backendCheckInterval)
   stopPolling()
+  const el = mainEl.value
+  if (el && typeof el.removeEventListener === 'function') {
+    el.removeEventListener('scroll', handleScroll)
+  }
 })
 
 watch(projectId, (pid) => {
@@ -184,6 +210,11 @@ watch(projectId, (pid) => {
 
 <template>
   <div class="app">
+    <div
+      class="app-parallax-bg"
+      :style="{ transform: `translate3d(0, ${-parallaxOffset}px, 0)` }"
+      aria-hidden="true"
+    />
     <div v-if="!backendConnected" class="backend-banner">
       后端服务未连接。请确保已启动: <code>python -m src.web.app</code>
     </div>
@@ -199,7 +230,7 @@ watch(projectId, (pid) => {
         <span class="direction-label">当前方向：{{ directionLabel }}</span>
       </div>
     </div>
-    <div class="main">
+    <div ref="mainEl" class="main">
       <HistoryDrawer
         :open="historyOpen"
         :projects="historyProjects"
@@ -207,6 +238,7 @@ watch(projectId, (pid) => {
         @select-project="handleLoadProject"
       />
       <ChatPanel
+        class="sidebar-sticky"
         :messages="messages"
         :sending="sending"
         :typing="typing"
@@ -223,7 +255,15 @@ watch(projectId, (pid) => {
         <div class="right-tabs">
           <button
             type="button"
-            class="right-tab"
+            class="right-tab interactive-scale-sm"
+            :class="{ active: activeTab === 'plan' }"
+            @click="switchTab('plan')"
+          >
+            Plan
+          </button>
+          <button
+            type="button"
+            class="right-tab interactive-scale-sm"
             :class="{ active: activeTab === 'code' }"
             @click="switchTab('code')"
           >
@@ -231,7 +271,7 @@ watch(projectId, (pid) => {
           </button>
           <button
             type="button"
-            class="right-tab"
+            class="right-tab interactive-scale-sm"
             :class="{ active: activeTab === 'preview' }"
             @click="switchTab('preview')"
           >
@@ -240,7 +280,10 @@ watch(projectId, (pid) => {
         </div>
         <div class="right-content">
           <Transition name="tab-fade" mode="out-in">
-            <div v-if="activeTab === 'code'" key="code" class="tab-pane code-pane">
+            <div v-if="activeTab === 'plan'" key="plan" class="tab-pane plan-pane">
+              <Stage2PlanPanel :project-id="projectId" :status="status" />
+            </div>
+            <div v-else-if="activeTab === 'code'" key="code" class="tab-pane code-pane">
               <CodePanel
                 :files="files"
                 :current-file="currentFile"
@@ -263,6 +306,8 @@ watch(projectId, (pid) => {
       :status="status"
       :status-text="statusText"
       :current-stage="currentStage"
+      :status-error="statusError"
+      @retry="handleGenerate"
     />
   </div>
 </template>
@@ -272,6 +317,20 @@ watch(projectId, (pid) => {
   height: 100vh;
   display: flex;
   flex-direction: column;
+  position: relative;
+}
+
+.app-parallax-bg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(circle at 10% 0%, rgba(30, 64, 175, 0.5), transparent 60%),
+    radial-gradient(circle at 80% 100%, rgba(15, 118, 110, 0.45), transparent 55%),
+    radial-gradient(circle at 50% 40%, rgba(37, 99, 235, 0.35), transparent 60%);
+  opacity: 0.55;
+  will-change: transform;
 }
 
 .app-header {
@@ -323,6 +382,9 @@ watch(projectId, (pid) => {
   display: flex;
   flex: 1;
   min-height: 0;
+  overflow-y: auto;
+  position: relative;
+  z-index: 1;
 }
 
 @media (max-width: 1024px) {
@@ -402,12 +464,21 @@ watch(projectId, (pid) => {
 
 .tab-fade-enter-active,
 .tab-fade-leave-active {
-  transition: opacity var(--transition-normal);
+  transition:
+    opacity var(--transition-normal),
+    transform var(--transition-normal);
 }
 
 .tab-fade-enter-from,
 .tab-fade-leave-to {
   opacity: 0;
+  transform: translateY(10px);
+}
+
+.tab-fade-enter-to,
+.tab-fade-leave-from {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -417,6 +488,12 @@ watch(projectId, (pid) => {
   .tab-fade-enter-active,
   .tab-fade-leave-active {
     transition: none;
+  }
+  .tab-fade-enter-from,
+  .tab-fade-enter-to,
+  .tab-fade-leave-from,
+  .tab-fade-leave-to {
+    transform: none;
   }
 }
 </style>

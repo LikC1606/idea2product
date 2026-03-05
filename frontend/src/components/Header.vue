@@ -15,7 +15,7 @@ defineEmits(['toggle-history', 'new-project'])
     <span class="project-id" :title="projectId || ''">{{ projectId || '' }}</span>
     <span class="spacer" aria-hidden="true"></span>
     <button
-      class="history-btn"
+      class="history-btn interactive-scale-sm"
       type="button"
       aria-label="Toggle project history"
       :aria-expanded="historyOpen"
@@ -24,7 +24,7 @@ defineEmits(['toggle-history', 'new-project'])
       History
     </button>
     <button
-      class="new-btn"
+      class="new-btn interactive-scale"
       type="button"
       aria-label="Create new project"
       @click="$emit('new-project')"

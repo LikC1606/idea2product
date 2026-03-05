@@ -1,4 +1,25 @@
 
+:root {
+  /* Workspace shell layout metrics */
+  --shell-header-height: 64px;
+  --shell-status-height: 28px;
+  /* Default sticky offset for sidebars that live below the header */
+  --shell-sticky-top: var(--shell-header-height);
+  /* Glassmorphism tokens */
+  --glass-bg: rgba(15, 23, 42, 0.78);
+  --glass-border: rgba(148, 163, 184, 0.45);
+  --glass-blur-strong: 24px;
+  --glass-shadow: 0 24px 60px rgba(15, 23, 42, 0.9);
+  --glass-radius: 20px;
+  /* Aurora gradient tokens */
+  --aurora-color-1: #0f172a;
+  --aurora-color-2: #1d3a8a;
+  --aurora-color-3: #4f46e5;
+  --aurora-color-4: #7c3aed;
+  --aurora-animation-duration: 40s;
+  --aurora-opacity: 0.35;
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -40,6 +61,21 @@ code, pre, .code-viewer {
   font-family: var(--font-mono);
 }
 
+/* Reveal on Scroll micro-interaction */
+.reveal-base {
+  opacity: 0;
+  transform: translate3d(0, 8px, 0);
+  transition:
+    opacity 280ms ease-out,
+    transform 280ms ease-out;
+  will-change: opacity, transform;
+}
+
+.reveal-in {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 8px;
@@ -62,4 +98,58 @@ code, pre, .code-viewer {
 /* Highlight.js - custom dark theme */
 .hljs {
   background: transparent !important;
+}
+
+/* Shared sticky sidebar helper */
+.sidebar-sticky {
+  position: sticky;
+  top: var(--shell-sticky-top);
+  align-self: flex-start;
+}
+
+@media (max-width: 768px) {
+  .sidebar-sticky {
+    position: static;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal-base,
+  .reveal-in {
+    transition: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Reusable glassmorphism panel */
+.glass-panel {
+  position: relative;
+  overflow: hidden;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--glass-radius, var(--radius-xl));
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(var(--glass-blur-strong));
+  -webkit-backdrop-filter: blur(var(--glass-blur-strong));
+}
+
+.glass-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 160 160' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.2' numOctaves='2' stitchTiles='noStitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.25'/%3E%3C/svg%3E");
+  mix-blend-mode: soft-light;
+  opacity: 0.08;
+}
+
+.glass-panel--light {
+  --glass-bg: rgba(248, 250, 252, 0.75);
+  --glass-border: rgba(148, 163, 184, 0.5);
+}
+
+.glass-panel--compact {
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.75);
+  border-radius: 16px;
 }

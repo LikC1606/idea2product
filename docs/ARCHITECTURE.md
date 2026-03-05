@@ -37,13 +37,16 @@ flowchart TB
     end
 
     subgraph Stage4 [Stage 4: Validation]
-        FC[FullCycleTestingAgent]
-        FV[FineTuningAgent]
+        subgraph Stage4Loop [Stage 4: Testing ↔ Fine-tuning]
+            FC[FullCycleTestingAgent]
+            FV[FineTuningAgent]
+        end
         VV[VisualVerificationAgent]
         Repo --> FC
         FC --> VV
         VV --> FV
-        FV --> Valid[ValidatedProject]
+        FV --> FC
+        FC --> Valid[ValidatedProject]
     end
 ```
 
@@ -109,3 +112,31 @@ Idea2Product 的算法/模型设计优化遵循一个独立但紧密耦合的循
 - **Settings** (`config/settings.py`): Pydantic-settings, env vars, feature flags
 - **Prompts** (`config/prompts/`): Template files for each agent
 - **Models** (`config/models_registry.json`): Model routing by stage
+
+### Frontend UI Note
+
+The Idea2Product web UI uses a **Bento Grid** style layout in the chat welcome area to present core capabilities as cards with contrasting sizes but unified radius and spacing. Stage 2/3 frontend design guidelines reuse this pattern for generated apps that need a feature overview or dashboard-style home page.
+
+## Orchestrator ↔ Agent 调用关系（代码视图）
+
+```mermaid
+flowchart TD
+  userReq[UserRequirement] --> stage1Exec[execute_stage_1]
+  stage1Exec --> IA[InteractionAgent]
+  IA --> requirements[Requirements]
+
+  requirements --> stage2Exec[execute_stage_2]
+  stage2Exec --> FS[FlowSimulationAgent]
+  stage2Exec --> TD[TaskDivisionAgent]
+  stage2Exec --> AA[AlgorithmAnalysisAgent]
+  stage2Exec --> SP[SchemePlanningAgent]
+
+  requirements --> stage3Exec[execute_stage_3]
+  stage3Exec --> CM[CodeMemoryAgent]
+  stage3Exec --> CN[CodeMiningAgent]
+  stage3Exec --> CG[CodeGenerationAgent]
+
+  stage3Exec --> stage4Exec[execute_stage_4]
+  stage4Exec --> FC[FullCycleTestingAgent]
+  stage4Exec --> FV[FineTuningAgent]
+```

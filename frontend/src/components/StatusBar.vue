@@ -3,7 +3,9 @@ defineProps({
   status: String,
   statusText: String,
   currentStage: String,
+  statusError: String,
 })
+const emit = defineEmits(['retry'])
 </script>
 
 <template>
@@ -11,8 +13,26 @@ defineProps({
     <div class="status-left">
       <span class="status-dot" :class="status || 'idle'"></span>
       <span class="status-text">{{ statusText || 'Ready' }}</span>
+      <template v-if="status === 'failed' && statusError">
+        <span class="status-error"> · {{ statusError }}</span>
+        <button
+          type="button"
+          class="status-retry"
+          @click="emit('retry')"
+        >
+          重试生成
+        </button>
+      </template>
     </div>
-    <span v-if="currentStage" class="stage-indicator">{{ currentStage }}</span>
+    <Transition name="stage-fade" mode="out-in">
+      <span
+        v-if="currentStage && status !== 'failed'"
+        :key="currentStage"
+        class="stage-indicator"
+      >
+        {{ currentStage }}
+      </span>
+    </Transition>
   </div>
 </template>
 
@@ -66,10 +86,55 @@ defineProps({
   font-weight: 500;
 }
 
+.status-error {
+  color: var(--red, #f87171);
+  font-size: 0.75rem;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-retry {
+  margin-left: 8px;
+  padding: 2px 10px;
+  font-size: 0.75rem;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.status-retry:hover {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
 .stage-indicator {
   color: var(--text-muted);
   font-size: 0.75rem;
   font-family: var(--font-mono);
+}
+
+.stage-fade-enter-active,
+.stage-fade-leave-active {
+  transition:
+    opacity var(--transition-fast),
+    transform var(--transition-fast);
+}
+
+.stage-fade-enter-from,
+.stage-fade-leave-to {
+  opacity: 0;
+  transform: translateY(4px);
+}
+
+.stage-fade-enter-to,
+.stage-fade-leave-from {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 @keyframes pulse {
@@ -80,6 +145,16 @@ defineProps({
 @media (prefers-reduced-motion: reduce) {
   .status-dot.processing {
     animation: none;
+  }
+  .stage-fade-enter-active,
+  .stage-fade-leave-active {
+    transition: none;
+  }
+  .stage-fade-enter-from,
+  .stage-fade-enter-to,
+  .stage-fade-leave-from,
+  .stage-fade-leave-to {
+    transform: none;
   }
 }
 </style>

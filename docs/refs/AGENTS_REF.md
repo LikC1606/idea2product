@@ -1,5 +1,14 @@
 # Agent 参考
 
+## Agent 设计规范（全局约定）
+
+- **目录结构**：每个阶段的 Agent 均位于 `src/agents/stageX_*/` 目录下，文件命名建议为 `<stage>_<domain>_agents.py`（如 `validation_agents.py`、`code_generation_agents.py`）。
+- **类命名**：类名统一以 `*Agent` 结尾，并在 docstring 中标注所处阶段（Stage 1–4）及主要职责。
+- **构造函数**：所有 Agent 构造函数统一为 `__init__(self, llm_service: LLMService, settings: Settings | None = None, ...)` 的变体，至少接收一个 `LLMService` 实例；不继承基类。
+- **主入口方法**：所有 Agent 的主执行方法为 `execute(...) -> <OutputModel | None>`，docstring 中必须包含 `Args` 与 `Returns` 说明；多入口方法（如 `run_interactive`）只用于 CLI / Web 特殊场景。
+- **调用方式**：所有 Agent 仅通过 `Orchestrator` 调用，避免其他服务层直接调用 Agent；Orchestrator 负责注入 `ExecutionContext` 与 Settings。
+- **日志前缀**：Agent 内部日志使用模块级 logger（`get_logger(__name__)`），关键日志建议包含 `[Agent:Name]` 字样；Orchestrator 日志使用 `[StageN][AgentName]` 风格标识当前运行的 Agent。
+
 ## Stage 1 - Requirements
 
 | Agent | 文件 | 输入 | 输出 | 关键方法 |
@@ -21,7 +30,7 @@
 
 | Agent | 文件 | 输入 | 输出 | 关键方法 |
 |-------|------|------|------|----------|
-| CodeGenerationAgent | `src/agents/stage3_generation/code_generation_agents.py` | ExecutionContext | CodeRepository | `execute()`, `_should_use_fast_model()`, `_fallback_for_task()` |
+| CodeGenerationAgent | `src/agents/stage3_generation/code_generation_agents.py` | ExecutionContext | CodeRepository | `execute()`, `_should_use_fast_model()`, `_fallback_for_task()`, `_process_task_with_tools()` |
 | CodeMemoryAgent | 同上 | ExecutionContext, CodeRepository | None (side-effect) | `pre_execute()`, `execute()` |
 | CodeMiningAgent | 同上 | ExecutionContext | Dict[str, str] | `execute()` |
 
@@ -60,8 +69,19 @@
 | Agent | 文件 | 输入 | 输出 | 关键方法 |
 |-------|------|------|------|----------|
 | FullCycleTestingAgent | `src/agents/stage4_validation/validation_agents.py` | ExecutionContext | TestResult | `execute()` |
-| FineTuningAgent | 同上 | ExecutionContext, TestResult | (CodeRepository, bool) | `execute()` |
+| CodeFixAgent | 同上 | Path (generated 目录) | None（磁盘就地修改） | `execute(project_path)` |
+| FrontendTestingAgent | 同上 | Path (generated), Optional[port] | List[TestError] | `execute(project_path, port)` |
 | VisualVerificationAgent | 同上 | ExecutionContext | Dict (alignment_score, issues) | `execute()` |
+| FineTuningAgent | 同上 | ExecutionContext, TestResult | (CodeRepository, bool) | `execute()` |
+
+**Stage 4 调用顺序与职责**：Orchestrator 以 FullCycleTestingAgent 为入口，对代码库进行完整测试与 BDD 检查，然后在每轮中按「FullCycleTesting → FrontendTesting（逻辑通过时） → VisualVerification → FineTuning」的顺序形成闭环。在每一轮：
+
+- FullCycleTestingAgent 负责落盘、语法检查、run 子进程、自检路由/鉴权、BDD 测试并产出 TestResult。
+- FrontendTestingAgent 在 logic_passed 时运行，对前端代码中发现的 API 进行真实调用测试，追加 TestError。
+- VisualVerificationAgent 根据设置决定是否运行，对 UI 截图或 HTML 结构做分析，写入 `test_result.visual_feedback` 与 `visual_verification`（alignment_score 等）。
+- FineTuningAgent 在存在逻辑/导入/运行错误或视觉对齐度低于阈值（stage4_quality_threshold）时被调用，对 CodeRepository 做精细化修复；若实际修改了代码，则 Orchestrator 递增 fix_attempts 并重新进入下一轮 FullCycleTesting。
+
+循环在以下情况停止：测试与视觉对齐都通过、FineTuningAgent 未再产生修改、达到 `max_stage4_rounds` 或 `max_fix_attempts`。
 
 ## Stage Input/Output 契约
 
@@ -77,6 +97,23 @@
 - **Stage 4 磁盘契约**：FullCycleTestingAgent 写盘后，CodeFixAgent、FrontendTestingAgent 的输入为「磁盘上的 generated 目录」；RunAndFix 回退路径使用 repository 内存 + 写盘。
 - **可选步骤跳过**：skip_flow_extraction、skip_mining_for_simple_tasks、warn_unused_files 等配置控制阶段内可选步骤是否执行。
 - **阶段失败异常**：Orchestrator 在各 stage 的 try/except 中将失败包装为 `StageExecutionError(message, stage=N, partial_context=context)` 并设置 `__cause__`；调用方可通过 `stage` 与 `partial_context`（或 artifact）定位失败阶段。参见 TROUBLESHOOTING。
+
+## Orchestrator ↔ Agent 调用关系（代码导航）
+
+- **Stage 1**：`Orchestrator.execute_stage_1` → `InteractionAgent.execute` / `run_interactive`（`src/agents/stage1_requirements/interaction_agent.py`）
+- **Stage 2**：`Orchestrator.execute_stage_2` 依次调用：
+  - `FlowSimulationAgent.execute`（用户操作流模拟）
+  - `TaskDivisionAgent.execute`（任务拆分）
+  - `AlgorithmAnalysisAgent.execute`（算法与实现策略）
+  - `SchemePlanningAgent.execute`（文件结构与接口规格）
+  - （可选）`ModelIntegrationPlanningAgent.execute`（外部模型/API 规划）
+- **Stage 3**：`Orchestrator.execute_stage_3`：
+  - Phase 1/2：`CodeMemoryAgent.pre_execute` + `CodeMiningAgent.execute`（可并行）预取 memory/m mining 上下文
+  - Phase 3：`CodeGenerationAgent.execute`（主体代码生成）
+  - Phase 4：`CodeMemoryAgent.execute`（最终 snippet 写入记忆库）
+- **Stage 4**：`Orchestrator.execute_stage_4`：
+  - 每轮循环调用 `FullCycleTestingAgent.execute` → （可选）`FrontendTestingAgent.execute` → （可选）`VisualVerificationAgent.execute` → `FineTuningAgent.execute`
+  - Orchestrator 负责根据 `max_stage4_rounds` / `max_fix_attempts` / `stage4_quality_threshold` 等配置判断是否继续下一轮。
 
 ## FullCycleTestingAgent 行为说明
 
@@ -125,6 +162,10 @@
 - **快速模型**：`use_fast_model_for_api_review=True` 时 ReviewAgent 使用 gpt-4o-mini
 - **flow 可选**：`skip_flow_in_scheme_planning=True` 时不注入 flow_section
 - **pattern_hint**：检测到 crud/dashboard 时注入任务结构提示
+- **布局偏好整合**：从 Requirements.design_mode 与 Requirements.layout_preferences（如 `editorial_magazine`、`split_hero_left_text_right_preview`）中提取设计/布局偏好，通过 scheme_planning prompt 的 design_mode_hint / layout hint 向 LLM 提示应在 ui_guidelines 中选择合适的 layout（如 bento_grid、masonry_grid、editorial_magazine），并在 `ui_guidelines.page_layouts` 中为 overview/report 等页面写入 layout_archetype 与 applicability_score。
+- **Hero 布局标记**：当需求/路由描述中包含「landing / homepage / 入口页 / 产品介绍 / 选择生成方向 / hero」等关键词，或 Requirements.layout_preferences 中显式包含 `split_hero_left_text_right_preview` 时，SchemePlanningAgent 会在 `engineering_plan.ui_guidelines.hero_layouts` 中为相应路由（通常是 `/` 或 `/overview`）写入：
+  - `hero_layouts[route] = {"layout_archetype": "split_hero_left_text_right_preview", "primary_column": "left", "contrast_mode": "dark_bg_light_text", "notes": "左列为标题、副标题、卖点+主/次按钮，右列为产品界面预览卡片"}`
+  - 该结构作为 Stage 3 实现分屏 Hero 区块的高层约束，避免每次从零设计首页 Hero。
 
 ## ModelIntegrationPlanningAgent 行为说明
 

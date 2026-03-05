@@ -21,6 +21,9 @@
 | GET | /api/projects/<id>/overview | 项目概览（项目状态 + 时间线 + 规划/验证摘要），供仪表盘使用 |
 | DELETE | /api/projects/<id> | 删除项目 |
 
+- **project_id 校验**：所有带 `<id>` 的路由会校验 `project_id` 格式（仅允许 `proj_[a-zA-Z0-9_-]+`，拒绝 `..` 与路径分隔符），非法时返回 `400 {"error": "Invalid project id"}`。
+- **500 响应**：未捕获异常经 errorhandler 返回 JSON `{"error": "..."}`；默认不向客户端暴露详情，设置 `EXPOSE_ERROR_DETAILS=true` 时可返回 `str(e)`；服务端始终 `logger.exception`。
+
 ## Chat-first 流程
 
 1. `POST /api/projects {"start_chat": true}` → 创建项目，返回 project_id

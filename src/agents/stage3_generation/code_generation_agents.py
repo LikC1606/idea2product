@@ -153,6 +153,7 @@ class CodeGenerationAgent:
                 pyi_stubs=pyi_stubs,
                 api_specs=api_specs,
                 skeleton=skeleton,
+                skeleton_warnings=skeleton_warnings,
                 mining_context=mining_context,
                 memory_context=memory_context,
                 bdd_constraints=bdd_constraints,
@@ -314,6 +315,7 @@ class CodeGenerationAgent:
         pyi_stubs: Dict = None,
         api_specs: Dict = None,
         skeleton: CodeSkeleton = None,
+        skeleton_warnings: str = "",
         mining_context: str = "",
         memory_context: str = "",
         bdd_constraints: str = "",
@@ -487,6 +489,31 @@ class CodeGenerationAgent:
                     if v:
                         api_info += f"- {k}: {v}\n"
 
+                # Special handling for hero_layouts: teach the agent about split-screen hero archetypes.
+                hero_layouts = ui_guidelines.get("hero_layouts")
+                if isinstance(hero_layouts, dict) and hero_layouts:
+                    api_info += "\nHero Layouts (per route - implement matching split hero when applicable):\n"
+                    for route, cfg in hero_layouts.items():
+                        if not isinstance(cfg, dict):
+                            continue
+                        archetype = cfg.get("layout_archetype", "")
+                        primary_col = cfg.get("primary_column", "")
+                        contrast = cfg.get("contrast_mode", "")
+                        notes = cfg.get("notes", "")
+                        api_info += (
+                            f"- Route {route}: layout_archetype={archetype or 'split_hero_left_text_right_preview'}, "
+                            f"primary_column={primary_col or 'left'}, "
+                            f"contrast_mode={contrast or 'dark_bg_light_text'}\n"
+                        )
+                        if notes:
+                            api_info += f"  Notes: {notes}\n"
+                    api_info += (
+                        "When generating the hero section for these routes, use a left-text/right-preview "
+                        "split layout: left column holds title, subtitle, key benefits and primary/secondary CTAs; "
+                        "right column shows a product UI preview card or mock screenshot with strong contrast "
+                        "but not overpowering the copy.\n"
+                    )
+
         # UI Design Spec from Stage 2 - implement exactly per spec
         ui_design_spec = api_specs.get("ui_design_spec") if api_specs else None
         ui_design_spec_context = ""
@@ -528,6 +555,21 @@ class CodeGenerationAgent:
                             t = ls.get("type", "")
                             d = ls.get("description", "")
                             parts.append(f"    loading_state: type={t} - {d}")
+                        bg = layout.get("background")
+                        if bg and isinstance(bg, dict):
+                            btype = bg.get("type", "")
+                            pspeed = bg.get("parallax_speed")
+                            nopa = bg.get("noise_opacity")
+                            parts.append(
+                                f"    background: type={btype or 'aurora_parallax'}, "
+                                f"parallax_speed={pspeed if pspeed is not None else 'default'}, "
+                                f"noise_opacity={nopa if nopa is not None else 'none'}"
+                            )
+                            if btype == "aurora_parallax_with_noise":
+                                parts.append(
+                                    "      (Implement as a gradient/aurora base layer plus a very subtle noise overlay "
+                                    "at low opacity; the noise must not reduce text readability or create visible tiling.)"
+                                )
             product_rules = ui_design_spec.get("product_grade_rules")
             if product_rules and isinstance(product_rules, list):
                 parts.append("\nproduct_grade_rules:")

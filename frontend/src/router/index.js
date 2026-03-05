@@ -6,6 +6,7 @@ import AudioPage from '../pages/AudioPage.vue'
 import SlidesPage from '../pages/SlidesPage.vue'
 import PdfPage from '../pages/PdfPage.vue'
 import CodePage from '../pages/CodePage.vue'
+import GalleryPage from '../pages/GalleryPage.vue'
 
 const routes = [
   {
@@ -37,6 +38,11 @@ const routes = [
     path: '/pdf',
     name: 'pdf',
     component: PdfPage,
+  },
+  {
+    path: '/gallery',
+    name: 'gallery',
+    component: GalleryPage,
   },
 ]
 

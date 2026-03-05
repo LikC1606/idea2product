@@ -1,5 +1,8 @@
-import heroAiStudio from '../assets/hero-ai-studio.png'
-import directionIcons from '../assets/directions-icons.png'
+// Fallback to generic Vue logo as placeholder when hero illustration asset is missing.
+// This keeps the build working even if dedicated hero artwork has not been added yet.
+import heroAiStudio from '../assets/vue.svg'
+// Direction icon strip placeholder; points to vue.svg until a dedicated sprite is provided.
+import directionIcons from '../assets/vue.svg'
 
 // Simple mapping for direction-specific visuals.
 // generatedUrl can be hydrated later from backend/model output.

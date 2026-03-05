@@ -68,7 +68,7 @@ function goTo(path, directionKey) {
         </span>
       </div>
       <div class="header-actions">
-        <button class="ghost-button" type="button" @click="goTo('/code', 'code')">
+        <button class="ghost-button interactive-scale-sm" type="button" @click="goTo('/code', 'code')">
           直接进入工作台
         </button>
       </div>
@@ -90,14 +90,14 @@ function goTo(path, directionKey) {
           <div class="hero-actions">
             <button
               type="button"
-              class="primary-button"
+              class="primary-button interactive-scale"
               @click="goTo('/code', 'code')"
             >
               快速开始：全栈应用生成
             </button>
             <button
               type="button"
-              class="secondary-button"
+              class="secondary-button interactive-scale-sm"
               @click="document.getElementById('directions-section')?.scrollIntoView({ behavior: 'smooth' })"
             >
               浏览全部生成方向
@@ -111,7 +111,7 @@ function goTo(path, directionKey) {
         </div>
         <div class="hero-right">
           <figure class="hero-visual" aria-hidden="true">
-            <div class="hero-visual-glass">
+            <div class="hero-visual-glass interactive-scale-sm">
               <img
                 class="hero-visual-image"
                 :src="resolveDirectionImage('code')"
@@ -138,7 +138,7 @@ function goTo(path, directionKey) {
           <article
             v-for="item in directions"
             :key="item.key"
-            class="direction-card"
+            class="direction-card interactive-scale-sm"
           >
             <header class="direction-card-header">
               <span class="direction-tag">{{ item.tag }}</span>
@@ -150,7 +150,7 @@ function goTo(path, directionKey) {
             </p>
             <button
               type="button"
-              class="card-button"
+              class="card-button interactive-scale-sm"
               @click="goTo(item.path, item.key === 'code' ? 'code' : item.key)"
             >
               开始这个方向
@@ -248,7 +248,7 @@ function goTo(path, directionKey) {
 
 .hero {
   display: grid;
-  grid-template-columns: minmax(0, 3fr) minmax(0, 2.4fr);
+  grid-template-columns: minmax(0, 3.2fr) minmax(0, 2fr);
   gap: 40px;
   align-items: center;
 }
@@ -348,7 +348,7 @@ function goTo(path, directionKey) {
 
 .hero-visual {
   width: 100%;
-  max-width: 480px;
+  max-width: 520px;
   display: flex;
   justify-content: flex-end;
 }
@@ -361,7 +361,7 @@ function goTo(path, directionKey) {
   background: radial-gradient(circle at top left, rgba(56, 189, 248, 0.18), transparent 55%),
     radial-gradient(circle at bottom right, rgba(99, 102, 241, 0.28), rgba(15, 23, 42, 0.98));
   border: 1px solid rgba(148, 163, 184, 0.5);
-  box-shadow: 0 24px 55px rgba(15, 23, 42, 0.95);
+  box-shadow: 0 26px 72px rgba(15, 23, 42, 0.95);
   overflow: hidden;
 }
 
@@ -512,6 +512,7 @@ function goTo(path, directionKey) {
   }
   .hero {
     grid-template-columns: minmax(0, 1.2fr);
+    align-items: flex-start;
   }
   .hero-right {
     justify-content: flex-start;
