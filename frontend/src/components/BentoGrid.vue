@@ -8,36 +8,44 @@ const props = defineProps({
 </script>
 
 <template>
-  <div class="bento-grid" aria-label="Idea2Product feature overview">
-    <article
-      v-for="item in props.items"
-      :key="item.id"
-      class="bento-card"
-      :class="`bento-card--${item.sizeVariant || 'small'}`"
-    >
-      <header class="bento-card__header">
-        <span v-if="item.accent" class="bento-card__accent">
-          {{ item.accent }}
-        </span>
-        <h3 class="bento-card__title">
-          {{ item.title }}
-        </h3>
-      </header>
-      <p class="bento-card__description">
-        {{ item.description }}
-      </p>
-    </article>
+  <div class="bento-container" aria-label="Idea2Product feature overview">
+    <div class="bento-grid">
+      <article
+        v-for="item in props.items"
+        :key="item.id"
+        class="bento-card"
+        :class="`bento-card--${item.sizeVariant || 'small'}`"
+      >
+        <header class="bento-card__header">
+          <span v-if="item.accent" class="bento-card__accent">
+            {{ item.accent }}
+          </span>
+          <h3 class="bento-card__title">
+            {{ item.title }}
+          </h3>
+        </header>
+        <p class="bento-card__description">
+          {{ item.description }}
+        </p>
+      </article>
+    </div>
   </div>
 </template>
 
 <style scoped>
+.bento-container {
+  width: 100%;
+  max-width: 720px;
+  margin: 32px auto 0;
+  /* Make layout respond to container width (not viewport width). */
+  container-type: inline-size;
+}
+
 .bento-grid {
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
   gap: var(--spacing-16, 16px);
   width: 100%;
-  max-width: 720px;
-  margin: 32px auto 0;
 }
 
 .bento-card {
@@ -137,15 +145,31 @@ const props = defineProps({
 }
 
 @media (max-width: 768px) {
-  .bento-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
+  .bento-container {
     margin-top: 24px;
   }
+}
 
+/* Container-query: sidebar / narrow panels (e.g. ChatPanel). */
+@container (max-width: 520px) {
+  .bento-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .bento-card--large,
+  .bento-card--wide,
+  .bento-card--small,
   .bento-card {
-    grid-column: span 2;
-    min-height: 110px;
+    grid-column: span 1;
+    min-height: 0;
+  }
+}
+
+@container (max-width: 380px) {
+  .bento-card__header {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }
 </style>

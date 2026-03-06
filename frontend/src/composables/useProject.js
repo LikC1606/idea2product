@@ -49,8 +49,13 @@ export function useProject() {
       const data = await api.getFile(projectId.value, path)
       fileContent.value = data
       return data
-    } catch {
-      fileContent.value = null
+    } catch (err) {
+      fileContent.value = {
+        path,
+        content: null,
+        language: '',
+        error: err?.message || 'Failed to load file',
+      }
       return null
     }
   }

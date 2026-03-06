@@ -45,6 +45,16 @@ class ErrorType(str, Enum):
     IMPORT = "import"
 
 
+class ProductType(str, Enum):
+    """Type of output artifact / product."""
+
+    WEB = "web"
+    PDF = "pdf"
+    VIDEO = "video"
+    AUDIO = "audio"
+    APP = "app"
+
+
 # ============================================================================
 # Stage 1: Requirements Models
 # ============================================================================
@@ -83,6 +93,10 @@ class Requirements(BaseModel):
             "data_dashboard, notebook_style. Used by Stage 2 to shape "
             "ui_guidelines and hero_layouts."
         ),
+    )
+    product_type: Optional[ProductType] = Field(
+        default=ProductType.WEB,
+        description="Output artifact type: web, pdf, video, audio, app. Default web.",
     )
     created_at: datetime = Field(default_factory=datetime.now)
 
@@ -210,6 +224,22 @@ class EngineeringPlan(BaseModel):
             "'dark_bg_light_text', 'notes': 'Left column: title/subtitle/"
             "CTA; right column: product UI preview card'}}}."
         ),
+    )
+    product_type: Optional[ProductType] = Field(
+        default=None,
+        description="Output artifact type; when set, plan may include type-specific specs.",
+    )
+    latex_specs: Optional[Dict[str, Any]] = Field(
+        None,
+        description="PDF/document specs: sections, template, placeholders (product_type=pdf).",
+    )
+    video_specs: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Video specs: script, scenes, duration (product_type=video).",
+    )
+    audio_specs: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Audio specs: script, voice, format (product_type=audio).",
     )
     created_at: datetime = Field(default_factory=datetime.now)
 

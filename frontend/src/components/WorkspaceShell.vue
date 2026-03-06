@@ -140,10 +140,17 @@ async function handleSend(text) {
 async function handleGenerate() {
   if (!projectId.value) return
   try {
-    await api.triggerGeneration(projectId.value)
+    setStatus('processing', 'Queued…', 'Queued', 0)
+    appendSystemMessage('已开始排队生成（Queued）。你可以切换到 Plan/Code/Preview 查看进度。')
+    const res = await api.triggerGeneration(projectId.value)
+    if (res?.status && res.status !== 'queued') {
+      appendSystemMessage(`生成任务已提交：${res.status}`)
+    }
     startPolling()
   } catch (err) {
-    appendSystemMessage(err.message || 'Failed to start generation')
+    const msg = err?.message || 'Failed to start generation'
+    updateFromPayload({ status: 'failed', error: msg, current_stage: 'Generate failed', progress: 0 })
+    appendSystemMessage(msg)
   }
 }
 
@@ -238,7 +245,6 @@ watch(projectId, (pid) => {
         @select-project="handleLoadProject"
       />
       <ChatPanel
-        class="sidebar-sticky"
         :messages="messages"
         :sending="sending"
         :typing="typing"
@@ -281,7 +287,7 @@ watch(projectId, (pid) => {
         <div class="right-content">
           <Transition name="tab-fade" mode="out-in">
             <div v-if="activeTab === 'plan'" key="plan" class="tab-pane plan-pane">
-              <Stage2PlanPanel :project-id="projectId" :status="status" />
+              <Stage2PlanPanel :project-id="projectId" :status="status" :active="activeTab === 'plan'" />
             </div>
             <div v-else-if="activeTab === 'code'" key="code" class="tab-pane code-pane">
               <CodePanel
@@ -382,7 +388,7 @@ watch(projectId, (pid) => {
   display: flex;
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
+  overflow: hidden;
   position: relative;
   z-index: 1;
 }

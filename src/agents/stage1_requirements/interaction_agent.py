@@ -1,6 +1,7 @@
 """Interaction Agent for Stage 1 - Requirements Gathering."""
 
 import json
+import re
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Dict, Any, List, Optional, Iterator
@@ -35,6 +36,10 @@ class ClarificationQuestion:
     category: str  # "functional", "technical", "data", "users", "ui"
     question: str
     options: List[ClarificationOption] = field(default_factory=list)
+    # Whether the UI should render structured options for this question.
+    # Defaults to True for backward compatibility; when False, the question
+    # should be treated as open-ended without choice chips.
+    need_options: bool = True
     allow_multiple: bool = False
     allow_other: bool = True
     answer: Optional[str] = None
@@ -120,6 +125,55 @@ class InteractionAgent:
 
     def __init__(self, llm_service: LLMService):
         self.llm_service = llm_service
+
+    # ------------------------------------------------------------------
+    # Chat reply post-processing helpers
+    # ------------------------------------------------------------------
+
+    def _normalize_chat_reply(self, text: str) -> str:
+        """
+        Enforce a single, concise clarification question without examples.
+
+        - Keep only the last sentence ending with '?' or '？'
+        - Strip any trailing 'For example:' / 'Examples:' style segments
+        - Remove inline parenthetical segments that contain example hints (e.g. 'e.g.')
+        - Collapse newlines/extra spaces into a single line
+        """
+        if not text:
+            return text
+        t = (text or "").strip()
+
+        # Prefer the last explicit question sentence.
+        last_q = max(t.rfind("?"), t.rfind("？"))
+        if last_q != -1:
+            t = t[: last_q + 1]
+
+        # Remove common example-introducing phrases if they still appear.
+        lower = t.lower()
+        for marker in ["for example", "for example:", "examples:", "例如：", "例如:", "比如：", "比如:"]:
+            idx = lower.find(marker)
+            if idx != -1:
+                t = t[:idx].rstrip()
+                break
+
+        # Remove inline parentheses that look like example lists, e.g. "(e.g., ...)".
+        # This is conservative: only strips when the parentheses contain 'e.g.' or its CJK variants.
+        def _strip_example_parens(s: str) -> str:
+            pattern = re.compile(r"\([^)]*(e\.g\.|例如|比如)[^)]*\)")
+            return pattern.sub("", s)
+
+        t = _strip_example_parens(t)
+
+        # Collapse newlines and multiple spaces.
+        t = " ".join(t.split())
+
+        if not t:
+            return t
+
+        # Ensure it ends with a question mark.
+        if not (t.endswith("?") or t.endswith("？")):
+            t = t.rstrip(".!。！") + "?"
+        return t
 
     def execute(self, context: ExecutionContext) -> Requirements:
         """
@@ -370,6 +424,109 @@ class InteractionAgent:
         except Exception as e:
             logger.warning(f"Failed to generate questions with LLM: {e}")
             return self._default_questions(requirement)
+
+    def generate_options_for_question(
+        self,
+        assistant_question: str,
+        recent_messages: Optional[List[Dict[str, str]]] = None,
+        requirement_hint: Optional[str] = None,
+        *,
+        question_id: str = "q1",
+        category: str = "functional",
+        allow_multiple: bool = False,
+        allow_other: bool = True,
+        max_tokens: int = 256,
+        temperature: float = 0.2,
+    ) -> ClarificationQuestion:
+        """Generate 3-6 answer options for ONE assistant clarification question.
+
+        This is used by the Web UI chips panel so that options align with the
+        assistant's latest question (rather than a fixed rule-based template).
+        """
+        assistant_question = (assistant_question or "").strip()
+        if not assistant_question:
+            raise ValueError("assistant_question is required")
+
+        # Compact recent context to keep prompts small and stable.
+        recent_block = ""
+        if recent_messages:
+            lines: List[str] = []
+            for m in recent_messages[-10:]:
+                role = (m.get("role") or "").strip() or "user"
+                content = (m.get("content") or "").strip()
+                if not content:
+                    continue
+                # Avoid huge blocks
+                lines.append(f"{role}: {content[:200]}")
+            recent_block = "\n".join(lines)
+
+        prompt = _prompt_loader.format(
+            "interaction_clarification_options_for_question",
+            assistant_question=assistant_question,
+            recent_messages=recent_block or "(empty)",
+            requirement_hint=(requirement_hint or "").strip() or "(empty)",
+        )
+
+        # NOTE: LLMService.generate_json forces temperature=0.0.
+        # For option generation we want a small amount of variation while staying structured,
+        # so we call generate() and parse JSON ourselves.
+        system = "You must respond with valid JSON only."
+        raw = self.llm_service.generate(
+            prompt=prompt,
+            system=system,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+        try:
+            result = json.loads(raw.strip())
+        except Exception as e:
+            raise ValueError(f"Invalid JSON from LLM: {e}") from e
+        if not isinstance(result, dict):
+            raise ValueError("Expected a JSON object with question, need_options, options")
+
+        need_options = bool(result.get("need_options", True))
+        raw_options = result.get("options") or []
+        if not need_options:
+            raise ValueError("LLM indicated need_options = false for UI chips payload")
+        if not isinstance(raw_options, list):
+            raise ValueError("Expected 'options' to be a JSON array")
+
+        options: List[ClarificationOption] = []
+        seen = set()
+        for i, opt in enumerate(raw_options, 1):
+            if isinstance(opt, str):
+                label = opt.strip()
+                opt_id = f"opt_{i}"
+            elif isinstance(opt, dict):
+                label = (opt.get("label") or opt.get("text") or "").strip()
+                opt_id = (opt.get("id") or f"opt_{i}").strip()
+            else:
+                continue
+            if not label:
+                continue
+            if label.lower() in seen:
+                continue
+            seen.add(label.lower())
+            options.append(ClarificationOption(id=opt_id, label=label))
+            if len(options) >= 6:
+                break
+
+        if len(options) < 3:
+            raise ValueError("LLM returned insufficient options (<3)")
+
+        question_text = (result.get("question") or assistant_question or "").strip()
+        if not question_text:
+            question_text = assistant_question
+
+        return ClarificationQuestion(
+            id=question_id,
+            category=category,
+            question=question_text,
+            need_options=need_options,
+            options=options,
+            allow_multiple=bool(allow_multiple),
+            allow_other=bool(allow_other),
+        )
 
     def _default_questions(self, requirement: str) -> List[ClarificationQuestion]:
         """Keyword-based fallback questions when LLM is not available.
@@ -650,7 +807,8 @@ class InteractionAgent:
         )
         prompt = f"Conversation so far:\n{conv}\n\nRespond as the assistant (one message only):"
         try:
-            return self.llm_service.generate(prompt, system=system)
+            raw = self.llm_service.generate(prompt, system=system)
+            return self._normalize_chat_reply(raw)
         except Exception as e:
             logger.warning(f"reply_in_chat failed: {e}")
             return "已收到。我会根据当前对话在后台生成或更新应用，你可以在右侧查看代码和预览。"
@@ -665,16 +823,18 @@ class InteractionAgent:
             yield "请描述你想要的应用或功能，我会根据你的描述在后台生成产品。你可以随时补充需求，我会在已有基础上改进。"
             return
         system = _prompt_loader.load("interaction_chat_system")
-        # Build OpenAI-format messages (only user/assistant for context)
-        openai_messages = [{"role": "system", "content": system}]
-        for m in messages[-20:]:
-            role = m.get("role", "user")
-            if role not in ("user", "assistant"):
-                continue
-            openai_messages.append({"role": role, "content": m.get("content", "") or ""})
         try:
-            for chunk in self.llm_service.stream_messages(openai_messages):
-                yield chunk
+            # For this agent we prefer deterministic, post-processed replies,
+            # so we generate once, normalize, and stream the normalized text.
+            conv = "\n".join(
+                f"{'User' if m.get('role') == 'user' else 'Assistant'}: {m.get('content', '')}"
+                for m in messages[-20:]
+            )
+            prompt = f"Conversation so far:\n{conv}\n\nRespond as the assistant (one message only):"
+            raw = self.llm_service.generate(prompt, system=system)
+            normalized = self._normalize_chat_reply(raw)
+            # Yield in a single chunk to keep SSE contract simple.
+            yield normalized
         except Exception as e:
             logger.warning(f"reply_in_chat_stream failed: {e}")
             yield "已收到。我会根据当前对话在后台生成或更新应用，你可以在右侧查看代码和预览。"

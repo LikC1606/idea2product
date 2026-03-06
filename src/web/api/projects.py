@@ -36,6 +36,11 @@ logger = get_logger(__name__)
 
 bp = Blueprint("projects", __name__, url_prefix="/api/projects")
 
+# In-memory cache for clarification options to reduce repeated LLM calls.
+# Keyed by (project_id, assistant_question). TTL is short (UI convenience only).
+_CLARIFY_CACHE: dict = {}
+_CLARIFY_CACHE_TTL_SECONDS = 300
+
 # project_id format: proj_<date>_<time>_<hex> (e.g. proj_20250103_123456_abc123)
 _PROJECT_ID_RE = re.compile(r"^proj_[a-zA-Z0-9_-]+$")
 
@@ -55,6 +60,139 @@ def _get_task_service():
     if not hasattr(_get_task_service, "_instance"):
         _get_task_service._instance = TaskService(get_settings())
     return _get_task_service._instance
+
+
+# ======================================================================
+# Clarification helpers (shared by chat + UI chips)
+# ======================================================================
+
+def _extract_latest_assistant_text(messages) -> str:
+    last_assistant = ""
+    for m in reversed(messages or []):
+        if m.get("role") == "assistant":
+            last_assistant = (m.get("content") or "").strip()
+            if last_assistant:
+                break
+    return last_assistant
+
+
+def _extract_latest_user_text(messages) -> str:
+    last_user = ""
+    for m in reversed(messages or []):
+        if m.get("role") == "user":
+            last_user = (m.get("content") or "").strip()
+            if last_user:
+                break
+    return last_user
+
+
+def _extract_question_sentence(text: str) -> str:
+    """Extract the last question sentence from assistant text (best-effort)."""
+    text = (text or "").strip()
+    if not text:
+        return ""
+    assistant_question = text
+    for sep in ["?", "？"]:
+        if sep in text:
+            idx = text.rfind(sep)
+            assistant_question = text[: idx + 1].strip()
+            break
+    return assistant_question
+
+
+def _is_question(text: str) -> bool:
+    t = (text or "").strip()
+    return bool(t) and (t.endswith("?") or t.endswith("？"))
+
+
+def _get_or_build_clarification_payload(
+    *,
+    settings,
+    project_id: str,
+    assistant_question: str,
+    recent_messages,
+    requirement_hint: str,
+    raise_on_error: bool = False,
+):
+    """Return payload: {"questions":[...]} or None.
+
+    - Chat should pass raise_on_error=False so clarification never blocks reply.
+    - The legacy endpoint may pass raise_on_error=True to surface failures.
+    """
+    assistant_question = (assistant_question or "").strip()
+    if not assistant_question or not _is_question(assistant_question):
+        return None
+
+    # Cache hit: avoid repeated LLM calls for the same question.
+    cache_key = (project_id, assistant_question)
+    now = time.time()
+    cached = _CLARIFY_CACHE.get(cache_key)
+    if cached:
+        ts, payload = cached
+        if (now - ts) <= _CLARIFY_CACHE_TTL_SECONDS:
+            return payload
+        _CLARIFY_CACHE.pop(cache_key, None)
+
+    try:
+        base = LLMService.from_settings(settings)
+        # Force a fast model for UI clarification chips to improve success rate.
+        fast_model_id = getattr(settings, "fast_model_for_code_gen", None) or base.model
+        base_fast = base.with_model(fast_model_id)
+        llm_service = LLMService(
+            api_key=base_fast.api_key,
+            model=base_fast.model,
+            vlm_model=base_fast.vlm_model,
+            max_tokens=base_fast.max_tokens,
+            temperature=0.2,
+            max_retries=1,
+            base_url=base_fast.base_url,
+            timeout=min(int(getattr(base_fast, "timeout", 120) or 120), 20),
+        )
+        agent = InteractionAgent(llm_service)
+        t0 = time.time()
+        q = agent.generate_options_for_question(
+            assistant_question=assistant_question,
+            recent_messages=recent_messages,
+            requirement_hint=requirement_hint,
+            question_id="q1",
+            category="functional",
+            allow_multiple=False,
+            allow_other=True,
+            max_tokens=256,
+            temperature=0.2,
+        )
+        dt = time.time() - t0
+        logger.info(
+            "Clarification options generated",
+            extra={
+                "project_id": project_id,
+                "model": getattr(llm_service, "model", ""),
+                "base_url": getattr(llm_service, "base_url", ""),
+                "elapsed_ms": int(dt * 1000),
+                "question_len": len(assistant_question or ""),
+                "options_count": len(getattr(q, "options", []) or []),
+            },
+        )
+        payload = {
+            "questions": [
+                {
+                    "id": q.id,
+                    "category": q.category,
+                    "question": q.question,
+                    "need_options": bool(getattr(q, "need_options", True)),
+                    "options": [{"id": opt.id, "label": opt.label} for opt in (q.options or [])],
+                    "allow_multiple": bool(q.allow_multiple),
+                    "allow_other": bool(q.allow_other),
+                }
+            ]
+        }
+        _CLARIFY_CACHE[cache_key] = (now, payload)
+        return payload
+    except Exception as e:
+        if raise_on_error:
+            raise
+        logger.warning(f"Clarification option generation failed for {project_id}: {e}")
+        return None
 
 
 # ======================================================================
@@ -85,7 +223,15 @@ def create_project():
 
     interactive = data.get("interactive", False)
     clarifications = data.get("clarifications", {})
-    project_id = ts.create_project(requirement, interactive=interactive, clarifications=clarifications)
+    product_type = data.get("product_type") or None
+    model_id = data.get("model_id") or None
+    project_id = ts.create_project(
+        requirement,
+        interactive=interactive,
+        clarifications=clarifications,
+        product_type=product_type,
+        model_id=model_id,
+    )
     return jsonify({"project_id": project_id, "status": "pending"}), 201
 
 
@@ -113,17 +259,41 @@ def post_chat(project_id):
 
     messages = chat_service.get_messages(settings, project_id)
 
+    clarification = None
     try:
         llm_service = LLMService.from_settings(settings)
         agent = InteractionAgent(llm_service)
+        t0 = time.time()
         reply = agent.reply_in_chat(messages)
+        dt = time.time() - t0
+        logger.info(
+            "Chat reply generated",
+            extra={
+                "project_id": project_id,
+                "model": getattr(llm_service, "model", ""),
+                "base_url": getattr(llm_service, "base_url", ""),
+                "elapsed_ms": int(dt * 1000),
+            },
+        )
     except Exception as e:
         logger.warning(f"Chat reply failed for {project_id}: {e}")
         reply = "已收到你的需求。你可以继续补充说明，或点击 Generate 开始生成。"
 
     chat_service.append_message(settings, project_id, "assistant", reply)
 
-    return jsonify({"reply": reply, "project_id": project_id})
+    try:
+        assistant_question = _extract_question_sentence(reply)
+        clarification = _get_or_build_clarification_payload(
+            settings=settings,
+            project_id=project_id,
+            assistant_question=assistant_question,
+            recent_messages=messages[-12:],
+            requirement_hint=_extract_latest_user_text(messages),
+        )
+    except Exception:
+        clarification = None
+
+    return jsonify({"reply": reply, "project_id": project_id, "clarification": clarification})
 
 
 @bp.route("/<project_id>/chat/stream", methods=["POST"])
@@ -145,17 +315,42 @@ def post_chat_stream(project_id):
         try:
             llm_service = LLMService.from_settings(settings)
             agent = InteractionAgent(llm_service)
+            t0 = time.time()
             for chunk in agent.reply_in_chat_stream(messages):
                 buffer.append(chunk)
                 yield f"data: {json.dumps({'chunk': chunk})}\n\n"
             full_reply = "".join(buffer)
             chat_service.append_message(settings, project_id, "assistant", full_reply)
+            clarification = None
+            try:
+                assistant_question = _extract_question_sentence(full_reply)
+                clarification = _get_or_build_clarification_payload(
+                    settings=settings,
+                    project_id=project_id,
+                    assistant_question=assistant_question,
+                    recent_messages=messages[-12:],
+                    requirement_hint=_extract_latest_user_text(messages),
+                )
+            except Exception:
+                clarification = None
+            dt = time.time() - t0
+            logger.info(
+                "Chat stream completed",
+                extra={
+                    "project_id": project_id,
+                    "model": getattr(llm_service, "model", ""),
+                    "base_url": getattr(llm_service, "base_url", ""),
+                    "elapsed_ms": int(dt * 1000),
+                    "reply_len": len(full_reply),
+                },
+            )
         except Exception as e:
             logger.warning(f"Chat stream failed for {project_id}: {e}")
             fallback = "已收到你的需求。你可以继续补充说明，或点击 Generate 开始生成。"
             yield f"data: {json.dumps({'chunk': fallback})}\n\n"
             chat_service.append_message(settings, project_id, "assistant", fallback)
-        yield "data: {\"done\": true}\n\n"
+            clarification = None
+        yield f"data: {json.dumps({'done': True, 'clarification': clarification})}\n\n"
 
     return Response(
         generate_and_persist(),
@@ -176,7 +371,7 @@ def get_chat(project_id):
 
 @bp.route("/<project_id>/generate", methods=["POST"])
 def trigger_generate(project_id):
-    """Explicitly trigger generation for a project."""
+    """Explicitly trigger generation for a project. Body may include product_type, model_id."""
     if not _validate_project_id(project_id):
         return jsonify({"error": "Invalid project id"}), 400
     ts = _get_task_service()
@@ -190,8 +385,18 @@ def trigger_generate(project_id):
     if not user_messages:
         return jsonify({"error": "No messages yet. Send a message first, then click Generate."}), 400
 
-    ts.enqueue_generation(project_id)
-    return jsonify({"status": "queued", "project_id": project_id})
+    data = request.get_json(silent=True) or {}
+    product_type = data.get("product_type") or None
+    model_id = data.get("model_id") or None
+    ts.enqueue_generation(project_id, product_type=product_type, model_id=model_id)
+    return jsonify(
+        {
+            "status": "queued",
+            "project_id": project_id,
+            "product_type": product_type,
+            "model_id": model_id,
+        }
+    )
 
 
 # ======================================================================
@@ -237,7 +442,14 @@ def list_project_files(project_id):
 def get_project_file(project_id, file_path):
     if not _validate_project_id(project_id):
         return jsonify({"error": "Invalid project id"}), 400
-    content = _get_task_service().get_file(project_id, file_path)
+    try:
+        content = _get_task_service().get_file(project_id, file_path)
+    except Exception as e:
+        # Binary / unreadable files should not render as garbled text in the UI
+        from src.web.services.task_service import BinaryFileError
+        if isinstance(e, BinaryFileError):
+            return jsonify({"error": str(e)}), 415
+        raise
     if content is None:
         return jsonify({"error": "File not found"}), 404
     return jsonify(content)
@@ -260,6 +472,44 @@ def get_preview_url(project_id):
         error = preview_service.get_preview_error(project_id)
         return jsonify({"preview_url": url, "running": bool(url), "preview_error": error})
     return jsonify({"preview_url": url, "running": True})
+
+
+@bp.route("/<project_id>/clarification-questions", methods=["GET"])
+def get_clarification_questions(project_id):
+    """Generate structured clarification options for the latest assistant question.
+
+    Returns: {"questions": [{id, category, question, options:[{id,label}], allow_multiple, allow_other}]}
+    """
+    if not _validate_project_id(project_id):
+        return jsonify({"error": "Invalid project id"}), 400
+    settings = get_settings()
+    messages = chat_service.get_messages(settings, project_id)
+    if not messages:
+        return jsonify({"questions": []})
+
+    last_assistant = _extract_latest_assistant_text(messages)
+    if not last_assistant:
+        return jsonify({"questions": []})
+
+    assistant_question = _extract_question_sentence(last_assistant)
+    last_user = _extract_latest_user_text(messages)
+
+    try:
+        payload = _get_or_build_clarification_payload(
+            settings=settings,
+            project_id=project_id,
+            assistant_question=assistant_question,
+            recent_messages=messages[-12:],
+            requirement_hint=last_user,
+            raise_on_error=True,
+        )
+        if not payload:
+            return jsonify({"questions": []})
+        return jsonify(payload)
+    except Exception as e:
+        logger.exception(e)
+        # Per product decision: this endpoint is LLM-backed; on failure, surface error to UI.
+        return jsonify({"error": str(e) or "Failed to generate clarification options"}), 500
 
 
 @bp.route("/<project_id>", methods=["DELETE"])

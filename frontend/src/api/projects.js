@@ -85,7 +85,10 @@ export async function postChat(projectId, message) {
   })
   const data = await parseJson(res)
   if (!res.ok) throw new Error(data.error || 'Failed to send message')
-  return data
+  return {
+    reply: data.reply || '',
+    clarification: data.clarification || null,
+  }
 }
 
 /**
@@ -106,6 +109,7 @@ export async function postChatStream(projectId, message, { onChunk, onDone } = {
   const decoder = new TextDecoder()
   let buffer = ''
   let fullReply = ''
+  let donePayload = null
   while (true) {
     const { done, value } = await reader.read()
     if (done) break
@@ -120,7 +124,10 @@ export async function postChatStream(projectId, message, { onChunk, onDone } = {
             fullReply += data.chunk
             onChunk?.(data.chunk)
           }
-          if (data.done) onDone?.()
+          if (data.done) {
+            donePayload = data
+            onDone?.(data)
+          }
         } catch (_) {}
       }
     }
@@ -132,10 +139,16 @@ export async function postChatStream(projectId, message, { onChunk, onDone } = {
         fullReply += data.chunk
         onChunk?.(data.chunk)
       }
-      if (data.done) onDone?.()
+      if (data.done) {
+        donePayload = data
+        onDone?.(data)
+      }
     } catch (_) {}
   }
-  return fullReply
+  return {
+    reply: fullReply,
+    clarification: donePayload?.clarification || null,
+  }
 }
 
 export async function triggerGeneration(projectId) {
@@ -192,5 +205,26 @@ export async function getPlan(projectId) {
   const res = await fetch(url)
   const data = await parseJson(res, url)
   if (!res.ok) throw new Error(data.error || 'Failed to get plan')
+  return data
+}
+
+export async function getClarificationQuestions(projectId) {
+  const url = `${API_BASE}/${projectId}/clarification-questions`
+  // This endpoint is LLM-backed and can be slow; add a UI-friendly timeout.
+  const controller = new AbortController()
+  const t = setTimeout(() => controller.abort(), 25000)
+  let res
+  try {
+    res = await fetch(url, { signal: controller.signal })
+  } catch (e) {
+    if (e?.name === 'AbortError') {
+      throw new Error('生成选项超时（25s）。请重试，或检查 LLM 配置/网络/额度。')
+    }
+    throw e
+  } finally {
+    clearTimeout(t)
+  }
+  const data = await parseJson(res, url)
+  if (!res.ok) throw new Error(data.error || 'Failed to load clarification questions')
   return data
 }

@@ -26,6 +26,7 @@ class ModelSelector:
         task_type: Optional[str] = None,
         requires_vision: bool = False,
         prefer_fast: bool = False,
+        product_type: Optional[str] = None,
     ) -> ModelEntry:
         """
         Select a model for a given pipeline stage.
@@ -34,6 +35,8 @@ class ModelSelector:
             stage: Pipeline stage number (1-4)
             task_type: Optional task type hint (e.g. 'frontend', 'backend')
             requires_vision: Whether vision/VLM capability is needed
+            prefer_fast: Prefer fallback/fast model when not requiring vision
+            product_type: Optional product type (web, pdf, video, audio, app) for type-specific routing
 
         Returns:
             ModelEntry for the selected model
@@ -47,7 +50,9 @@ class ModelSelector:
                 logger.debug(f"Stage {stage}: using fast model {fast.id}")
                 return fast
 
-        route = self.registry.get_stage_route(stage, requires_vision=requires_vision)
+        route = self.registry.get_stage_route(
+            stage, requires_vision=requires_vision, product_type=product_type
+        )
         if route is None:
             return self._default_entry(requires_vision)
 

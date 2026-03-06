@@ -68,9 +68,34 @@ def handle_validation_error(e):
     return e
 
 
+@app.route("/api/options/models", methods=["GET"])
+def get_options_models():
+    """Return available LLM models from registry for user selection (product_type, model override)."""
+    try:
+        from config.settings import get_settings
+        from src.services.model_registry import ModelRegistry
+
+        settings = get_settings()
+        registry = ModelRegistry.load(settings.models_registry_path)
+        models = [
+            {
+                "id": m.id,
+                "provider": m.provider,
+                "capabilities": m.capabilities,
+                "roles": m.roles,
+                "cost_tier": m.cost_tier,
+                "max_tokens": m.max_tokens,
+            }
+            for m in registry.models
+        ]
+        return jsonify({"models": models})
+    except Exception as e:
+        return jsonify({"error": str(e), "models": []}), 500
+
+
 @app.route("/api/projects/<project_id>/generate", methods=["POST"])
 def trigger_generate_app(project_id):
-    """Generate endpoint - at app level to ensure routing works."""
+    """Generate endpoint - at app level to ensure routing works. Body may include product_type, model_id."""
     from src.web.api.projects import _get_task_service, _validate_project_id
     from src.web.services import chat_service
     from config.settings import get_settings
@@ -87,7 +112,10 @@ def trigger_generate_app(project_id):
     if not user_messages:
         return jsonify({"error": "No messages yet. Send a message first, then click Generate."}), 400
 
-    ts.enqueue_generation(project_id)
+    data = request.get_json(silent=True) or {}
+    product_type = data.get("product_type") or None
+    model_id = data.get("model_id") or None
+    ts.enqueue_generation(project_id, product_type=product_type, model_id=model_id)
     return jsonify({"status": "queued", "project_id": project_id})
 
 

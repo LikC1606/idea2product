@@ -23,5 +23,24 @@
     "3": {"preferred_role": "primary", "required_capabilities": ["code", "long_context"]},
     "4": {"preferred_role": "primary", "required_capabilities": ["text"]},
     "4_vision": {"preferred_role": "vision", "required_capabilities": ["vision"]}
+  },
+  "product_type_routing": {
+    "web": {
+      "2": {"preferred_role": "primary", "required_capabilities": ["json"]},
+      "3": {"preferred_role": "primary", "required_capabilities": ["code", "long_context"]}
+    },
+    "pdf": {
+      "2": {"preferred_role": "primary", "required_capabilities": ["json", "long_context"]}
+    },
+    "video": {
+      "2": {"preferred_role": "primary", "required_capabilities": ["json"]}
+    },
+    "audio": {
+      "2": {"preferred_role": "primary", "required_capabilities": ["json"]}
+    },
+    "app": {
+      "2": {"preferred_role": "primary", "required_capabilities": ["json"]},
+      "3": {"preferred_role": "primary", "required_capabilities": ["code", "long_context"]}
+    }
   }
 }

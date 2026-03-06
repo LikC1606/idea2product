@@ -7,6 +7,25 @@ const prefersReducedMotion = () => {
   }
 }
 
+function isScrollableStyle(value) {
+  return value === 'auto' || value === 'scroll' || value === 'overlay'
+}
+
+function findScrollRoot(el) {
+  if (typeof window === 'undefined') return null
+  let cur = el?.parentElement
+  while (cur && cur !== document.body) {
+    const style = window.getComputedStyle(cur)
+    const overflowY = style?.overflowY
+    const overflow = style?.overflow
+    if (isScrollableStyle(overflowY) || isScrollableStyle(overflow)) {
+      return cur
+    }
+    cur = cur.parentElement
+  }
+  return null
+}
+
 function setupObserver(el) {
   if (prefersReducedMotion()) {
     el.classList.add('reveal-in')
@@ -14,8 +33,15 @@ function setupObserver(el) {
     return
   }
 
+  if (typeof IntersectionObserver === 'undefined') {
+    el.classList.add('reveal-in')
+    el.classList.remove('reveal-base')
+    return
+  }
+
   el.classList.add('reveal-base')
 
+  const root = findScrollRoot(el)
   const observer = new IntersectionObserver(
     (entries) => {
       entries.forEach((entry) => {
@@ -27,7 +53,9 @@ function setupObserver(el) {
       })
     },
     {
-      threshold: 0.2,
+      root,
+      threshold: 0,
+      rootMargin: '64px 0px 64px 0px',
     }
   )
 

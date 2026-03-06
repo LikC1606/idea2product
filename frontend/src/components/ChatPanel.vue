@@ -27,6 +27,12 @@ const canGenerate = computed(() => {
 const inputEl = ref(null)
 const messagesEl = ref(null)
 
+// 本轮澄清回答：{ [questionId]: Set<optionLabel> }
+const clarificationAnswers = ref({})
+// 选择「其它」时的自定义输入：{ [questionId]: string }
+const clarificationOtherText = ref({})
+const OTHER_OPTION_LABEL = '其它'
+
 const QUICK_CHIPS = [
   { text: 'Build a todo list app with add, delete, and mark as done', label: 'Todo App' },
   { text: 'Build a blog with create, edit, delete posts and comments', label: 'Blog' },
@@ -128,6 +134,91 @@ const showChatSkeleton = computed(() => {
   const len = props.messages?.length || 0
   return len > 0 && len <= 4
 })
+
+const hasClarificationSelection = computed(() => {
+  const value = clarificationAnswers.value || {}
+  return Object.values(value).some((set) => set instanceof Set && set.size > 0)
+})
+
+const lastMessage = computed(() => {
+  const list = props.messages || []
+  if (!list.length) return null
+  return list[list.length - 1]
+})
+
+const isAssistantQuestion = computed(() => {
+  const m = lastMessage.value
+  if (!m || m.role !== 'assistant') return false
+  const text = (m.content || '').trim()
+  if (!text) return false
+  return text.endsWith('?') || text.endsWith('？')
+})
+
+const shouldSuggestClarifications = computed(() => {
+  if (!props.projectId) return false
+  if (props.generating) return false
+  if (!isAssistantQuestion.value) return false
+  const hasUser = props.messages?.some((m) => m.role === 'user')
+  return !!hasUser
+})
+
+const clarificationQuestions = computed(() => {
+  if (!shouldSuggestClarifications.value) return []
+  const m = lastMessage.value
+  if (!m || m.role !== 'assistant') return []
+  const qs = m?.clarification?.questions
+  if (!Array.isArray(qs)) return []
+  return qs
+    .filter((q) => q && q.need_options !== false)
+    .slice(0, 6)
+})
+
+function toggleMulti(q, optLabel) {
+  const key = q.id || q.question
+  const existing = clarificationAnswers.value[key]
+  const set = existing instanceof Set ? existing : new Set()
+  if (set.has(optLabel)) set.delete(optLabel)
+  else set.add(optLabel)
+  clarificationAnswers.value = { ...clarificationAnswers.value, [key]: set }
+}
+
+function toggleSingle(q, optLabel) {
+  const key = q.id || q.question
+  const set = new Set()
+  set.add(optLabel)
+  clarificationAnswers.value = { ...clarificationAnswers.value, [key]: set }
+}
+
+function setClarificationOther(questionKey, value) {
+  clarificationOtherText.value = { ...clarificationOtherText.value, [questionKey]: value }
+}
+
+function submitClarifications() {
+  const qs = clarificationQuestions.value || []
+  const answers = clarificationAnswers.value || {}
+  const otherTexts = clarificationOtherText.value || {}
+  const lines = []
+  for (const q of qs) {
+    const key = q.id || q.question
+    const set = answers[key]
+    if (!(set instanceof Set) || set.size === 0) continue
+    let labels = Array.from(set)
+    if (labels.includes(OTHER_OPTION_LABEL)) {
+      const custom = (otherTexts[key] || '').trim()
+      labels = labels.filter((l) => l !== OTHER_OPTION_LABEL)
+      if (custom) labels.push(custom)
+      else labels.push(OTHER_OPTION_LABEL)
+    }
+    // Send answer-only to avoid "echoing" the question in the user's message bubble.
+    lines.push(labels.join('、'))
+  }
+  if (!lines.length) return
+  const text = lines.join('\n')
+  emit('send', text)
+  clarificationAnswers.value = {}
+  clarificationOtherText.value = {}
+}
+
 watch(
   () => props.messages?.length,
   () => {
@@ -136,6 +227,25 @@ watch(
         messagesEl.value.scrollTop = messagesEl.value.scrollHeight
       }
     })
+  }
+)
+
+watch(
+  () => props.projectId,
+  () => {
+    clarificationAnswers.value = {}
+    clarificationOtherText.value = {}
+  }
+)
+
+watch(
+  () =>
+    (clarificationQuestions.value || [])
+      .map((q) => q.id || q.question)
+      .join('|'),
+  () => {
+    clarificationAnswers.value = {}
+    clarificationOtherText.value = {}
   }
 )
 </script>
@@ -182,6 +292,76 @@ watch(
 
       <div v-if="!showWelcome && showChatSkeleton" class="chat-skeleton-wrapper">
         <SkeletonChat />
+      </div>
+
+      <div
+        v-if="!showWelcome && shouldSuggestClarifications && clarificationQuestions.length > 0"
+        class="clarify-panel"
+        v-reveal-on-scroll
+      >
+        <div class="clarify-title">快速补充几个关键规格</div>
+        <div class="clarify-questions">
+          <div v-for="q in clarificationQuestions" :key="q.id || q.question" class="clarify-q">
+            <div class="clarify-q-text">{{ q.question }}</div>
+            <div class="clarify-options">
+              <button
+                v-for="opt in (q.options || []).slice(0, 6)"
+                :key="opt.id || opt.label"
+                type="button"
+                class="clarify-chip interactive-scale-sm"
+                :class="{
+                  selected:
+                    (clarificationAnswers[q.id || q.question] instanceof Set) &&
+                    clarificationAnswers[q.id || q.question].has(opt.label),
+                }"
+                @click="
+                  q.allow_multiple
+                    ? toggleMulti(q, opt.label)
+                    : toggleSingle(q, opt.label)
+                "
+              >
+                {{ opt.label }}
+              </button>
+              <template v-if="q.allow_other !== false">
+                <button
+                  type="button"
+                  class="clarify-chip clarify-chip-other interactive-scale-sm"
+                  :class="{
+                    selected:
+                      (clarificationAnswers[q.id || q.question] instanceof Set) &&
+                      clarificationAnswers[q.id || q.question].has(OTHER_OPTION_LABEL),
+                  }"
+                  @click="
+                    q.allow_multiple
+                      ? toggleMulti(q, OTHER_OPTION_LABEL)
+                      : toggleSingle(q, OTHER_OPTION_LABEL)
+                  "
+                >
+                  {{ OTHER_OPTION_LABEL }}
+                </button>
+                <input
+                  v-if="
+                    clarificationAnswers[q.id || q.question] instanceof Set &&
+                    clarificationAnswers[q.id || q.question].has(OTHER_OPTION_LABEL)
+                  "
+                  type="text"
+                  class="clarify-other-input"
+                  placeholder="请输入你的想法…"
+                  :value="clarificationOtherText[q.id || q.question] || ''"
+                  @input="(e) => setClarificationOther(q.id || q.question, e.target.value)"
+                />
+              </template>
+            </div>
+          </div>
+          <button
+            type="button"
+            class="clarify-continue interactive-scale-sm"
+            :disabled="!hasClarificationSelection"
+            @click="submitClarifications"
+          >
+            Continue
+          </button>
+        </div>
       </div>
 
       <div
@@ -510,6 +690,127 @@ watch(
   flex-direction: column;
   gap: var(--spacing-12);
   background: var(--bg-elevated);
+}
+
+.clarify-panel {
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.12) 0%, rgba(124, 58, 237, 0.06) 100%);
+  border-radius: var(--radius-xl);
+  padding: 14px 16px;
+}
+
+.clarify-title {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+  letter-spacing: 0.02em;
+}
+
+.clarify-sub {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.clarify-retry {
+  margin-top: 8px;
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(99, 102, 241, 0.45);
+  background: rgba(99, 102, 241, 0.14);
+  color: var(--accent);
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.clarify-questions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.clarify-q-text {
+  font-size: 0.82rem;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+  line-height: 1.5;
+}
+
+.clarify-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.clarify-chip {
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.6);
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.clarify-chip:hover {
+  border-color: rgba(99, 102, 241, 0.6);
+  color: rgba(125, 211, 252, 1);
+}
+
+.clarify-chip.selected {
+  border-color: var(--accent);
+  background: rgba(99, 102, 241, 0.22);
+  color: var(--accent);
+}
+
+.clarify-chip-other {
+  border-style: dashed;
+}
+
+.clarify-other-input {
+  min-width: 140px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.6);
+  color: var(--text-primary);
+  font-size: 0.78rem;
+  outline: none;
+}
+
+.clarify-other-input:focus {
+  border-color: rgba(99, 102, 241, 0.6);
+}
+
+.clarify-send {
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(99, 102, 241, 0.5);
+  background: rgba(99, 102, 241, 0.18);
+  color: var(--accent);
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.clarify-continue {
+  margin-top: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: none;
+  background: linear-gradient(135deg, var(--accent) 0%, #7c3aed 100%);
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  align-self: flex-start;
+  opacity: 0.95;
+}
+
+.clarify-continue:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .input-row {

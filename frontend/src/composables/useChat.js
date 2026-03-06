@@ -19,7 +19,7 @@ export function useChat() {
     try {
       const pid = await ensureProject()
       try {
-        const fullReply = await api.postChatStream(pid, msg, {
+        const res = await api.postChatStream(pid, msg, {
           onChunk: (chunk) => {
             const last = messages.value[messages.value.length - 1]
             if (last?.role === 'assistant') {
@@ -29,17 +29,28 @@ export function useChat() {
             }
           },
         })
+        const fullReply = res?.reply || ''
         const last = messages.value[messages.value.length - 1]
-        if (last?.role === 'assistant' && last.content !== fullReply) {
-          last.content = fullReply
-        } else if (last?.role !== 'assistant' && fullReply) {
-          messages.value.push({ role: 'assistant', content: fullReply })
+        if (last?.role === 'assistant') {
+          if (last.content !== fullReply) last.content = fullReply
+          if (res?.clarification) last.clarification = res.clarification
+        } else if (fullReply) {
+          messages.value.push({
+            role: 'assistant',
+            content: fullReply,
+            ...(res?.clarification ? { clarification: res.clarification } : {}),
+          })
         }
       } catch (streamErr) {
         try {
-          const data = await api.postChat(pid, msg)
-          if (data.reply) {
-            messages.value.push({ role: 'assistant', content: data.reply })
+          const res = await api.postChat(pid, msg)
+          const reply = res?.reply || ''
+          if (reply) {
+            messages.value.push({
+              role: 'assistant',
+              content: reply,
+              ...(res?.clarification ? { clarification: res.clarification } : {}),
+            })
           } else throw streamErr
         } catch {
           throw streamErr

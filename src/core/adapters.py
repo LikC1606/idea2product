@@ -12,6 +12,7 @@ from src.core.data_models import (
     FileSpec,
     BDDTestCase,
     ExternalModelSpec,
+    ProductType,
 )
 from src.utils.skeleton_builder import generate_minimal_pyi_from_interface_specs
 from src.utils.logger import get_logger
@@ -78,6 +79,10 @@ def engineering_plan_from_stage2(
         if isinstance(maybe_ui, dict):
             ui_guidelines = maybe_ui
 
+    product_type = getattr(requirements, "product_type", None)
+    if product_type is None:
+        product_type = ProductType.WEB
+
     return EngineeringPlan(
         tasks=tasks,
         algorithms=algorithms,
@@ -90,4 +95,5 @@ def engineering_plan_from_stage2(
         bdd_test_cases=bdd_test_cases or [],
         external_model_specs=external_model_specs or [],
         ui_guidelines=ui_guidelines,
+        product_type=product_type,
     )

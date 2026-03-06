@@ -26,6 +26,9 @@ from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+class BinaryFileError(Exception):
+    """Raised when attempting to preview a binary or non-text file."""
+
 
 def _is_transient_error(exc: BaseException) -> bool:
     """True if the exception is typically transient (network/LLM timeout, 5xx)."""
@@ -141,24 +144,49 @@ class TaskService:
     # ------------------------------------------------------------------
 
     def create_project(
-        self, requirement: str, interactive: bool = False, clarifications: Dict[str, str] = None
+        self,
+        requirement: str,
+        interactive: bool = False,
+        clarifications: Dict[str, str] = None,
+        product_type: str = None,
+        model_id: str = None,
     ) -> str:
         project_id = self.create_chat_project()
         with self._lock:
             self.tasks[project_id]["requirement"] = requirement
-        self._enqueue_legacy(project_id, requirement, interactive, clarifications or {})
+            if product_type is not None:
+                self.tasks[project_id]["product_type"] = product_type
+            if model_id is not None:
+                self.tasks[project_id]["model_id"] = model_id
+        self._enqueue_legacy(
+            project_id, requirement, interactive, clarifications or {}, product_type, model_id
+        )
         return project_id
 
     def _enqueue_legacy(
-        self, project_id: str, requirement: str, interactive: bool, clarifications: Dict[str, str]
+        self,
+        project_id: str,
+        requirement: str,
+        interactive: bool,
+        clarifications: Dict[str, str],
+        product_type: str = None,
+        model_id: str = None,
     ):
         thread = threading.Thread(
-            target=self._run_legacy, args=(project_id, requirement, interactive, clarifications), daemon=True
+            target=self._run_legacy,
+            args=(project_id, requirement, interactive, clarifications, product_type, model_id),
+            daemon=True,
         )
         thread.start()
 
     def _run_legacy(
-        self, project_id: str, requirement: str, interactive: bool, clarifications: Dict[str, str]
+        self,
+        project_id: str,
+        requirement: str,
+        interactive: bool,
+        clarifications: Dict[str, str],
+        product_type: str = None,
+        model_id: str = None,
     ):
         from src.core.orchestrator import Orchestrator
 
@@ -167,7 +195,12 @@ class TaskService:
             try:
                 self._update(project_id, status="processing", progress=5, stage="Stage 1: Analyzing requirements")
                 orchestrator = Orchestrator(self.settings)
-                result = orchestrator.run(requirement, interactive=False)
+                result = orchestrator.run(
+                    requirement,
+                    interactive=False,
+                    product_type=product_type,
+                    model_id=model_id,
+                )
                 self._complete(project_id, result)
             except Exception as e:
                 self._fail(project_id, e)
@@ -176,13 +209,26 @@ class TaskService:
     # Chat-based generation (auto-triggered after each message)
     # ------------------------------------------------------------------
 
-    def enqueue_generation(self, project_id: str):
+    def enqueue_generation(
+        self,
+        project_id: str,
+        product_type: str = None,
+        model_id: str = None,
+    ):
         """Enqueue a generation task for a project.
 
+        Optionally pass product_type and model_id for this run (stored and passed to orchestrator).
         If a generation is already running for this project, mark that a
         re-generation is needed so it runs again with the latest conversation
         once the current one finishes.
         """
+        with self._lock:
+            self.tasks.setdefault(project_id, {})
+            if product_type is not None:
+                self.tasks[project_id]["product_type"] = product_type
+            if model_id is not None:
+                self.tasks[project_id]["model_id"] = model_id
+
         proj_lock = self._get_project_lock(project_id)
         acquired = proj_lock.acquire(blocking=False)
         if not acquired:
@@ -257,16 +303,30 @@ class TaskService:
                     requirements = agent.conversation_to_requirements(messages)
 
                 with self._lock:
-                    self.tasks.setdefault(project_id, {})["requirement"] = (
+                    self.tasks.setdefault(project_id, {})
+                    self.tasks[project_id]["requirement"] = (
                         requirements.description or requirements.title or ""
                     )
+                    run_product_type = self.tasks[project_id].get("product_type")
+                    run_model_id = self.tasks[project_id].get("model_id")
+
+                if run_product_type and not getattr(requirements, "product_type", None):
+                    from src.core.data_models import ProductType
+                    try:
+                        requirements.product_type = ProductType(run_product_type)
+                    except (ValueError, TypeError):
+                        pass
 
                 def _on_progress(progress: int, stage: str) -> None:
                     self._update(project_id, progress=progress, stage=stage)
 
                 self._update(project_id, progress=20, stage="Stage 2: Planning")
                 result = orchestrator.run_from_stage_2(
-                    project_id, requirements, progress_callback=_on_progress
+                    project_id,
+                    requirements,
+                    progress_callback=_on_progress,
+                    product_type=run_product_type,
+                    model_id=run_model_id,
                 )
 
                 elapsed = round(time.time() - start_time, 1)
@@ -426,8 +486,20 @@ class TaskService:
         gen_dir = self.settings.projects_dir / project_id / "generated"
         if gen_dir.exists():
             files = []
+            skip_suffixes = {
+                ".pyc", ".pyo", ".pyd",
+                ".db", ".sqlite", ".sqlite3",
+                ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico",
+                ".pdf",
+                ".zip", ".tar", ".gz", ".7z",
+                ".mp4", ".webm", ".mp3", ".wav",
+            }
             for f in sorted(gen_dir.rglob("*")):
                 if f.is_file():
+                    if "__pycache__" in f.parts:
+                        continue
+                    if f.suffix.lower() in skip_suffixes:
+                        continue
                     rel = f.relative_to(gen_dir).as_posix()
                     files.append({"path": rel, "language": self._guess_language(f.suffix)})
             if files:
@@ -449,13 +521,22 @@ class TaskService:
         full = self.settings.projects_dir / project_id / "generated" / file_path
         if not full.exists():
             return None
+        if "__pycache__" in full.parts:
+            raise BinaryFileError("该文件来自 __pycache__，无法预览。")
+        binary_suffixes = {
+            ".pyc", ".pyo", ".pyd",
+            ".db", ".sqlite", ".sqlite3",
+            ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico",
+            ".pdf",
+            ".zip", ".tar", ".gz", ".7z",
+            ".mp4", ".webm", ".mp3", ".wav",
+        }
+        if Path(file_path).suffix.lower() in binary_suffixes:
+            raise BinaryFileError("该文件为二进制或资源文件，无法在代码视图中预览。")
         try:
             content = full.read_text(encoding="utf-8")
         except UnicodeDecodeError:
-            try:
-                content = full.read_text(encoding="utf-8", errors="replace")
-            except Exception:
-                return None
+            raise BinaryFileError("该文件不是 UTF-8 文本（可能为二进制），无法预览。")
         except Exception:
             return None
         return {

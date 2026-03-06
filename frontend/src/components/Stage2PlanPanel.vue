@@ -11,6 +11,10 @@ const props = defineProps({
     type: String,
     default: '',
   },
+  active: {
+    type: Boolean,
+    default: false,
+  },
 })
 
 const loading = ref(false)
@@ -104,8 +108,22 @@ watch(
       errorMsg.value = ''
       return
     }
-    // When switching projects, lazily load when user visits the tab.
+    if (props.active) {
+      loadPlan()
+    }
   }
+)
+
+watch(
+  () => props.active,
+  (isActive) => {
+    if (!isActive) return
+    if (!props.projectId) return
+    if (!hasPlan.value && !loading.value) {
+      loadPlan()
+    }
+  },
+  { immediate: true }
 )
 
 watch(
@@ -113,7 +131,8 @@ watch(
   (s) => {
     if (!props.projectId) return
     if (s === 'processing') return
-    if (s === 'completed') {
+    if (!props.active) return
+    if (s === 'completed' || s === 'failed') {
       // Refresh when generation finishes so the story stays in sync.
       loadPlan()
     }
@@ -123,7 +142,7 @@ watch(
 
 <template>
   <div class="plan-shell" role="region" aria-label="Stage 2 planning">
-    <div v-if="!projectId" class="plan-empty" v-reveal-on-scroll>
+    <div v-if="!projectId" class="plan-empty">
       <h2 class="plan-empty-title">Planning spreads will appear here</h2>
       <p class="plan-empty-desc">
         Start a project in the chat, describe what you want to build, then run generation.
@@ -131,14 +150,14 @@ watch(
       </p>
     </div>
 
-    <div v-else-if="loading && !hasPlan" class="plan-loading" v-reveal-on-scroll>
+    <div v-else-if="loading && !hasPlan" class="plan-loading">
       <span class="plan-loading-dots">
         <span></span><span></span><span></span>
       </span>
       正在整理 Stage 2 规划故事…
     </div>
 
-    <div v-else-if="errorMsg && !hasPlan" class="plan-error" v-reveal-on-scroll>
+    <div v-else-if="errorMsg && !hasPlan" class="plan-error">
       <p class="plan-error-title">暂时无法获取规划结果</p>
       <p class="plan-error-body">
         {{ errorMsg }}

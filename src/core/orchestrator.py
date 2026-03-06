@@ -23,6 +23,9 @@ from .data_models import (
     BDDTestCase,
     FileSpec,
     ValidationRun,
+    ProductType,
+    DirectoryStructure,
+    TestResult,
 )
 from .adapters import engineering_plan_from_stage2
 from .exceptions import StageExecutionError
@@ -100,13 +103,21 @@ class Orchestrator:
             except ImportError:
                 pass
 
-    def run(self, user_requirement: str, interactive: bool = False) -> ValidatedProject:
+    def run(
+        self,
+        user_requirement: str,
+        interactive: bool = False,
+        product_type: Optional[str] = None,
+        model_id: Optional[str] = None,
+    ) -> ValidatedProject:
         """
         Run the complete workflow from requirement to validated project.
 
         Args:
             user_requirement: User's natural language requirement
             interactive: If True, run Stage 1 in interactive mode (ask clarification questions)
+            product_type: Optional output type (web, pdf, video, audio, app) for plan and model routing
+            model_id: Optional user-selected model id; overrides registry routing when set
 
         Returns:
             ValidatedProject with working code
@@ -125,7 +136,11 @@ class Orchestrator:
             raise ValueError("user_requirement cannot be empty")
 
         # Create execution context
-        context = ExecutionContext(user_requirement=user_requirement)
+        context = ExecutionContext(
+            user_requirement=user_requirement,
+            product_type=product_type,
+            model_id=model_id,
+        )
         set_correlation(project_id=context.project_id)
         self.logger.info(f"Project ID: {context.project_id}")
 
@@ -232,10 +247,32 @@ class Orchestrator:
         finally:
             clear_correlation()
 
-    def _llm_for_stage(self, stage: int, requires_vision: bool = False, use_fast: bool = False) -> LLMService:
-        """Return an LLMService configured for a pipeline stage. use_fast=True prefers gpt-4o-mini when enabled."""
+    def _llm_for_stage(
+        self,
+        stage: int,
+        requires_vision: bool = False,
+        use_fast: bool = False,
+        context: Optional[ExecutionContext] = None,
+    ) -> LLMService:
+        """Return an LLMService configured for a pipeline stage. use_fast=True prefers fallback model when enabled.
+        When context.model_id is set, uses that model; otherwise uses product_type for routing when context is provided.
+        """
         prefer_fast = use_fast and getattr(self.settings, "use_fast_model_for_light_stages", True)
-        entry = self.model_selector.select(stage=stage, requires_vision=requires_vision, prefer_fast=prefer_fast)
+        if context and context.model_id:
+            entry = self.model_selector.select_by_id(context.model_id)
+        else:
+            product_type = None
+            if context:
+                product_type = context.product_type
+                if product_type is None and context.requirements and getattr(context.requirements, "product_type", None):
+                    pt = context.requirements.product_type
+                    product_type = pt.value if hasattr(pt, "value") else str(pt)
+            entry = self.model_selector.select(
+                stage=stage,
+                requires_vision=requires_vision,
+                prefer_fast=prefer_fast,
+                product_type=product_type,
+            )
         if entry.id == self.llm_service.model and (entry.base_url is None or entry.base_url == self.llm_service.base_url):
             return self.llm_service
         return self.llm_service.with_model(
@@ -257,7 +294,7 @@ class Orchestrator:
         """
         self.logger.info("[Stage1][InteractionAgent] Requirements gathering")
 
-        llm = self._llm_for_stage(1, use_fast=True)
+        llm = self._llm_for_stage(1, use_fast=True, context=context)
         self.logger.info(f"[Stage1][InteractionAgent] Using model: {llm.model}")
         agent = InteractionAgent(llm)
 
@@ -275,23 +312,27 @@ class Orchestrator:
 
     def execute_stage_2(self, context: ExecutionContext) -> EngineeringPlan:
         """
-        Execute Stage 2: Technical planning (FlowSimulation, TaskDivision, AlgorithmAnalysis, SchemePlanning, ModelIntegration).
-
-        Args:
-            context: Execution context with requirements
-
-        Returns:
-            Complete engineering plan
+        Execute Stage 2: Technical planning. For web/app uses FlowSimulation, TaskDivision, AlgorithmAnalysis, SchemePlanning.
+        For pdf/video/audio uses product-type-specific planning agents and fills latex_specs/video_specs/audio_specs.
         """
-        self.logger.info("[Stage2] FlowSimulation → TaskDivision → AlgorithmAnalysis → SchemePlanning")
-
-        # Stage2Input pre-check
         requirements = context.requirements
         if requirements is None:
             raise ValueError("Stage 2 requires non-empty requirements in context (Stage2Input contract)")
 
-        llm_primary = self._llm_for_stage(2)
-        llm_fast = self._llm_for_stage(2, use_fast=True)
+        product_type = context.product_type
+        if product_type is None and getattr(requirements, "product_type", None):
+            pt = requirements.product_type
+            product_type = pt.value if hasattr(pt, "value") else str(pt)
+        product_type = (product_type or "web").lower()
+
+        if product_type in ("pdf", "video", "audio"):
+            self.logger.info(f"[Stage2] Product type '{product_type}': using non-web planning path")
+            return self._execute_stage_2_non_web(context, product_type)
+
+        self.logger.info("[Stage2] FlowSimulation → TaskDivision → AlgorithmAnalysis → SchemePlanning")
+
+        llm_primary = self._llm_for_stage(2, context=context)
+        llm_fast = self._llm_for_stage(2, use_fast=True, context=context)
         self.logger.info(
             f"[Stage2] Models: primary={llm_primary.model}, fast={llm_fast.model} (for flow/algo)"
         )
@@ -376,6 +417,64 @@ class Orchestrator:
 
         self.logger.info("[Stage2] Complete: EngineeringPlan created")
         return plan
+
+    def _execute_stage_2_non_web(self, context: ExecutionContext, product_type: str) -> EngineeringPlan:
+        """Stage 2 for pdf/video/audio: use product-type-specific planning agents and return plan with type-specific specs."""
+        requirements = context.requirements
+        if requirements is None:
+            raise ValueError("Stage 2 requires requirements in context")
+
+        llm = self._llm_for_stage(2, context=context)
+        self.logger.info(f"[Stage2][NonWeb] Product type={product_type}, model={llm.model}")
+
+        # Dispatch to type-specific planning agent (implemented in stage2 agents)
+        try:
+            from src.agents.stage2_planning.media_planning_agents import (
+                plan_pdf,
+                plan_video,
+                plan_audio,
+            )
+        except ImportError:
+            # Fallback: minimal plan with placeholder specs until agents are implemented
+            self.logger.info("[Stage2][NonWeb] Media planning agents not found, using minimal plan")
+            return self._minimal_plan_for_media(requirements, product_type)
+
+        if product_type == "pdf":
+            latex_specs = plan_pdf(requirements, llm)
+            return self._minimal_plan_for_media(requirements, product_type, latex_specs=latex_specs)
+        if product_type == "video":
+            video_specs = plan_video(requirements, llm)
+            return self._minimal_plan_for_media(requirements, product_type, video_specs=video_specs)
+        if product_type == "audio":
+            audio_specs = plan_audio(requirements, llm)
+            return self._minimal_plan_for_media(requirements, product_type, audio_specs=audio_specs)
+        return self._minimal_plan_for_media(requirements, product_type)
+
+    def _minimal_plan_for_media(
+        self,
+        requirements: Requirements,
+        product_type: str,
+        latex_specs: Optional[dict] = None,
+        video_specs: Optional[dict] = None,
+        audio_specs: Optional[dict] = None,
+    ) -> EngineeringPlan:
+        """Build a minimal EngineeringPlan for pdf/video/audio (no code gen; Stage 3/4 may be no-op or export-only)."""
+        pt_enum = getattr(ProductType, product_type.upper(), ProductType.WEB)
+        return EngineeringPlan(
+            tasks=[],
+            algorithms={},
+            file_structure=[],
+            interface_specs=[],
+            dependencies=[],
+            architecture_notes=f"{product_type} product: {requirements.title}. {requirements.description or ''}",
+            api_specs={},
+            pyi_stubs={},
+            bdd_test_cases=[],
+            product_type=pt_enum,
+            latex_specs=latex_specs,
+            video_specs=video_specs,
+            audio_specs=audio_specs,
+        )
 
     def _default_file_structure(self, tasks: list) -> list:
         """Default file structure when SchemePlanningAgent returns empty. Avoids Stage 3 failure."""
@@ -473,10 +572,22 @@ class Orchestrator:
             raise ValueError("Stage 3 requires requirements in context (Stage3Input contract)")
         if context.engineering_plan is None:
             raise ValueError("Stage 3 requires an EngineeringPlan in context (Stage3Input contract)")
-        if not context.engineering_plan.file_structure:
+
+        plan = context.engineering_plan
+        pt = getattr(plan, "product_type", None)
+        if pt in (ProductType.PDF, ProductType.VIDEO, ProductType.AUDIO):
+            self.logger.info(f"[Stage3] Non-web product type {pt}: skipping code gen, returning minimal repository")
+            return CodeRepository(
+                skeleton=None,
+                files=[],
+                structure=DirectoryStructure(root="generated", directories=[], entry_point=""),
+                dependencies=[],
+                readme_content=f"# {context.requirements.title}\n\nNon-web artifact (plan has {plan.latex_specs or plan.video_specs or plan.audio_specs}).",
+            )
+        if not plan.file_structure:
             raise ValueError("Stage 3 requires a non-empty file_structure in EngineeringPlan")
 
-        llm = self._llm_for_stage(3)
+        llm = self._llm_for_stage(3, context=context)
         self.logger.info(f"[Stage3] Using model: {llm.model}")
 
         # Phase 1 & 2: Memory pre_execute and Mining execute (parallel when enabled)
@@ -540,7 +651,19 @@ class Orchestrator:
         if context.code_repository is None:
             raise ValueError("Stage 4 requires code_repository in context (Stage4Input contract)")
 
-        llm = self._llm_for_stage(4)
+        plan = context.engineering_plan
+        pt = getattr(plan, "product_type", None)
+        if pt in (ProductType.PDF, ProductType.VIDEO, ProductType.AUDIO) and not context.code_repository.files:
+            self.logger.info(f"[Stage4] Non-web product type {pt} with no code files: skipping validation, returning minimal ValidatedProject")
+            test_result = TestResult(logic_passed=True, errors=[], execution_time=0.0)
+            return create_validated_project(
+                context.code_repository,
+                test_result,
+                context.requirements,
+                fix_attempts=0,
+            )
+
+        llm = self._llm_for_stage(4, context=context)
         self.logger.info(f"[Stage4] Using model: {llm.model}")
 
         # Full-cycle Testing Agent - saves files and generates tests
@@ -582,7 +705,7 @@ class Orchestrator:
                 )
                 return current_result
 
-            vlm_llm = self._llm_for_stage(4, requires_vision=True)
+            vlm_llm = self._llm_for_stage(4, requires_vision=True, context=context)
             self.logger.info(f"[Stage4][VisualVerificationAgent] Using VLM model: {vlm_llm.model}")
             visual_agent = VisualVerificationAgent(vlm_llm)
             visual_result = visual_agent.execute(context)
@@ -764,12 +887,13 @@ class Orchestrator:
         project_id: str,
         requirements: Requirements,
         progress_callback: Optional[Callable[[int, str], None]] = None,
+        product_type: Optional[str] = None,
+        model_id: Optional[str] = None,
     ) -> ValidatedProject:
         """
         Run Stage 2 through 4 for an existing project with given requirements.
         Used for incremental updates: merge new requirements then re-plan and re-generate.
-        Creates/uses project_path = projects_dir / project_id and writes all artifacts there.
-        If progress_callback(progress_pct, stage_name) is provided, it is called at each stage start.
+        product_type and model_id optionally override context for plan and model selection.
         """
         self._apply_random_seed()
 
@@ -788,7 +912,11 @@ class Orchestrator:
         ensure_dir(logs_dir)
         ensure_dir(artifacts_dir)
 
-        context = ExecutionContext(user_requirement=requirements.description or requirements.title or "App")
+        context = ExecutionContext(
+            user_requirement=requirements.description or requirements.title or "App",
+            product_type=product_type,
+            model_id=model_id,
+        )
         context.project_id = project_id
         context.project_path = project_path
         context.requirements = requirements

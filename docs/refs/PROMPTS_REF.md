@@ -9,10 +9,11 @@
 | interaction_extract.txt | InteractionAgent execute() — 从用户描述提取需求 |
 | interaction_conversation.txt | InteractionAgent conversation_to_requirements() — 对话转需求 |
 | interaction_merge.txt | InteractionAgent merge_requirements() — 增量合并需求（含 design_mode） |
-| interaction_chat_system.txt | InteractionAgent reply_in_chat / reply_in_chat_stream — 聊天 system prompt |
+| interaction_chat_system.txt | InteractionAgent reply_in_chat / reply_in_chat_stream — 聊天 system prompt（严格单问句、禁止示例回答与选项列举；选项由 Web API 结构化返回） |
 | interaction_final_requirements.txt | InteractionAgent _generate_final_requirements() — 澄清后生成最终需求 |
 | interaction_clarification_questions.txt | InteractionAgent generate_clarification_questions() — 生成澄清问题 |
 | requirement_analysis.txt | InteractionAgent analyze_requirement() — 需求分析 |
+| interaction_clarification_options_for_question.txt | InteractionAgent generate_options_for_question() — 针对单个澄清问句生成结构化选项 JSON（`{question, need_options, options[]}`），供 Web UI chips 使用 |
 | flow_simulation.txt | FlowSimulationAgent |
 | extract_structured_flow.txt | 结构化流程提取（unified 模式下已合并：原始 flow 直接注入 task_division_unified） |
 | extract_entities_and_pages.txt | 实体与页面提取 |

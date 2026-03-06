@@ -36,9 +36,15 @@ class ModelRegistry:
     for discovering models by role, capability, or stage routing rules.
     """
 
-    def __init__(self, models: List[ModelEntry] = None, stage_routing: Dict[str, StageRoute] = None):
+    def __init__(
+        self,
+        models: List[ModelEntry] = None,
+        stage_routing: Dict[str, StageRoute] = None,
+        product_type_routing: Dict[str, Dict[str, StageRoute]] = None,
+    ):
         self.models = models or []
         self.stage_routing = stage_routing or {}
+        self.product_type_routing = product_type_routing or {}
 
     @classmethod
     def load(cls, path: Path) -> "ModelRegistry":
@@ -55,8 +61,17 @@ class ModelRegistry:
             routing_raw = data.get("stage_routing", {})
             stage_routing = {k: StageRoute(**v) for k, v in routing_raw.items()}
 
+            pt_routing_raw = data.get("product_type_routing", {})
+            product_type_routing = {}
+            for pt, stages in pt_routing_raw.items():
+                product_type_routing[pt] = {k: StageRoute(**v) for k, v in stages.items()}
+
             logger.info(f"Loaded {len(models)} models from registry ({path})")
-            return cls(models=models, stage_routing=stage_routing)
+            return cls(
+                models=models,
+                stage_routing=stage_routing,
+                product_type_routing=product_type_routing,
+            )
         except Exception as e:
             logger.warning(f"Failed to load model registry from {path}: {e}")
             return cls()
@@ -79,10 +94,23 @@ class ModelRegistry:
                 return m
         return None
 
-    def get_stage_route(self, stage: int, requires_vision: bool = False) -> Optional[StageRoute]:
-        """Get the routing rule for a pipeline stage."""
-        key = f"{stage}_vision" if requires_vision else str(stage)
-        return self.stage_routing.get(key)
+    def get_stage_route(
+        self,
+        stage: int,
+        requires_vision: bool = False,
+        product_type: Optional[str] = None,
+    ) -> Optional[StageRoute]:
+        """Get the routing rule for a pipeline stage, optionally by product type."""
+        if requires_vision:
+            key = f"{stage}_vision"
+            return self.stage_routing.get(key)
+        if product_type and self.product_type_routing:
+            by_type = self.product_type_routing.get(product_type)
+            if by_type:
+                route = by_type.get(str(stage))
+                if route:
+                    return route
+        return self.stage_routing.get(str(stage))
 
     def is_empty(self) -> bool:
         return len(self.models) == 0

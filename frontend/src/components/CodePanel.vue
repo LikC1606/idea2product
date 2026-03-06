@@ -74,7 +74,7 @@ watch(
 
 <template>
   <div class="code-pane" role="region" aria-label="Code files">
-    <nav class="file-tree sidebar-sticky" aria-label="File tree">
+    <nav class="file-tree" aria-label="File tree">
       <template v-if="!files?.length">
         <EmptyState
           icon="📂"
@@ -121,7 +121,14 @@ watch(
       </template>
     </nav>
     <div ref="codeEl" class="code-viewer" role="region" aria-label="Code viewer">
-      <template v-if="fileContent?.content != null">
+      <template v-if="fileContent?.error">
+        <EmptyState
+          icon="⚠️"
+          title="Cannot preview this file"
+          :description="fileContent.error"
+        />
+      </template>
+      <template v-else-if="fileContent?.content != null">
         <div class="code-header">
           <span class="lang-badge">{{ currentLang }}</span>
           <span class="file-name">{{ currentFile }}</span>

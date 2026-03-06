@@ -6,6 +6,62 @@
 
 ---
 
+## 2026-03-06 | agents, web, prompts 澄清选项 JSON 结构统一（question + need_options + options）
+
+- **Agent**：`InteractionAgent.ClarificationQuestion` 增加 `need_options` 字段，用于标记某个澄清问句是否需要结构化选项；`generate_options_for_question()` 改为期望 LLM 返回 `{question, need_options, options[]}` 形态的 JSON，并在 question 为空时回退到原始 assistant 问句。
+- **Web API**：`_get_or_build_clarification_payload()` 在构造 `clarification.questions[0]` 时补充 `need_options` 字段，前端据此判断是否渲染 chips；结构保持向后兼容（默认为 true）。
+- **Prompts**：`interaction_clarification_options_for_question.txt` 的 Output 规范调整为返回带 `question`、`need_options` 与 `options[]` 的 JSON 对象；`PROMPTS_REF`、`WEB_FLOW_REF` 与 `AGENTS_REF` 对应说明已更新。
+- **前端**：`ChatPanel.vue` 的 `clarificationQuestions` 仅保留 `need_options !== false` 的问题，避免未来扩展为开放式澄清问句时仍强制渲染选项。
+
+## 2026-03-06 | web, prompts Chat 同回包返回澄清选项（无示例问句）
+
+- **Chat API**：`POST /api/projects/<id>/chat` 与 `POST /api/projects/<id>/chat/stream` 在 assistant 回复为问句时，同回包（stream 在 `done` 事件）返回 `clarification.questions[0].options`，前端无需再额外调用澄清选项接口。
+- **对话约束**：`interaction_chat_system.txt` 改为严格单问句输出，禁止在消息中包含示例回答或选项列表（选项由结构化字段提供）。
+- **兼容保留**：`GET /api/projects/<id>/clarification-questions` 保留为 Legacy/Debug 路径，LLM 失败时仍返回 500 + error。
+- **Agent 行为**：InteractionAgent 在 `reply_in_chat()` / `reply_in_chat_stream()` 中增加后处理逻辑，只保留最后一个以 `?`/`？` 结尾的问句，并裁剪掉任何残留的 “For example/Examples/例如/比如” 段落，保证前端看到的永远是一句澄清问题而不是带示例的长段落。
+
+## 2026-03-06 | data-models, agents, services, web 多产品类型与 Stage 2 分计划、模型按类型与用户选择
+
+- **数据模型**：新增 ProductType 枚举（web, pdf, video, audio, app）；Requirements 与 EngineeringPlan 增加 product_type；EngineeringPlan 增加 latex_specs、video_specs、audio_specs；ExecutionContext 增加 product_type、model_id。
+- **Stage 2**：execute_stage_2 按 product_type 分支；web/app 走现有 FlowSimulation → TaskDivision → SchemePlanning；pdf/video/audio 走 _execute_stage_2_non_web，调用 media_planning_agents（plan_pdf、plan_video、plan_audio）产出对应 specs；adapters.engineering_plan_from_stage2 支持 product_type。
+- **模型路由**：config/models_registry.json 增加 product_type_routing；ModelRegistry.get_stage_route(stage, product_type=...)；ModelSelector.select(..., product_type=...)；_llm_for_stage 支持 context.model_id 覆盖与 context.product_type 路由。
+- **Orchestrator**：run()、run_from_stage_2() 接受 product_type、model_id；Stage 3 对非 web 类型返回最小 CodeRepository 以完成流水线。
+- **Web API**：GET /api/options/models 返回可选模型列表；POST /api/projects 与 POST /api/projects/<id>/generate 支持 body 可选 product_type、model_id；task_service 持久化并传入 orchestrator。
+- **文档**：DATA_MODELS_REF、SERVICES_REF、WEB_FLOW_REF、ARCHITECTURE 已更新。
+
+---
+
+## 2026-03-06 | other README 优化：快速上手与结构精简
+
+- **结构**：首屏改为标题 + 一句话描述 + Quick Start 三步 + 前置要求；合并重复的安装/配置说明为单一路径。
+- **配置**：与 .env.example 对齐，增加 PRIMARY_LLM_PROVIDER 及 OpenAI/Anthropic/Google 对应 API Key 说明；全量变量表改为链接至 CLAUDE.md 与 .env.example。
+- **Web UI**：补全前端构建步骤（生产：`cd frontend && npm run build` 后 `python -m src.web.app`；开发：`npm run dev`）。
+- **精简**：删除重复 Installation 小节；Agent 详细映射表移除，保留阶段简表并链接 ARCHITECTURE；精简配置表与故障排查，新增「更多文档」节指向 CONTEXT_INDEX、ARCHITECTURE、AGENTS_REF、WEB_FLOW_REF、TROUBLESHOOTING。
+
+---
+
+## 2026-03-06 | web BuildStudio 交互与预览修复
+
+- **布局滚动**：对齐 `--shell-header-height` / `--shell-status-height` 与实际组件高度，避免右侧面板底部被 StatusBar 遮挡；关闭 `WorkspaceShell` 外层滚动，改由各面板内部自行滚动，减少嵌套滚动导致的可视区计算问题。
+- **Plan 面板**：增强 `revealOnScroll` 指令以支持嵌套滚动容器（自动选择 scroll root、放宽 threshold/rootMargin），并让 Plan 的空态/加载/错误态不依赖 reveal 动画；切到 Plan tab 时自动加载规划。
+- **Generate 反馈**：点击 Generate 立即在状态栏与聊天区给出 queued 反馈，失败时展示明确错误摘要；`POST /generate` 回显 product_type/model_id。
+- **代码视图**：后端文件列表过滤 `__pycache__`/`.pyc` 等二进制与资源文件；尝试预览二进制时返回 415，前端显示友好错误。
+- **Preview 稳定性**：启动预览子进程时注入 `FLASK_DEBUG=0`、`FLASK_RUN_RELOAD=0` 等环境变量，降低 debug/reloader 引起的反复重启风险。
+- **澄清问题**：新增 `GET /api/projects/<id>/clarification-questions`，前端在对话早期渲染可点击的澄清选项 chips（单选即发，多选可选后发送）。
+
+## 2026-03-06 | web, agents, prompts 澄清选项由 Agent 按问句生成
+
+- **澄清选项**：`GET /api/projects/<id>/clarification-questions` 改为基于最新 assistant 问句调用 LLM 动态生成选项（与提问对齐），LLM 失败时返回 500 + error 以便前端直接展示错误。
+- **InteractionAgent**：新增 `generate_options_for_question()`，用于针对单个问句生成 3–6 个选项（UI 另提供“其它/自定义”输入）。
+- **Prompts**：新增 `interaction_clarification_options_for_question.txt`，只为给定问句生成选项 JSON。
+
+## 2026-03-06 | web, agents, prompts 澄清交互质量与稳定性增强
+
+- **对话质量**：增强 `interaction_chat_system.txt`，约束为“每次只问 1 个高信号问题”，并提供示例答案以提升澄清效率。
+- **选项成功率**：澄清选项接口强制使用 fast model（默认 `gpt-4o-mini`）并限制 token；对同一问句启用短期缓存与前端去重，减少重复 LLM 调用导致的超时/失败。
+- **交互体验**：点击澄清选项后，用户消息仅发送“答案”而不复读原问题；错误态提供 Retry，便于手动重试。
+- **可观测性**：后端记录 chat/clarify 使用的 model/base_url 与耗时，便于确认实际使用的模型与定位慢请求。
+
 ## 2026-03-05 | agents, core, web, config 全流程 Agent 结构与可读性重构
 
 - **Agent 规范**：在 `AGENTS_REF` 顶部增加「Agent 设计规范」小节，约定目录结构、构造函数签名、主入口 `execute` 方法以及日志前缀格式，统一 Stage 1–4 Agent 的风格。

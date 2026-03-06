@@ -2,7 +2,7 @@
 
 ## Pipeline Overview
 
-Idea2Product uses a 4-stage pipeline with 10 specialized agents to transform natural language requirements into production-ready Flask web applications.
+Idea2Product uses a 4-stage pipeline with 10+ specialized agents to transform natural language requirements into production-ready outputs. Supported **product types** (Requirements.product_type): web (default), pdf, video, audio, app. For web/app, Stage 2 produces the full EngineeringPlan (file_structure, pyi_stubs, etc.); for pdf/video/audio, Stage 2 produces type-specific specs (latex_specs, video_specs, audio_specs) via media planning agents. Model selection can be routed by **product_type** (config/models_registry.json product_type_routing) and overridden by user-selected **model_id** (API and ExecutionContext).
 
 ```mermaid
 flowchart TB

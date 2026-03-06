@@ -88,6 +88,14 @@ class PreviewService:
         env["PORT"] = str(port)
         env["FLASK_RUN_PORT"] = str(port)
         env["FLASK_APP"] = entry
+        # Force non-debug / non-reloader behavior for stability. Even if generated
+        # code uses app.run(...), many templates respect these env flags.
+        env.setdefault("FLASK_ENV", "production")
+        env["FLASK_DEBUG"] = "0"
+        env["FLASK_RUN_RELOAD"] = "0"
+        env["DEBUG"] = "0"
+        env["WERKZEUG_DEBUG_PIN"] = "off"
+        env["PYTHONUNBUFFERED"] = "1"
         existing_pypath = env.get("PYTHONPATH", "")
         env["PYTHONPATH"] = str(gen_dir) + (os.pathsep + existing_pypath if existing_pypath else "")
 

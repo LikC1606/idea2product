@@ -24,7 +24,7 @@
 - **ImageSpec**: id, prompt, suggested_path, role（可选；hero | placeholder | icon）
 - **ExternalModelSpec**: capability_type, provider_name, docs_url, api_docs_summary, base_url_hint, auth_type, request_body_example, response_image_path, suggested_integration（Stage 2 联网搜索 + LLM 产出，供 Stage 3/4 可选使用；capability_type 示例：image_generation、tts、video_generation、ppt_generation、latex_generation、audio_tts、audio_music）
 - **InterfaceSpec**: module_name, file_path, purpose, layer, exports, imports, database_access
-- **EngineeringPlan**: tasks, algorithms, file_structure, interface_specs, dependencies, architecture_notes, api_specs, pyi_stubs, bdd_test_cases, image_specs（可选）, external_model_specs（可选）, ui_guidelines（可选；包含 global_layout_style、page_layouts 以及 hero_layouts 等布局/主题提示）
+- **EngineeringPlan**: tasks, algorithms, file_structure, interface_specs, dependencies, architecture_notes, api_specs, pyi_stubs, bdd_test_cases, image_specs（可选）, external_model_specs（可选）, ui_guidelines（可选）, product_type（可选）, latex_specs / video_specs / audio_specs（按产品类型可选）
 
 其中 `engineering_plan.ui_guidelines` 约定：
 
@@ -55,12 +55,20 @@ Stage 2 的 SchemePlanningAgent 会根据 Requirements 与路由语义，在适�
 
 - **generated_image_paths**：可选，Stage 3 AssetGeneration 写回，id → 路径字符串（如 static/images/hero.png），供 CodeGen 前端任务引用
 
+## 产品类型与多计划（Stage 2）
+
+- **ProductType**（枚举）：WEB, PDF, VIDEO, AUDIO, APP；表示产出物类型。
+- **Requirements.product_type**：可选，默认 WEB；用于 Stage 2 分支与模型路由。
+- **EngineeringPlan** 扩展：product_type（可选）、latex_specs（PDF）、video_specs（视频）、audio_specs（音频）；web/app 仍用 file_structure、pyi_stubs 等。
+- **ExecutionContext**（context.py）：可选字段 product_type、model_id（用户选择模型时覆盖 registry 路由）。
+
 ## 枚举
 
 - TaskType: FRONTEND, BACKEND, TESTING, DEPLOYMENT, DATABASE
 - TaskComplexity: LOW, MEDIUM, HIGH
 - ValidationStatus: NOT_STARTED, IN_PROGRESS, PASSED, FAILED, FIXED
 - ErrorType: SYNTAX, RUNTIME, LOGIC, DEPENDENCY, TIMEOUT, IMPORT
+- ProductType: WEB, PDF, VIDEO, AUDIO, APP
 
 ## See also
 

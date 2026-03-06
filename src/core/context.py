@@ -34,6 +34,10 @@ class ExecutionContext(BaseModel):
     # Original user input
     user_requirement: str = Field(..., description="Original user requirement string")
 
+    # Optional: product type and user-selected model (override registry routing)
+    product_type: Optional[str] = Field(None, description="Output artifact type: web, pdf, video, audio, app")
+    model_id: Optional[str] = Field(None, description="User-selected model id; overrides stage/product_type routing when set")
+
     # Stage 1: Requirements
     requirements: Optional[Requirements] = None
 

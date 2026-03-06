@@ -13,9 +13,9 @@
 
 ## ModelRegistry / ModelSelector
 
-- **ModelRegistry**（`model_registry.py`）：从 `config/models_registry.json` 加载模型定义
-- **ModelSelector**（`model_selector.py`）：按 stage、requires_vision、prefer_fast 选择模型
-- **路由**：stage_routing 映射 stage → preferred_role、required_capabilities
+- **ModelRegistry**（`model_registry.py`）：从 `config/models_registry.json` 加载模型定义；支持 **product_type_routing**（按产品类型推荐 stage 路由）
+- **ModelSelector**（`model_selector.py`）：按 stage、requires_vision、prefer_fast、**product_type** 选择模型；**select_by_id(model_id)** 供用户指定模型时使用
+- **路由**：stage_routing 映射 stage → preferred_role、required_capabilities；product_type_routing 为 product_type → stage → StageRoute
 - **Fallback**：registry 为空或未匹配时使用 `OPENAI_MODEL` / `OPENAI_VLM_MODEL`
 
 ## CodeMemoryService

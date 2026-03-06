@@ -1,8 +1,8 @@
 
 :root {
   /* Workspace shell layout metrics */
-  --shell-header-height: 64px;
-  --shell-status-height: 28px;
+  --shell-header-height: 56px;
+  --shell-status-height: 32px;
   /* Default sticky offset for sidebars that live below the header */
   --shell-sticky-top: var(--shell-header-height);
   /* Glassmorphism tokens */

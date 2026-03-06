@@ -4,16 +4,19 @@
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | /api/projects | 创建项目 `{\"start_chat\": true}` 或 `{\"requirement\": \"...\"}` |
+| GET | /api/options/models | 可选模型列表（id, provider, capabilities, roles），供前端用户选择 |
+| POST | /api/projects | 创建项目 `{\"start_chat\": true}` 或 `{\"requirement\": \"...\", \"product_type\": \"web\", \"model_id\": \"gpt-4o\"}`（product_type、model_id 可选） |
 | GET | /api/projects | 项目列表（含 timeline 字段：planning_completed_at、generation_completed_at、validation_last_run_at） |
 | GET | /api/projects/<id> | 项目详情（附带 timeline 字段） |
 | GET | /api/projects/<id>/status | 生成状态（idle/pending/processing/completed/failed） |
-| POST | /api/projects/<id>/chat | 发送消息，获取 AI 回复 |
-| POST | /api/projects/<id>/generate | 显式触发生成 |
+| POST | /api/projects/<id>/chat | 发送消息，获取 AI 回复；若回复为问句，则同回包返回 `clarification.questions[0]`（含 `question`、`need_options`、`options[]` 等）供前端渲染 chips |
+| POST | /api/projects/<id>/chat/stream | 流式聊天（SSE）；最后一条 `done` 事件会包含 `clarification`（若回复为问句，结构同上） |
+| POST | /api/projects/<id>/generate | 显式触发生成；Body 可选 `product_type`、`model_id`；返回会回显 `product_type`/`model_id` 与 `status=queued` |
 | GET | /api/projects/<id>/chat | 聊天历史 |
 | GET | /api/projects/<id>/files | 生成文件列表 |
-| GET | /api/projects/<id>/file/<path> | 文件内容 |
+| GET | /api/projects/<id>/file/<path> | 文件内容（若为二进制/不可预览文件，返回 415 + error） |
 | GET | /api/projects/<id>/preview-url | 实时预览 URL |
+| GET | /api/projects/<id>/clarification-questions | （Legacy/Debug）基于**最新一条 assistant 问句**用 LLM 生成结构化澄清选项（questions + options）；使用 fast model（默认 `gpt-4o-mini`）+ 小 token；同一问句短期缓存；LLM 失败时返回 500 + error |
 | GET | /api/projects/<id>/plan | 获取 Stage 2 生成的 EngineeringPlan JSON |
 | PATCH | /api/projects/<id>/plan | 局部更新 EngineeringPlan（当前支持任务 name/description/priority/complexity 等安全字段） |
 | GET | /api/projects/<id>/validation-runs | 获取项目的验证历史列表（ValidationRun 摘要） |

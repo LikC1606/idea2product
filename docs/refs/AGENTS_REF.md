@@ -13,8 +13,10 @@
 
 | Agent | 文件 | 输入 | 输出 | 关键方法 |
 |-------|------|------|------|----------|
-| InteractionAgent | `src/agents/stage1_requirements/interaction_agent.py` | ExecutionContext, List[Dict] | Requirements | `execute()`, `run_interactive()`, `generate_clarification_questions()`, `reply_in_chat()`, `reply_in_chat_stream()`, `conversation_to_requirements()`, `merge_requirements()` |
+| InteractionAgent | `src/agents/stage1_requirements/interaction_agent.py` | ExecutionContext, List[Dict] | Requirements | `execute()`, `run_interactive()`, `generate_clarification_questions()`, `generate_options_for_question()`（返回包含 `question`、`need_options` 与 `options[]` 的 ClarificationQuestion，用于 Web 澄清 chips），`reply_in_chat()`（对话助手，强制输出单句澄清问句且不包含示例）、`reply_in_chat_stream()`（同样返回已归一化的单句问句）、`conversation_to_requirements()`, `merge_requirements()` |
 | PaperToProjectAgent | `src/agents/stage1_requirements/paper_to_project_agent.py` | 论文路径/文本, 可选 context | 应用创意/需求摘要 | 分析论文并生成可落地的应用创意；CLI `from-paper` 使用 |
+
+- `InteractionAgent.generate_options_for_question()`：为 Web 澄清 chips 面板针对单个 assistant 问句生成 3–6 个选项；支持传入 `max_tokens`/`temperature` 控制成本与一致性；UI 侧另提供“其它/自定义”输入。
 
 ## Stage 2 - Planning
 
