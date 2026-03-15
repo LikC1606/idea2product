@@ -18,6 +18,18 @@
 - **路由**：stage_routing 映射 stage → preferred_role、required_capabilities；product_type_routing 为 product_type → stage → StageRoute
 - **Fallback**：registry 为空或未匹配时使用 `OPENAI_MODEL` / `OPENAI_VLM_MODEL`
 
+## 2026-03-12 稳定性强化（Services）
+
+- **LLMService 重试分类**：仅对 timeout/connection/429/5xx 等瞬时错误重试；4xx 配置/鉴权/参数类错误快速失败并抛 `LLMServiceError`。
+- **退避策略**：统一指数退避 + jitter，并优先尊重响应头 `Retry-After`。
+- **日志健壮性**：usage 字段改为安全读取，避免 `response.usage` 缺失触发二次异常导致“调用成功但日志失败”。
+- **ModelSelector fallback 修复**：fallback 现在必须满足路由里全部 `required_capabilities`，不再任意 capability 命中即返回。
+
+## 2026-03-12 下一阶段鲁棒性强化（Services）
+
+- **LLM 异常分型**：`LLMService` 现在区分 `TransientLLMError` 与 `PermanentLLMError`，上层可据此决定是否重试，避免把永久错误当作瞬时错误反复重跑。
+- **重试预算**：`generate/stream/stream_messages` 支持 `retry_budget_seconds`，退避前会检查预算，预算耗尽后直接失败，限制重试放大。
+
 ## CodeMemoryService
 
 - **文件**：`src/services/code_memory_service.py`

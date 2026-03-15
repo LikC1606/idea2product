@@ -21,6 +21,25 @@ _ctx_cross_project_memory: ContextVar[bool] = ContextVar(
 )
 
 
+def _resolve_safe_path(project_path: Path, file_path: str) -> Path:
+    """Resolve a file path under project_path and block path traversal."""
+    candidate = Path(file_path or "")
+    if candidate.is_absolute():
+        raise ValueError(f"Absolute paths are not allowed: {file_path}")
+    if candidate.drive:
+        raise ValueError(f"Drive-qualified paths are not allowed: {file_path}")
+    normalized = candidate.as_posix()
+    if normalized.startswith("../") or "/../" in f"/{normalized}" or normalized == "..":
+        raise ValueError(f"Path traversal is not allowed: {file_path}")
+
+    full_path = (project_path / candidate).resolve()
+    try:
+        full_path.relative_to(project_path.resolve())
+    except ValueError as ex:
+        raise ValueError(f"Path escapes project directory: {file_path}") from ex
+    return full_path
+
+
 def set_code_memory_service(service):
     """Set code memory service for snippet search (when ENABLE_CODE_MEMORY)."""
     _ctx_code_memory_service.set(service)
@@ -70,7 +89,10 @@ def read_file(file_path: str) -> str:
     if not project_path:
         return "Error: project_path not set"
 
-    full_path = project_path / file_path
+    try:
+        full_path = _resolve_safe_path(project_path, file_path)
+    except ValueError as e:
+        return f"Error: {e}"
     if not full_path.exists():
         return f"Error: File not found: {file_path}"
 
@@ -99,7 +121,10 @@ def write_file(file_path: str, content: str) -> str:
     if not project_path:
         return "Error: project_path not set"
 
-    full_path = project_path / file_path
+    try:
+        full_path = _resolve_safe_path(project_path, file_path)
+    except ValueError as e:
+        return f"Error: {e}"
     full_path.parent.mkdir(parents=True, exist_ok=True)
 
     try:
@@ -122,7 +147,10 @@ def modify_file(file_path: str, old_content: str, new_content: str) -> str:
     if not project_path:
         return "Error: project_path not set"
 
-    full_path = project_path / file_path
+    try:
+        full_path = _resolve_safe_path(project_path, file_path)
+    except ValueError as e:
+        return f"Error: {e}"
     if not full_path.exists():
         return f"Error: File not found: {file_path}"
 
@@ -149,7 +177,10 @@ def validate_syntax(file_path: str) -> str:
     if not project_path:
         return "Error: project_path not set"
 
-    full_path = project_path / file_path
+    try:
+        full_path = _resolve_safe_path(project_path, file_path)
+    except ValueError as e:
+        return f"Error: {e}"
     if not full_path.exists():
         return f"Error: File not found: {file_path}"
 

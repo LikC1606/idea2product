@@ -6,7 +6,7 @@ from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Dict, Any, List, Optional, Iterator
 
-from src.core.data_models import Requirements, Feature
+from src.core.data_models import Requirements, Feature, ProductType
 from src.core.context import ExecutionContext
 from src.services.llm_service import LLMService
 from src.utils.logger import get_logger
@@ -130,11 +130,12 @@ class InteractionAgent:
     # Chat reply post-processing helpers
     # ------------------------------------------------------------------
 
-    def _normalize_chat_reply(self, text: str) -> str:
+    def _normalize_chat_reply(self, text: str, ensure_question: bool = False) -> str:
         """
-        Enforce a single, concise clarification question without examples.
+        Normalize chat reply: strip examples, collapse whitespace.
+        When ensure_question=True (e.g. clarification flows), keep only the last question and force trailing '?'.
 
-        - Keep only the last sentence ending with '?' or '？'
+        - Keep only the last sentence ending with '?' or '？' when ensure_question=True
         - Strip any trailing 'For example:' / 'Examples:' style segments
         - Remove inline parenthetical segments that contain example hints (e.g. 'e.g.')
         - Collapse newlines/extra spaces into a single line
@@ -143,10 +144,11 @@ class InteractionAgent:
             return text
         t = (text or "").strip()
 
-        # Prefer the last explicit question sentence.
-        last_q = max(t.rfind("?"), t.rfind("？"))
-        if last_q != -1:
-            t = t[: last_q + 1]
+        if ensure_question:
+            # Prefer the last explicit question sentence.
+            last_q = max(t.rfind("?"), t.rfind("？"))
+            if last_q != -1:
+                t = t[: last_q + 1]
 
         # Remove common example-introducing phrases if they still appear.
         lower = t.lower()
@@ -170,8 +172,7 @@ class InteractionAgent:
         if not t:
             return t
 
-        # Ensure it ends with a question mark.
-        if not (t.endswith("?") or t.endswith("？")):
+        if ensure_question and not (t.endswith("?") or t.endswith("？")):
             t = t.rstrip(".!。！") + "?"
         return t
 
@@ -216,6 +217,13 @@ class InteractionAgent:
             lp = getattr(validated, "layout_preferences", None)
             if not lp or not isinstance(lp, list):
                 lp = None
+            pt_raw = getattr(validated, "product_type", None)
+            pt = None
+            if pt_raw:
+                try:
+                    pt = ProductType(str(pt_raw).lower())
+                except Exception:
+                    pt = None
 
             requirements = Requirements(
                 title=validated.title,
@@ -226,6 +234,7 @@ class InteractionAgent:
                 data_requirements=validated.data_requirements,
                 design_mode=dm,
                 layout_preferences=lp,
+                product_type=pt or ProductType.WEB,
             )
 
             logger.info(f"Extracted {len(features)} features from requirement")
@@ -861,6 +870,13 @@ class InteractionAgent:
         lp = result.get("layout_preferences")
         if not lp or not isinstance(lp, list):
             lp = fallback.layout_preferences if fallback else None
+        pt_raw = result.get("product_type")
+        pt = fallback.product_type if fallback else ProductType.WEB
+        if pt_raw:
+            try:
+                pt = ProductType(str(pt_raw).lower())
+            except Exception:
+                pt = fallback.product_type if fallback else ProductType.WEB
         return Requirements(
             title=result.get("title", fallback.title if fallback else "Generated Application"),
             description=result.get("description", fallback.description if fallback else ""),
@@ -870,6 +886,7 @@ class InteractionAgent:
             data_requirements=result.get("data_requirements") or (fallback.data_requirements if fallback else None),
             design_mode=dm or (fallback.design_mode if fallback else None),
             layout_preferences=lp,
+            product_type=pt,
         )
 
     def conversation_to_requirements(self, messages: List[Dict[str, str]]) -> Requirements:

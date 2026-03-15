@@ -6,12 +6,20 @@ export const messages = ref([])
 export const sending = ref(false)
 export const typing = ref(false)
 
+function makeClientMessageId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return `msg_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
+}
+
 export function useChat() {
   const { ensureProject } = useProject()
 
   const sendMessage = async (text) => {
     if (!text?.trim() || sending.value) return
     const msg = text.trim()
+    const clientMessageId = makeClientMessageId()
     messages.value.push({ role: 'user', content: msg })
     sending.value = true
     typing.value = true
@@ -20,6 +28,7 @@ export function useChat() {
       const pid = await ensureProject()
       try {
         const res = await api.postChatStream(pid, msg, {
+          clientMessageId,
           onChunk: (chunk) => {
             const last = messages.value[messages.value.length - 1]
             if (last?.role === 'assistant') {
@@ -43,14 +52,20 @@ export function useChat() {
         }
       } catch (streamErr) {
         try {
-          const res = await api.postChat(pid, msg)
+          const res = await api.postChat(pid, msg, { clientMessageId })
           const reply = res?.reply || ''
           if (reply) {
-            messages.value.push({
-              role: 'assistant',
-              content: reply,
-              ...(res?.clarification ? { clarification: res.clarification } : {}),
-            })
+            const last = messages.value[messages.value.length - 1]
+            if (last?.role === 'assistant') {
+              last.content = reply
+              if (res?.clarification) last.clarification = res.clarification
+            } else {
+              messages.value.push({
+                role: 'assistant',
+                content: reply,
+                ...(res?.clarification ? { clarification: res.clarification } : {}),
+              })
+            }
           } else throw streamErr
         } catch {
           throw streamErr

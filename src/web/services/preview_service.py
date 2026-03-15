@@ -18,7 +18,7 @@ import subprocess
 import threading
 import time
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, Any
 
 from config.settings import Settings
 from src.utils.logger import get_logger
@@ -61,27 +61,39 @@ class PreviewService:
         self.settings = settings
         self._previews: Dict[str, Dict] = {}
         self._last_error: Dict[str, str] = {}
+        self._status: Dict[str, Dict[str, Any]] = {}
         self._lock = threading.Lock()
         self._reaper_started = False
 
     def start_preview(self, project_id: str) -> Optional[str]:
         """Start or restart the preview for a project. Returns the preview URL."""
+        self._set_status(project_id, "starting")
         self.stop_preview(project_id)
         self._ensure_reaper()
 
         gen_dir = self.settings.projects_dir / project_id / "generated"
         if not gen_dir.exists():
             self._set_error(project_id, "No generated/ directory found")
+            self._set_status(project_id, "error")
             logger.warning(f"No generated/ dir for {project_id}")
             return None
 
         entry = self._detect_entry_point(gen_dir)
         if not entry:
             self._set_error(project_id, "No entry point (app.py / main.py) found in generated code")
+            self._set_status(project_id, "error")
             logger.warning(f"No entry point found in {gen_dir}")
             return None
 
-        self._install_requirements(gen_dir)
+        self._set_status(project_id, "installing")
+        ok, install_err = self._install_requirements(gen_dir)
+        if not ok:
+            msg = f"Dependency install failed: {install_err or 'pip install returned non-zero'}"
+            self._set_error(project_id, msg)
+            self._set_status(project_id, "error")
+            logger.warning("Preview %s: %s", project_id, msg)
+            return None
+        self._set_status(project_id, "starting")
 
         port = _find_free_port()
         env = os.environ.copy()
@@ -112,7 +124,7 @@ class PreviewService:
                 cmd,
                 cwd=str(gen_dir),
                 env=env,
-                stdout=subprocess.PIPE,
+                stdout=stderr_fh,
                 stderr=stderr_fh,
                 creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0,
             )
@@ -123,6 +135,7 @@ class PreviewService:
                 except OSError:
                     pass
             self._set_error(project_id, f"Failed to start process: {e}")
+            self._set_status(project_id, "error")
             logger.error(f"Failed to start preview for {project_id}: {e}")
             return None
 
@@ -150,14 +163,17 @@ class PreviewService:
                     f"Preview process for {project_id} exited immediately "
                     f"(code={proc.returncode}). Check {stderr_log}"
                 )
+                self._set_status(project_id, "error")
                 self._cleanup_entry(project_id)
                 return None
+            self._set_status(project_id, "warming")
             logger.info(
                 f"Preview for {project_id} on {url} did not pass health check "
                 f"within {_HEALTH_CHECK_TIMEOUT}s; returning URL anyway"
             )
 
         self._clear_error(project_id)
+        self._set_status(project_id, "running")
         full_url = self._append_default_route(project_id, url)
         logger.info(f"Preview started for {project_id} on {full_url} (pid={proc.pid}, healthy={healthy})")
         return full_url
@@ -223,6 +239,7 @@ class PreviewService:
         if not info:
             return
         self._terminate(info)
+        self._set_status(project_id, "stopped")
         logger.info(f"Preview stopped for {project_id} (port={info['port']})")
 
     def get_preview_url(self, project_id: str) -> Optional[str]:
@@ -235,9 +252,58 @@ class PreviewService:
         proc = info["process"]
         if proc.poll() is not None:
             self._cleanup_entry(project_id)
+            self._set_status(project_id, "stopped")
             return None
 
         return self._append_default_route(project_id, info["url"])
+
+    def ensure_preview_started(self, project_id: str) -> Dict[str, Any]:
+        """
+        Ensure preview is running or being started asynchronously.
+        Returns status payload for API responses.
+        """
+        url = self.get_preview_url(project_id)
+        if url:
+            return self.get_preview_status(project_id)
+
+        with self._lock:
+            current = (self._status.get(project_id) or {}).get("state")
+            if current in {"starting", "installing"}:
+                return self.get_preview_status(project_id)
+            self._status[project_id] = {"state": "starting", "updated_at": time.time()}
+
+        t = threading.Thread(
+            target=self._start_preview_async_worker,
+            args=(project_id,),
+            daemon=True,
+        )
+        t.start()
+        return self.get_preview_status(project_id)
+
+    def _start_preview_async_worker(self, project_id: str) -> None:
+        try:
+            url = self.start_preview(project_id)
+            if not url and self.get_preview_error(project_id):
+                self._set_status(project_id, "error")
+        except Exception as ex:
+            self._set_error(project_id, f"Preview start failed: {ex}")
+            self._set_status(project_id, "error")
+            logger.warning("Async preview start failed for %s: %s", project_id, ex)
+
+    def get_preview_status(self, project_id: str) -> Dict[str, Any]:
+        url = self.get_preview_url(project_id)
+        with self._lock:
+            state = (self._status.get(project_id) or {}).get("state") or ("running" if url else "idle")
+        err = self.get_preview_error(project_id)
+        return {
+            "preview_url": url,
+            "running": bool(url),
+            "state": state,
+            "starting": state == "starting",
+            "installing": state == "installing",
+            "warming": state == "warming",
+            "preview_error": err,
+        }
 
     def stop_all(self):
         """Stop all running previews."""
@@ -309,14 +375,14 @@ class PreviewService:
             except OSError as ex:
                 logger.debug("Close stderr failed: %s", ex)
 
-    @staticmethod
-    def _install_requirements(gen_dir: Path) -> None:
-        """Install pip packages from the generated project's requirements.txt."""
+    def _install_requirements(self, gen_dir: Path) -> tuple[bool, Optional[str]]:
+        """Install pip packages from the generated project's requirements.txt.
+        Returns (True, None) on success, (False, error_message) on failure."""
         req_file = gen_dir / "requirements.txt"
         if not req_file.exists():
-            return
+            return True, None
         try:
-            logger.info(f"Installing dependencies from {req_file}")
+            logger.info("Installing dependencies from %s", req_file)
             result = subprocess.run(
                 [sys.executable, "-m", "pip", "install", "-q", "-r", str(req_file)],
                 capture_output=True,
@@ -324,11 +390,24 @@ class PreviewService:
                 timeout=120,
             )
             if result.returncode != 0:
-                logger.warning(f"pip install returned {result.returncode}: {result.stderr[:300]}")
-            else:
-                logger.info("Dependencies installed successfully")
+                snippet = (result.stderr or result.stdout or "")[:300]
+                logger.warning("pip install returned %s: %s", result.returncode, snippet)
+                return False, snippet.strip() or f"pip exited with code {result.returncode}"
+            logger.info("Dependencies installed successfully")
+            return True, None
+        except subprocess.TimeoutExpired as e:
+            logger.warning("Failed to install dependencies: timeout %s", e)
+            return False, "pip install timed out"
         except Exception as e:
-            logger.warning(f"Failed to install dependencies: {e}")
+            logger.warning("Failed to install dependencies: %s", e)
+            return False, str(e)
+
+    def _set_status(self, project_id: str, state: str) -> None:
+        with self._lock:
+            self._status[project_id] = {
+                "state": state,
+                "updated_at": time.time(),
+            }
 
     @staticmethod
     def _detect_entry_point(gen_dir: Path) -> Optional[str]:

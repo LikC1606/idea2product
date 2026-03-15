@@ -20,6 +20,7 @@
 
 | 任务类型 | 优先阅读 | Skill 补充 |
 |----------|----------|------------|
+| 了解项目并排查运行/生成问题 | PROJECT_AND_ISSUES → TROUBLESHOOTING | — |
 | 调试生成失败 / 运行报错 | TROUBLESHOOTING → CODE_GEN_SPEC → AGENTS_REF | — |
 | 修改 Agent 行为或新增 Agent | AGENTS_REF → PROMPTS_REF → doc-sync | — |
 | 修改数据流或模型 | DATA_MODELS_REF → ARCHITECTURE | — |
@@ -44,6 +45,7 @@
 | docs/refs/PROMPTS_REF.md | 提示模板与 Agent 映射 |
 | docs/refs/SERVICES_REF.md | LLMService、CodeMemory、ModelRegistry 等 |
 | docs/specs/CODE_GEN_SPEC.md | Interface-first、生成约束 |
+| docs/PROJECT_AND_ISSUES.md | 项目介绍与当前已知问题总结 |
 | docs/TROUBLESHOOTING.md | 故障排查 |
 | docs/BENCHMARK.md | 基准测试设计与运行 |
 | docs/REPRODUCIBILITY.md | 复现环境与依赖 |

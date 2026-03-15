@@ -47,6 +47,11 @@
     - 对主要 tab/视图（如 Plan/Code/Preview）使用 `tab-fade` 转场，对状态栏 Stage 文案使用 `stage-fade` 转场，并在 `@media (prefers-reduced-motion: reduce)` 下关闭 transform/transition。
   - 这些要求与 `docs/specs/CODE_GEN_SPEC.md` 中的「Page & Stage Transitions」章节保持一致，仅在 prompt 层做规范性描述，不直接约束具体实现文件路径。
 
+### Stage 4 FineTuning 与 TestError 引用
+
+- **TestError** 包含 `file_path`、`line_number`、`error_message`、`stack_trace`、`suggestion`。FullCycleTesting 在构造 TestError 时应尽量填入文件路径与行号，便于 FineTuning 定位。
+- **修复时引用该位置**：FineTuningAgent 的 `_fix_syntax_error` / `_fix_import_error` / `_fix_test_error` 等在使用 LLM 修复时，应在 prompt 中显式传入 `error.file_path`、`error.line_number` 以及 `error.error_message`（必要时 `error.stack_trace` 片段），要求模型「仅修改上述文件与行附近代码」或「优先在该位置修复」，避免修偏。
+
 ## See also
 
 - AGENTS_REF — 各提示对应的 Agent

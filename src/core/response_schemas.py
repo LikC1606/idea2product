@@ -61,6 +61,17 @@ class ExtractedRequirements(BaseModel):
     target_users: Optional[str] = None
     data_requirements: Optional[str] = None
     design_mode: Optional[str] = None
+    layout_preferences: Optional[List[str]] = None
+    product_type: Optional[str] = None
+
+    @field_validator("product_type")
+    @classmethod
+    def _validate_product_type(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        allowed = {"web", "pdf", "video", "audio", "app"}
+        vv = str(v).strip().lower()
+        return vv if vv in allowed else None
 
 
 def validate_response(data: dict, model_class: type[BaseModel]) -> BaseModel:

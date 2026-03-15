@@ -13,7 +13,7 @@
 
 | Agent | 文件 | 输入 | 输出 | 关键方法 |
 |-------|------|------|------|----------|
-| InteractionAgent | `src/agents/stage1_requirements/interaction_agent.py` | ExecutionContext, List[Dict] | Requirements | `execute()`, `run_interactive()`, `generate_clarification_questions()`, `generate_options_for_question()`（返回包含 `question`、`need_options` 与 `options[]` 的 ClarificationQuestion，用于 Web 澄清 chips），`reply_in_chat()`（对话助手，强制输出单句澄清问句且不包含示例）、`reply_in_chat_stream()`（同样返回已归一化的单句问句）、`conversation_to_requirements()`, `merge_requirements()` |
+| InteractionAgent | `src/agents/stage1_requirements/interaction_agent.py` | ExecutionContext, List[Dict] | Requirements | `execute()`, `run_interactive()`, `generate_clarification_questions()`, `generate_options_for_question()`（返回包含 `question`、`need_options` 与 `options[]` 的 ClarificationQuestion，用于 Web 澄清 chips），`reply_in_chat()`（对话助手，返回归一化回复文本，不强制结尾问号）、`reply_in_chat_stream()`（同上）、`_normalize_chat_reply(..., ensure_question=False)`（可选 ensure_question 用于澄清流强制单问句）、`conversation_to_requirements()`, `merge_requirements()` |
 | PaperToProjectAgent | `src/agents/stage1_requirements/paper_to_project_agent.py` | 论文路径/文本, 可选 context | 应用创意/需求摘要 | 分析论文并生成可落地的应用创意；CLI `from-paper` 使用 |
 
 - `InteractionAgent.generate_options_for_question()`：为 Web 澄清 chips 面板针对单个 assistant 问句生成 3–6 个选项；支持传入 `max_tokens`/`temperature` 控制成本与一致性；UI 侧另提供“其它/自定义”输入。
@@ -32,7 +32,7 @@
 
 | Agent | 文件 | 输入 | 输出 | 关键方法 |
 |-------|------|------|------|----------|
-| CodeGenerationAgent | `src/agents/stage3_generation/code_generation_agents.py` | ExecutionContext | CodeRepository | `execute()`, `_should_use_fast_model()`, `_fallback_for_task()`, `_process_task_with_tools()` |
+| CodeGenerationAgent | `src/agents/stage3_generation/code_generation_agents.py` | ExecutionContext | CodeRepository | `execute()`, `_should_use_fast_model()`, `_fallback_for_task()`, `_process_task_with_tools()`, `_ensure_minimum_files()`（在 Agent 任务结束后，根据 engineering_plan.file_structure + pyi_stubs/ api_specs 兜底生成最小可运行 Flask 骨架：缺失的模型、路由与模板会被补齐为简单但可运行的实现） |
 | CodeMemoryAgent | 同上 | ExecutionContext, CodeRepository | None (side-effect) | `pre_execute()`, `execute()` |
 | CodeMiningAgent | 同上 | ExecutionContext | Dict[str, str] | `execute()` |
 
@@ -64,7 +64,8 @@
 - **Agent 失败兜底**：`agent.invoke` 异常时，若 `detect_pattern_with_score` 达到阈值（crud/dashboard/auth/readonly），用 `generate_fallback_stub` 生成最小 stub
 - **语法修复**：`use_fast_model_for_syntax_fix=True` 时 fix 轮使用 fast model；`code_gen_syntax_fix_retries` 可配置重试次数
 - **Prompt 模块化**：system prompt 从 config/prompts/code_gen_system_base.txt、code_gen_critical_rules.txt、code_gen_quality.txt 加载
-- **正确性检查**：Stage 3 内部集成轻量级 Python 语法检查与自动修复循环（可通过 `enable_stage3_syntax_check` 开关控制），并提供可选的内部导入健全性检查（`enable_stage3_import_sanity_check`，用于提前发现 `app.*` 模块引用与生成文件不匹配的问题）；Skeleton 构建后会进行基础校验并在日志中输出 warning，用于尽早暴露依赖图异常。
+- **正确性检查**：Stage 3 内部集成轻量级 Python 语法检查与自动修复循环（可通过 `enable_stage3_syntax_check` 开关控制），并提供内部导入健全性检查（`enable_stage3_import_sanity_check` 默认 True，用于提前发现 `app.*` 模块引用与生成文件不匹配的问题）；Skeleton 构建后会进行基础校验并在日志中输出 warning，用于尽早暴露依赖图异常。
+- **增量扫描**：每个 task 执行前后对 generated 目录做快照 diff，仅对变更文件执行 symbol/snippet 增量更新；全量扫描仅保留兜底路径。
 
 ## Stage 4 - Validation
 
@@ -75,6 +76,13 @@
 | FrontendTestingAgent | 同上 | Path (generated), Optional[port] | List[TestError] | `execute(project_path, port)` |
 | VisualVerificationAgent | 同上 | ExecutionContext | Dict (alignment_score, issues) | `execute()` |
 | FineTuningAgent | 同上 | ExecutionContext, TestResult | (CodeRepository, bool) | `execute()` |
+
+## 2026-03-12 稳定性强化（Agents）
+
+- **Stage 4 依赖安装缓存**：`FullCycleTestingAgent` 对 `requirements.txt hash + Python 版本` 做 run 内缓存，避免同一轮重复 `pip install`。
+- **Stage 4 导入/路由检查隔离**：`_test_import_module` 与 `_check_frontend_routes` 改为子进程执行，避免污染主进程 `sys.path` / `sys.modules`。
+- **RunAndFixAgent 隔离化**：`RunAndFixAgent._try_run_app` 迁移为子进程检查，避免多轮修复时 in-process 导入污染。
+- **入口点回退契约对齐**：FineTuning 回退生成的 `app.py` 现包含 `create_app()`，与 Stage 4 导入检查契约一致。
 
 **Stage 4 调用顺序与职责**：Orchestrator 以 FullCycleTestingAgent 为入口，对代码库进行完整测试与 BDD 检查，然后在每轮中按「FullCycleTesting → FrontendTesting（逻辑通过时） → VisualVerification → FineTuning」的顺序形成闭环。在每一轮：
 
@@ -109,6 +117,7 @@
   - `AlgorithmAnalysisAgent.execute`（算法与实现策略）
   - `SchemePlanningAgent.execute`（文件结构与接口规格）
   - （可选）`ModelIntegrationPlanningAgent.execute`（外部模型/API 规划）
+  - Stage 2 完成后若 `enable_plan_completeness_check=True`，执行 `plan_validator.validate_plan_completeness`，对入口文件与 pyi 覆盖做轻量校验并打 warning，不阻断 Stage 3。
 - **Stage 3**：`Orchestrator.execute_stage_3`：
   - Phase 1/2：`CodeMemoryAgent.pre_execute` + `CodeMiningAgent.execute`（可并行）预取 memory/m mining 上下文
   - Phase 3：`CodeGenerationAgent.execute`（主体代码生成）
@@ -119,7 +128,7 @@
 
 ## FullCycleTestingAgent 行为说明
 
-- **执行顺序**：BDD 来源（plan.bdd_test_cases 或 _rule_based_bdd_fallback）→ 落盘 _save_files → _generate_init_files → _run_syntax_check → 若无语法错误则：_try_run_with_subprocess（validation_port）→ _check_frontend_routes / _check_auth_flow → _check_unused_files（warnings）→ 若 enable_bdd_testing 则 _write_bdd_pytest_file + _run_tests；若有语法错误则跳过启应用与 BDD 执行，设 env_start_success=False，仍可做未使用文件检查。
+- **执行顺序**：BDD 来源（plan.bdd_test_cases 或 _rule_based_bdd_fallback）→ 落盘 _save_files → _generate_init_files → _run_syntax_check → 若无语法错误则：_try_run_with_subprocess（validation_port，使用以 `generated/` 为优先的隔离 PYTHONPATH 运行 app.py）→ _check_frontend_routes / _check_auth_flow → _check_unused_files（warnings）→ 若 enable_bdd_testing 则 _write_bdd_pytest_file + _run_tests；若有语法错误则跳过启应用与 BDD 执行，设 env_start_success=False，仍可做未使用文件检查。
 - **BDD 来源**：Single source 为 Orchestrator._synthesize_bdd_tests 写入 plan.bdd_test_cases；仅当 plan 无 BDD 时使用 _rule_based_bdd_fallback。
 - **未使用文件**：仅作为 warnings 上报（不加入 errors），仅检查 app/ 下非 app/static 的后端文件；可通过 warn_unused_files=False 关闭。
 - **配置**：validation_port、enable_bdd_testing、warn_unused_files、bdd_test_timeout_seconds
@@ -183,3 +192,14 @@
 
 - DATA_MODELS_REF — 输入输出类型（Requirements、Task、EngineeringPlan、CodeRepository）
 - PROMPTS_REF — 各 Agent 对应的提示模板
+
+## 2026-03-12 更新（稳定性与安全）
+
+- **Stage 2 / TaskDivisionAgent**
+  - `_fallback_tasks` 不再在低置信度场景返回空任务；改为最小可执行任务集兜底，避免 Stage 2 成功但 Stage 3 因空结构失败。
+- **Stage 3 / tools.py**
+  - `read_file` / `write_file` / `modify_file` / `validate_syntax` 新增路径安全解析，拒绝绝对路径、盘符路径、`..` 路径穿越。
+- **Stage 4 / FullCycleTestingAgent**
+  - `_save_files` 新增 generated 目录越界防护，阻断不安全相对路径写入。
+- **Stage 4 / PreviewService（Web 服务协作）**
+  - 预览启动状态新增 `starting/installing/running/error`，并支持异步启动路径，提升 Web 端可观测性与响应稳定性。

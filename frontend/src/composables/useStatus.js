@@ -12,6 +12,7 @@ function statusLabel(s, p) {
   if (s === 'processing') return `Generating... ${p || 0}%`
   if (s === 'completed') return 'Done'
   if (s === 'failed') return 'Failed'
+  if (s === 'cancelled') return 'Cancelled'
   return 'Ready'
 }
 
@@ -30,7 +31,8 @@ export function useStatus() {
     const s = payload.status || 'idle'
     const stage = payload.current_stage || ''
     const prog = payload.progress ?? 0
-    statusError.value = (s === 'failed' && payload.error) ? String(payload.error) : ''
+    const err = (s === 'failed' || s === 'cancelled') && payload.error ? String(payload.error) : ''
+    statusError.value = err
     setStatus(s, statusLabel(s, prog), stage, prog)
   }
 
@@ -48,12 +50,14 @@ export function useStatus() {
   const createEventSource = (onUpdate) => {
     if (!projectId.value) return null
     const evtSource = api.createEventSource(projectId.value, null)
-    evtSource.onmessage = (event) => {
+    const handleData = (event) => {
       try {
         const s = JSON.parse(event.data)
         onUpdate?.(s)
       } catch {}
     }
+    evtSource.addEventListener('status', handleData)
+    evtSource.addEventListener('timeout', handleData)
     return evtSource
   }
 

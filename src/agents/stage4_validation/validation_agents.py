@@ -6,6 +6,8 @@ import subprocess
 import sys
 import time
 import traceback
+import hashlib
+import threading
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from datetime import datetime
@@ -38,6 +40,8 @@ class FullCycleTestingAgent:
 
     def __init__(self, llm_service: LLMService):
         self.llm_service = llm_service
+        self._deps_cache: Dict[str, bool] = {}
+        self._deps_lock = threading.Lock()
 
     def execute(self, context: ExecutionContext) -> TestResult:
         """Run full-cycle tests on the generated code."""
@@ -169,6 +173,24 @@ class FullCycleTestingAgent:
 
         logger.info(f"Starting {entry_file} on port {port}...")
 
+        # Construct an isolated environment where the generated project directory
+        # is the first entry on PYTHONPATH, so imports like `import config` and
+        # `from app import create_app` resolve to the generated app instead of
+        # the repository's own modules.
+        env = os.environ.copy()
+        env["PORT"] = str(port)
+        try:
+            existing_pp = env.get("PYTHONPATH") or ""
+            parts = [str(project_path)]
+            for p in existing_pp.split(os.pathsep):
+                p = p.strip()
+                if p and p not in parts:
+                    parts.append(p)
+            env["PYTHONPATH"] = os.pathsep.join(parts)
+        except Exception:
+            # If anything goes wrong, fall back to at least setting PORT.
+            env["PYTHONPATH"] = str(project_path)
+
         proc = None
         try:
             proc = subprocess.Popen(
@@ -177,7 +199,7 @@ class FullCycleTestingAgent:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                env={**os.environ, "PORT": str(port)},
+                env=env,
             )
 
             time.sleep(3)
@@ -235,59 +257,75 @@ class FullCycleTestingAgent:
     def _check_frontend_routes(
         self, project_path: Path, engineering_plan: "EngineeringPlan"
     ) -> List[TestError]:
-        """Verify each frontend_route returns non-404 when app is runnable."""
+        """Verify each frontend_route returns non-404 in an isolated subprocess."""
         errors = []
         api_specs = getattr(engineering_plan, "api_specs", None) or {}
         frontend_routes = api_specs.get("frontend_routes") or {}
         if not frontend_routes:
             return errors
-
-        import sys
-
-        sys.path.insert(0, str(project_path))
+        import json as _json
+        import tempfile as _tempfile
+        route_list = [p for p in frontend_routes.keys() if p != "/"]
+        with _tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".json", delete=False) as tf:
+            tf.write(_json.dumps({"routes": route_list}, ensure_ascii=False))
+            route_file = tf.name
+        script = (
+            "import json,sys,importlib.util,pathlib;"
+            "p=pathlib.Path(sys.argv[1]);rf=pathlib.Path(sys.argv[2]);"
+            "routes=(json.loads(rf.read_text(encoding='utf-8')) or {}).get('routes',[]);"
+            "sys.path.insert(0,str(p));"
+            "app_module=None;"
+            "init_path=p/'app'/'__init__.py';"
+            "app_py=p/'app.py';"
+            "import types;"
+            "def load_mod(path,name):"
+            " spec=importlib.util.spec_from_file_location(name,path);"
+            " m=importlib.util.module_from_spec(spec);"
+            " spec.loader.exec_module(m);"
+            " return m;"
+            "try:"
+            " app_module=load_mod(init_path,'app') if init_path.exists() else None;"
+            " if (not app_module or not hasattr(app_module,'create_app')) and app_py.exists():"
+            "  app_module=load_mod(app_py,'app_mod');"
+            " if not app_module or not hasattr(app_module,'create_app'):"
+            "  print(json.dumps({'missing_app':True,'not_found':[]}));"
+            "  raise SystemExit(0);"
+            " app=app_module.create_app();"
+            " not_found=[];"
+            " with app.test_client() as c:"
+            "  for r in routes:"
+            "   resp=c.get(r);"
+            "   if resp.status_code==404:not_found.append(r);"
+            " print(json.dumps({'missing_app':False,'not_found':not_found},ensure_ascii=False));"
+            "except Exception as e:"
+            " print(json.dumps({'missing_app':True,'error':str(e),'not_found':[]},ensure_ascii=False));"
+        )
         try:
-            import importlib.util
-
-            app_module = None
-            init_path = project_path / "app" / "__init__.py"
-            if init_path.exists():
-                spec = importlib.util.spec_from_file_location("app", init_path)
-                app_module = importlib.util.module_from_spec(spec)
-                sys.modules["app"] = app_module
-                spec.loader.exec_module(app_module)
-            if not app_module or not hasattr(app_module, "create_app"):
-                app_py = project_path / "app.py"
-                if app_py.exists():
-                    spec = importlib.util.spec_from_file_location("app_mod", app_py)
-                    mod = importlib.util.module_from_spec(spec)
-                    spec.loader.exec_module(mod)
-                    if hasattr(mod, "create_app"):
-                        app_module = mod
-            if not app_module or not hasattr(app_module, "create_app"):
-                return errors
-
-            app = app_module.create_app()
-            with app.test_client() as client:
-                for path in frontend_routes.keys():
-                    if path == "/":
-                        continue
-                    r = client.get(path)
-                    if r.status_code == 404:
-                        errors.append(
-                            TestError(
-                                error_type=ErrorType.RUNTIME,
-                                file_path="app/__init__.py",
-                                line_number=0,
-                                error_message=f"Frontend route {path} returns 404",
-                                suggestion=f"Add @app.route('{path}') in app/__init__.py",
-                            )
-                        )
+            proc = subprocess.run(
+                [sys.executable, "-c", script, str(project_path), route_file],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            raw = (proc.stdout or "").strip()
+            data = _json.loads(raw) if raw else {}
+            for path in data.get("not_found", []) or []:
+                errors.append(
+                    TestError(
+                        error_type=ErrorType.RUNTIME,
+                        file_path="app/__init__.py",
+                        line_number=0,
+                        error_message=f"Frontend route {path} returns 404",
+                        suggestion=f"Add @app.route('{path}') in app/__init__.py",
+                    )
+                )
         except Exception as e:
             logger.debug(f"Frontend route check skipped: {e}")
         finally:
-            if str(project_path) in sys.path:
-                sys.path.remove(str(project_path))
-
+            try:
+                os.remove(route_file)
+            except OSError:
+                pass
         return errors
 
     def _check_auth_flow(
@@ -354,59 +392,57 @@ class FullCycleTestingAgent:
         return errors
 
     def _test_import_module(self, project_path: Path) -> List[TestError]:
-        """测试能否作为模块导入"""
+        """测试能否作为模块导入（隔离子进程执行）"""
         errors = []
-        import sys
-
-        # 添加到 Python 路径
-        sys.path.insert(0, str(project_path))
-
-        # 清理之前的导入
-        modules_to_remove = [m for m in sys.modules.keys() if m.startswith('app')]
-        for m in modules_to_remove:
-            del sys.modules[m]
-
         try:
-            # 尝试导入 app 包
-            import importlib.util
-
-            # 尝试 app/__init__.py
-            init_path = project_path / "app" / "__init__.py"
-            if init_path.exists():
-                spec = importlib.util.spec_from_file_location("app", init_path)
-                app_module = importlib.util.module_from_spec(spec)
-                sys.modules['app'] = app_module
-                spec.loader.exec_module(app_module)
-
-                if hasattr(app_module, 'create_app'):
-                    logger.info("App module can be imported successfully!")
-                    return []
-
-            # 如果 app/__init__.py 没有 create_app，尝试 app.py
-            app_py = project_path / "app.py"
-            if app_py.exists():
-                spec = importlib.util.spec_from_file_location("app_module", app_py)
-                test_module = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(test_module)
-                if hasattr(test_module, 'create_app'):
-                    logger.info("App from app.py can be imported!")
-                    return []
-
+            script = (
+                "import sys,importlib.util,pathlib,json;"
+                "p=pathlib.Path(sys.argv[1]);"
+                "sys.path.insert(0,str(p));"
+                "def load_mod(path,name):"
+                " spec=importlib.util.spec_from_file_location(name,path);"
+                " m=importlib.util.module_from_spec(spec);"
+                " spec.loader.exec_module(m);"
+                " return m;"
+                "init_path=p/'app'/'__init__.py';"
+                "app_py=p/'app.py';"
+                "ok=False;err='';"
+                "try:"
+                " if init_path.exists():"
+                "  m=load_mod(init_path,'app');"
+                "  ok=hasattr(m,'create_app');"
+                " if not ok and app_py.exists():"
+                "  m2=load_mod(app_py,'app_mod');"
+                "  ok=hasattr(m2,'create_app');"
+                "except Exception as e:"
+                " err=str(e);"
+                "print(json.dumps({'ok':ok,'error':err},ensure_ascii=False));"
+            )
+            proc = subprocess.run(
+                [sys.executable, "-c", script, str(project_path)],
+                capture_output=True,
+                text=True,
+                timeout=20,
+            )
+            import json as _json
+            data = _json.loads((proc.stdout or "{}").strip() or "{}")
+            if data.get("ok"):
+                return []
+            err = data.get("error", "")
             errors.append(TestError(
                 error_type=ErrorType.IMPORT,
                 file_path="app/__init__.py",
                 line_number=0,
-                error_message="Cannot import create_app from app module",
+                error_message=f"Import error: {str(err)[:200]}" if err else "Cannot import create_app from app module",
                 suggestion="Add create_app() function to app/__init__.py or ensure app.py can be imported"
             ))
-
         except Exception as e:
             errors.append(TestError(
                 error_type=ErrorType.IMPORT,
                 file_path="app/__init__.py",
                 line_number=0,
-                error_message=f"Import error: {str(e)[:200]}",
-                suggestion="Fix the import error"
+                error_message=f"Import isolation error: {str(e)[:200]}",
+                suggestion="Fix isolated import execution failure",
             ))
 
         return errors
@@ -745,12 +781,19 @@ class FullCycleTestingAgent:
 
         return errors, stdout, stderr
 
-    @staticmethod
-    def _install_project_deps(project_path: Path) -> bool:
+    def _install_project_deps(self, project_path: Path) -> bool:
         """Install pip packages listed in the generated project's requirements.txt. Returns True if success or no deps."""
         req_file = project_path / "requirements.txt"
         if not req_file.exists():
             return True
+        try:
+            req_text = req_file.read_text(encoding="utf-8")
+        except OSError:
+            req_text = ""
+        cache_key = f"{project_path}:{sys.version_info.major}.{sys.version_info.minor}:{hashlib.sha256(req_text.encode('utf-8')).hexdigest()}"
+        with self._deps_lock:
+            if cache_key in self._deps_cache:
+                return self._deps_cache[cache_key]
         try:
             logger.info("Installing generated project dependencies...")
             result = subprocess.run(
@@ -761,11 +804,17 @@ class FullCycleTestingAgent:
             )
             if result.returncode != 0:
                 logger.warning(f"pip install returned {result.returncode}: {result.stderr[:300]}")
+                with self._deps_lock:
+                    self._deps_cache[cache_key] = False
                 return False
             logger.info("Project dependencies installed")
+            with self._deps_lock:
+                self._deps_cache[cache_key] = True
             return True
         except Exception as e:
             logger.warning(f"Could not install project deps: {e}")
+            with self._deps_lock:
+                self._deps_cache[cache_key] = False
             return False
 
     def _rule_based_bdd_fallback(self, requirements: Requirements) -> list[BDDTestCase]:
@@ -870,7 +919,7 @@ class FullCycleTestingAgent:
         project_path.mkdir(parents=True, exist_ok=True)
 
         for code_file in repository.files:
-            file_path = project_path / code_file.path
+            file_path = self._resolve_safe_generated_path(project_path, code_file.path)
             file_path.parent.mkdir(parents=True, exist_ok=True)
             file_path.write_text(code_file.content or "", encoding='utf-8')
 
@@ -911,6 +960,22 @@ class FullCycleTestingAgent:
                 req_path.write_text("\n".join(valid_packages) + "\n")
 
         logger.info(f"Saved {len(repository.files)} files to {project_path}")
+
+    @staticmethod
+    def _resolve_safe_generated_path(project_path: Path, relative_path: str) -> Path:
+        """Resolve path under generated dir and block traversal/absolute paths."""
+        candidate = Path(relative_path or "")
+        if candidate.is_absolute() or candidate.drive:
+            raise ValueError(f"Invalid generated file path: {relative_path}")
+        posix = candidate.as_posix()
+        if posix.startswith("../") or posix == ".." or "/../" in f"/{posix}":
+            raise ValueError(f"Path traversal blocked: {relative_path}")
+        target = (project_path / candidate).resolve()
+        try:
+            target.relative_to(project_path.resolve())
+        except ValueError as ex:
+            raise ValueError(f"Path escapes generated directory: {relative_path}") from ex
+        return target
 
     def _run_syntax_check(self, repository: CodeRepository) -> list[TestError]:
         """Check Python files for syntax errors."""
@@ -1317,16 +1382,23 @@ If the file doesn't need changes, return the original content unchanged.
         entry_content = '''"""Application entry point (generated by FineTuningAgent)."""
 from flask import Flask, jsonify
 
-app = Flask(__name__)
 
-@app.route('/')
-def index():
-    return jsonify({'message': 'Application running'})
+def create_app():
+    app = Flask(__name__)
+
+    @app.route('/')
+    def index():
+        return jsonify({'message': 'Application running'})
+
+    return app
+
+
+app = create_app()
 
 if __name__ == '__main__':
     import os
     port = int(os.environ.get("PORT", 5000))
-    app.run(debug=True, host='0.0.0.0', port=port)
+    app.run(debug=False, host='0.0.0.0', port=port)
 '''
         repository.files.append(CodeFile(
             path='app.py',
@@ -1667,41 +1739,53 @@ class RunAndFixAgent:
         return repository
 
     def _try_run_app(self, generated_path: Path) -> Optional[tuple]:
-        """Try to import and create app. Returns (file_path, error_msg, line_number) or None."""
-        sys.path.insert(0, str(generated_path))
+        """Try to import and create app in isolated subprocess."""
+        script = (
+            "import importlib.util,pathlib,sys,json,traceback;"
+            "p=pathlib.Path(sys.argv[1]);sys.path.insert(0,str(p));"
+            "def load(path,name):"
+            " spec=importlib.util.spec_from_file_location(name,path);"
+            " m=importlib.util.module_from_spec(spec);"
+            " spec.loader.exec_module(m);"
+            " return m;"
+            "try:"
+            " init=p/'app'/'__init__.py';app_py=p/'app.py';m=None;"
+            " if init.exists():m=load(init,'app');"
+            " if m and hasattr(m,'create_app'):m.create_app();print(json.dumps({'ok':True}));raise SystemExit(0);"
+            " if app_py.exists():"
+            "  m2=load(app_py,'app_module');"
+            "  if hasattr(m2,'create_app'):m2.create_app();print(json.dumps({'ok':True}));raise SystemExit(0);"
+            " print(json.dumps({'ok':False,'file':'app/__init__.py','error':'Could not find create_app function','line':0}));"
+            "except ImportError as e:"
+            " err=str(e);"
+            " if 'No module named' in err:"
+            "  mod=err.split('No module named')[-1].strip().strip('\"\\'');"
+            "  print(json.dumps({'ok':False,'file':'import:'+mod,'error':err,'line':0}));"
+            " else:"
+            "  print(json.dumps({'ok':False,'file':'app/__init__.py','error':err,'line':0}));"
+            "except Exception as e:"
+            " print(json.dumps({'ok':False,'file':'unknown','error':str(e),'line':0}));"
+        )
         try:
-            import importlib.util
-            app_module = None
-            init_path = generated_path / "app" / "__init__.py"
-            if init_path.exists():
-                spec = importlib.util.spec_from_file_location("app", init_path)
-                app_module = importlib.util.module_from_spec(spec)
-                sys.modules["app"] = app_module
-                spec.loader.exec_module(app_module)
-            if app_module and hasattr(app_module, "create_app"):
-                app_module.create_app()
+            proc = subprocess.run(
+                [sys.executable, "-c", script, str(generated_path)],
+                capture_output=True,
+                text=True,
+                timeout=25,
+            )
+            out = (proc.stdout or "").strip()
+            if not out:
+                return ("unknown", "App check subprocess produced no output", 0)
+            data = json.loads(out)
+            if data.get("ok"):
                 return None
-            app_py = generated_path / "app.py"
-            if app_py.exists():
-                spec = importlib.util.spec_from_file_location("app_module", app_py)
-                mod = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(mod)
-                if hasattr(mod, "create_app"):
-                    return None
-            return ("app/__init__.py", "Could not find create_app function", 0)
-        except ImportError as e:
-            err = str(e)
-            if "No module named" in err:
-                module_name = err.split("No module named")[-1].strip().strip("'\"")
-                return (f"import:{module_name}", err, 0)
-            return (self._extract_file_from_import_error(err), err, 0)
+            return (
+                data.get("file", "unknown"),
+                data.get("error", "Unknown run check error"),
+                int(data.get("line", 0) or 0),
+            )
         except Exception as e:
-            tb = traceback.format_exc()
-            fp, ln = self._extract_location_from_traceback(tb)
-            return (fp or "unknown", str(e), ln or 0)
-        finally:
-            if str(generated_path) in sys.path:
-                sys.path.remove(str(generated_path))
+            return ("unknown", f"Isolated run check failed: {e}", 0)
 
     def _extract_file_from_import_error(self, error_msg: str) -> str:
         if "cannot import name" in error_msg and "from 'app." in error_msg:
@@ -1803,7 +1887,7 @@ class CodeFixAgent:
         from config.settings import get_settings
 
         proj_path = Path(project_path) if not isinstance(project_path, Path) else project_path
-        FullCycleTestingAgent._install_project_deps(proj_path)
+        FullCycleTestingAgent(self.llm_service)._install_project_deps(proj_path)
 
         llm = self.llm_service.create_langchain_llm(temperature=0, max_tokens=8000)
 

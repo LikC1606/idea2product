@@ -522,18 +522,62 @@ class TaskDivisionAgent:
         return tasks
 
     def _fallback_tasks(self, requirements: Requirements, combined_text: str) -> List[Task]:
-        """Return template-based tasks when LLM fails. Empty list if no pattern matches."""
+        """Return template-based tasks when LLM fails. Always returns non-empty tasks."""
         pattern, score = detect_pattern_with_score(combined_text)
         if not pattern or score < PATTERN_CONFIDENCE_THRESHOLD:
-            logger.warning("No high-confidence pattern for fallback, returning empty tasks")
-            return []
+            logger.warning("No high-confidence pattern for fallback, using minimal generic tasks")
+            return self._minimal_fallback_tasks(requirements)
         raw = build_fallback_tasks(pattern, requirements)
         if not raw:
-            return []
+            logger.warning("Pattern fallback returned no tasks, using minimal generic tasks")
+            return self._minimal_fallback_tasks(requirements)
         tasks = self._parse_tasks(raw)
+        if not tasks:
+            return self._minimal_fallback_tasks(requirements)
         tasks = self._validate_dag(tasks)
         logger.info(f"Using fallback tasks for pattern={pattern} (score={score})")
         return tasks
+
+    def _minimal_fallback_tasks(self, requirements: Requirements) -> List[Task]:
+        """Guarantee a runnable minimal task set when pattern matching is unavailable."""
+        feature_names = ", ".join(f.name for f in requirements.features[:4]) or "core features"
+        raw = [
+            {
+                "id": "T1",
+                "name": "Bootstrap backend skeleton",
+                "description": f"Create Flask app entry, config, and core routes for {requirements.title}.",
+                "type": "backend",
+                "priority": 1,
+                "estimated_complexity": "medium",
+                "dependencies": [],
+                "files_to_add": ["app.py", "app/__init__.py", "requirements.txt"],
+                "files_to_modify": [],
+            },
+            {
+                "id": "T2",
+                "name": "Implement core user flows",
+                "description": f"Implement primary user flows covering: {feature_names}.",
+                "type": "frontend",
+                "priority": 2,
+                "estimated_complexity": "medium",
+                "dependencies": ["T1"],
+                "files_to_add": ["templates/index.html", "static/css/style.css"],
+                "files_to_modify": ["app/__init__.py"],
+            },
+            {
+                "id": "T3",
+                "name": "Add basic validation tests",
+                "description": "Add smoke tests and route checks for core pages and APIs.",
+                "type": "testing",
+                "priority": 3,
+                "estimated_complexity": "low",
+                "dependencies": ["T1", "T2"],
+                "files_to_add": ["tests/test_smoke.py"],
+                "files_to_modify": [],
+            },
+        ]
+        tasks = self._parse_tasks(raw)
+        return self._validate_dag(tasks)
 
     def _validate_dag(self, tasks: List[Task]) -> List[Task]:
         """Validate dependencies: remove invalid refs, detect cycles, return topo-sorted list."""
@@ -1273,17 +1317,32 @@ Do not include capabilities that are not clearly implied by the requirements.
             capabilities_list=capabilities_list,
             search_results=search_results[:6000],
         )
-        import json
         try:
-            response = self.llm_service.generate(prompt, max_tokens=1500)
-            if not response or not response.strip():
-                return []
-            text = response.strip()
-            if "```json" in text:
-                text = text.split("```json")[-1].split("```")[0].strip()
-            elif "```" in text:
-                text = text.split("```")[1].split("```")[0].strip()
-            data = json.loads(text)
+            schema = {
+                "name": "external_model_specs",
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "capability_type": {"type": "string"},
+                        "provider_name": {"type": "string"},
+                        "docs_url": {"type": "string"},
+                        "api_docs_summary": {"type": "string"},
+                        "base_url_hint": {"type": "string"},
+                        "auth_type": {"type": "string"},
+                        "request_body_example": {"type": "string"},
+                        "response_image_path": {"type": "string"},
+                        "suggested_integration": {"type": "string"},
+                    },
+                    "required": ["capability_type", "provider_name"],
+                    "additionalProperties": True,
+                },
+            }
+            data = self.llm_service.generate_json(
+                prompt=prompt,
+                max_tokens=1500,
+                json_schema=schema,
+            )
             if not isinstance(data, list):
                 return []
             specs = []
@@ -1307,9 +1366,6 @@ Do not include capabilities that are not clearly implied by the requirements.
                     logger.debug("Skip invalid external spec: %s", ex)
             logger.info("ModelIntegrationPlanningAgent: produced %d external model spec(s)", len(specs))
             return specs
-        except json.JSONDecodeError as e:
-            logger.warning("Model integration planning JSON parse failed: %s", e)
-            return []
         except Exception as e:
             logger.warning("Model integration planning failed: %s", e)
             return []

@@ -66,6 +66,12 @@ class ExecutionContext(BaseModel):
     current_stage: int = Field(default=1, ge=1, le=4)
     project_path: Optional[Path] = None
     error_log: List[str] = Field(default_factory=list)
+    run_id: str = Field(default_factory=lambda: f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}")
+    attempt: int = 1
+    input_fingerprint: Optional[str] = None
+    execution_signature: Optional[str] = None
+    resume_from_stage: Optional[int] = None
+    stage_state: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 

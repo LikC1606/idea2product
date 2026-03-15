@@ -40,6 +40,7 @@ bp = Blueprint("projects", __name__, url_prefix="/api/projects")
 # Keyed by (project_id, assistant_question). TTL is short (UI convenience only).
 _CLARIFY_CACHE: dict = {}
 _CLARIFY_CACHE_TTL_SECONDS = 300
+_CLARIFY_CACHE_MAX_SIZE = 500
 
 # project_id format: proj_<date>_<time>_<hex> (e.g. proj_20250103_123456_abc123)
 _PROJECT_ID_RE = re.compile(r"^proj_[a-zA-Z0-9_-]+$")
@@ -103,6 +104,29 @@ def _extract_question_sentence(text: str) -> str:
 def _is_question(text: str) -> bool:
     t = (text or "").strip()
     return bool(t) and (t.endswith("?") or t.endswith("？"))
+
+
+def _append_user_message_idempotent(
+    settings,
+    project_id: str,
+    message: str,
+    client_message_id: str = "",
+):
+    """
+    Append user message once per client_message_id.
+    Returns latest messages after append/no-op.
+    """
+    cmid = (client_message_id or "").strip()[:128]
+    if cmid and chat_service.has_message_id(settings, project_id, cmid, role="user"):
+        return chat_service.get_messages(settings, project_id)
+    chat_service.append_message(
+        settings,
+        project_id,
+        "user",
+        message,
+        client_message_id=cmid or None,
+    )
+    return chat_service.get_messages(settings, project_id)
 
 
 def _get_or_build_clarification_payload(
@@ -186,6 +210,8 @@ def _get_or_build_clarification_payload(
                 }
             ]
         }
+        if len(_CLARIFY_CACHE) >= _CLARIFY_CACHE_MAX_SIZE:
+            _CLARIFY_CACHE.pop(next(iter(_CLARIFY_CACHE)), None)
         _CLARIFY_CACHE[cache_key] = (now, payload)
         return payload
     except Exception as e:
@@ -250,14 +276,12 @@ def post_chat(project_id):
     except Exception:
         return jsonify({"error": "Invalid JSON in request body"}), 400
     message = data.get("message", "").strip()
+    client_message_id = data.get("client_message_id", "")
     if not message:
         return jsonify({"error": "message is required"}), 400
 
     settings = get_settings()
-
-    chat_service.append_message(settings, project_id, "user", message)
-
-    messages = chat_service.get_messages(settings, project_id)
+    messages = _append_user_message_idempotent(settings, project_id, message, client_message_id)
 
     clarification = None
     try:
@@ -301,14 +325,17 @@ def post_chat_stream(project_id):
     """Stream assistant reply via SSE. Body: {"message": "..."}. Appends user msg first, then streams AI reply."""
     if not _validate_project_id(project_id):
         return jsonify({"error": "Invalid project id"}), 400
-    data = request.get_json(silent=True) or {}
+    try:
+        data = request.get_json(silent=False) or {}
+    except Exception:
+        return jsonify({"error": "Invalid JSON in request body"}), 400
     message = data.get("message", "").strip()
+    client_message_id = data.get("client_message_id", "")
     if not message:
         return jsonify({"error": "message is required"}), 400
 
     settings = get_settings()
-    chat_service.append_message(settings, project_id, "user", message)
-    messages = chat_service.get_messages(settings, project_id)
+    messages = _append_user_message_idempotent(settings, project_id, message, client_message_id)
 
     def generate_and_persist():
         buffer = []
@@ -385,18 +412,42 @@ def trigger_generate(project_id):
     if not user_messages:
         return jsonify({"error": "No messages yet. Send a message first, then click Generate."}), 400
 
-    data = request.get_json(silent=True) or {}
+    try:
+        data = request.get_json(silent=False) or {}
+    except Exception:
+        return jsonify({"error": "Invalid JSON in request body"}), 400
     product_type = data.get("product_type") or None
     model_id = data.get("model_id") or None
-    ts.enqueue_generation(project_id, product_type=product_type, model_id=model_id)
+    enqueue_result = ts.enqueue_generation(project_id, product_type=product_type, model_id=model_id)
+    if enqueue_result == "rejected_backpressure":
+        return jsonify(
+            {
+                "status": enqueue_result,
+                "project_id": project_id,
+                "product_type": product_type,
+                "model_id": model_id,
+                "retry_after_seconds": int(getattr(settings, "task_queue_retry_after_seconds", 5) or 5),
+            }
+        ), 429
     return jsonify(
         {
-            "status": "queued",
+            "status": enqueue_result,
             "project_id": project_id,
             "product_type": product_type,
             "model_id": model_id,
         }
     )
+
+
+@bp.route("/<project_id>/cancel", methods=["POST"])
+def cancel_generate(project_id):
+    if not _validate_project_id(project_id):
+        return jsonify({"error": "Invalid project id"}), 400
+    ts = _get_task_service()
+    ok = ts.cancel_generation(project_id)
+    if not ok:
+        return jsonify({"error": "Project not found"}), 404
+    return jsonify({"status": "cancelling", "project_id": project_id})
 
 
 # ======================================================================
@@ -406,6 +457,12 @@ def trigger_generate(project_id):
 @bp.route("", methods=["GET"])
 def list_projects():
     return jsonify({"projects": _get_task_service().list_projects()})
+
+
+@bp.route("/metrics", methods=["GET"])
+def get_reliability_metrics():
+    """Return in-memory reliability metrics for generation pipeline."""
+    return jsonify(_get_task_service().get_reliability_metrics())
 
 
 @bp.route("/<project_id>", methods=["GET"])
@@ -460,18 +517,14 @@ def get_preview_url(project_id):
     """Return the live preview URL (if preview is running)."""
     if not _validate_project_id(project_id):
         return jsonify({"error": "Invalid project id"}), 400
-    url = preview_service.get_preview_url(project_id)
-    if not url:
-        # Check if project is completed and auto-start preview
+    status = preview_service.get_preview_status(project_id)
+    if not status.get("running"):
+        # Check if project is completed and auto-start preview asynchronously
         task_service = _get_task_service()
         project = task_service.get_project(project_id)
         if project and project.get("status") == "completed":
-            # Auto-start preview for completed projects
-            url = preview_service.start_preview(project_id)
-
-        error = preview_service.get_preview_error(project_id)
-        return jsonify({"preview_url": url, "running": bool(url), "preview_error": error})
-    return jsonify({"preview_url": url, "running": True})
+            status = preview_service.ensure_preview_started(project_id)
+    return jsonify(status)
 
 
 @bp.route("/<project_id>/clarification-questions", methods=["GET"])
@@ -517,8 +570,12 @@ def delete_project(project_id):
     if not _validate_project_id(project_id):
         return jsonify({"error": "Invalid project id"}), 400
     preview_service.stop_preview(project_id)
-    success = _get_task_service().delete_project(project_id)
-    if not success:
+    result = _get_task_service().delete_project(project_id)
+    if result == "busy":
+        return jsonify({
+            "error": "Cannot delete project while generation is running. Cancel first or wait for completion.",
+        }), 409
+    if result == "not_found":
         return jsonify({"error": "Project not found"}), 404
     return jsonify({"message": "Project deleted"})
 
@@ -536,16 +593,42 @@ def stream_status(project_id):
     """
     if not _validate_project_id(project_id):
         return jsonify({"error": "Invalid project id"}), 400
+    ts = _get_task_service()
+    if not ts.get_project(project_id):
+        return jsonify({"error": "Project not found"}), 404
+
     def generate():
-        ts = _get_task_service()
+        settings = get_settings()
+        heartbeat_seconds = float(getattr(settings, "sse_heartbeat_seconds", 8.0) or 8.0)
+        max_lifetime = float(getattr(settings, "sse_max_lifetime_seconds", 600.0) or 600.0)
+        yield "retry: 5000\n\n"
         prev = None
+        event_id = 0
+        started = time.time()
+        last_emit = started
         while True:
             status = ts.get_status(project_id)
-            payload = json.dumps(status or {"status": "unknown"})
+            if status is None:
+                payload = json.dumps({"status": "failed", "error": "Project status unavailable"})
+                event_id += 1
+                yield f"id: {event_id}\nevent: status\ndata: {payload}\n\n"
+                break
+            payload = json.dumps(status)
             if payload != prev:
-                yield f"data: {payload}\n\n"
+                event_id += 1
+                yield f"id: {event_id}\nevent: status\ndata: {payload}\n\n"
                 prev = payload
-            if status and status.get("status") in ("completed", "failed"):
+                last_emit = time.time()
+            if status.get("status") in ("completed", "failed"):
+                break
+            now = time.time()
+            if now - last_emit >= heartbeat_seconds:
+                event_id += 1
+                yield f"id: {event_id}\nevent: heartbeat\ndata: {{\"ts\": {int(now)}}}\n\n"
+                last_emit = now
+            if now - started >= max_lifetime:
+                event_id += 1
+                yield f"id: {event_id}\nevent: timeout\ndata: {{\"status\": \"timeout\"}}\n\n"
                 break
             time.sleep(1.5)
 

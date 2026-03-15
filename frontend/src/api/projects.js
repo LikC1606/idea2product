@@ -39,16 +39,30 @@ async function parseJson(res, url = '') {
   }
 }
 
-/** Check if backend is reachable. Returns true if OK, false otherwise. */
+/** Backend health URL (same origin as API_BASE). */
+function getHealthUrl() {
+  return API_BASE.replace(/\/api\/projects\/?$/, '') + '/api/health'
+}
+
+/**
+ * Check if backend is reachable. Uses GET /api/health when possible.
+ * Returns { ok: true } when healthy, { ok: false } when unreachable, { ok: true, degraded: true } when 503.
+ */
 export async function checkBackend() {
   try {
-    const res = await fetch(API_BASE, { method: 'GET' })
+    const url = getHealthUrl()
+    const res = await fetch(url, { method: 'GET' })
     const ct = res.headers.get('content-type') || ''
-    if (!ct.includes('application/json')) return false
-    await res.json()
-    return true
+    if (!ct.includes('application/json')) return { ok: false }
+    const data = await res.json()
+    if (res.status === 503) return { ok: true, degraded: true, checks: data.checks }
+    return { ok: res.ok && data.status !== 'degraded', degraded: data.status === 'degraded', checks: data.checks }
   } catch {
-    return false
+    try {
+      const res = await fetch(API_BASE, { method: 'GET' })
+      if (res.ok) return { ok: true }
+    } catch {}
+    return { ok: false }
   }
 }
 
@@ -77,11 +91,13 @@ export async function getChat(projectId) {
   return data
 }
 
-export async function postChat(projectId, message) {
+export async function postChat(projectId, message, { clientMessageId } = {}) {
+  const payload = { message: message.trim() }
+  if (clientMessageId) payload.client_message_id = clientMessageId
   const res = await fetch(`${API_BASE}/${projectId}/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message: message.trim() }),
+    body: JSON.stringify(payload),
   })
   const data = await parseJson(res)
   if (!res.ok) throw new Error(data.error || 'Failed to send message')
@@ -95,11 +111,13 @@ export async function postChat(projectId, message) {
  * Stream chat reply via SSE. Calls onChunk(chunk) for each chunk, onDone() when finished.
  * Returns the full accumulated reply.
  */
-export async function postChatStream(projectId, message, { onChunk, onDone } = {}) {
+export async function postChatStream(projectId, message, { onChunk, onDone, clientMessageId } = {}) {
+  const payload = { message: message.trim() }
+  if (clientMessageId) payload.client_message_id = clientMessageId
   const res = await fetch(`${API_BASE}/${projectId}/chat/stream`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message: message.trim() }),
+    body: JSON.stringify(payload),
   })
   if (!res.ok) {
     const data = await parseJson(res).catch(() => ({}))
@@ -151,13 +169,17 @@ export async function postChatStream(projectId, message, { onChunk, onDone } = {
   }
 }
 
-export async function triggerGeneration(projectId) {
+export async function triggerGeneration(projectId, body = {}) {
   const url = `${API_BASE}/${projectId}/generate`
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
   })
   const data = await parseJson(res, url)
+  if (res.status === 429) {
+    return { status: data.status || 'rejected_backpressure', ...data }
+  }
   if (!res.ok) throw new Error(data.error || 'Failed to trigger generation')
   return data
 }
@@ -226,5 +248,29 @@ export async function getClarificationQuestions(projectId) {
   }
   const data = await parseJson(res, url)
   if (!res.ok) throw new Error(data.error || 'Failed to load clarification questions')
+  return data
+}
+
+/**
+ * Delete a project. Backend: DELETE /api/projects/<id>.
+ * Throws on 404 (not found) or 409 (generation in progress; cancel or wait first).
+ */
+export async function deleteProject(projectId) {
+  const res = await fetch(`${API_BASE}/${projectId}`, { method: 'DELETE' })
+  const data = await parseJson(res)
+  if (res.status === 409) throw new Error(data.error || 'Cannot delete while generation is running')
+  if (!res.ok) throw new Error(data.error || 'Failed to delete project')
+  return data
+}
+
+/** Request cancellation of the current generation. Backend: POST /api/projects/<id>/cancel. */
+export async function cancelGeneration(projectId) {
+  const res = await fetch(`${API_BASE}/${projectId}/cancel`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{}',
+  })
+  const data = await parseJson(res)
+  if (!res.ok) throw new Error(data.error || 'Failed to cancel')
   return data
 }

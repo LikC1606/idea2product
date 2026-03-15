@@ -74,3 +74,10 @@ Stage 2 的 SchemePlanningAgent 会根据 Requirements 与路由语义，在适�
 
 - AGENTS_REF — 各 Agent 的输入输出模型
 - ARCHITECTURE — 阶段与数据流图
+
+## 2026-03-12 更新（Stage 1 契约对齐）
+
+- Stage 1 的结构化提取响应（`ExtractedRequirements`）已明确补齐：
+  - `layout_preferences: Optional[List[str]]`
+  - `product_type: Optional[str]`（限定为 `web|pdf|video|audio|app`）
+- InteractionAgent 在构建 `Requirements` 时会显式解析 `product_type` 到 `ProductType`，并与既有 `layout_preferences` 一起进入后续 Stage 2/3 流程，减少字段静默丢失风险。

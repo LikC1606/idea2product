@@ -15,8 +15,8 @@ class Settings(BaseSettings):
     # OpenAI API Configuration
     openai_api_key: Optional[str] = None
     openai_base_url: str = "https://api.openai.com/v1"
-    openai_model: str = "gpt-4o"
-    openai_vlm_model: str = "gpt-4o"
+    openai_model: str = "gpt-5.4"
+    openai_vlm_model: str = "gpt-5.4"
     max_tokens: int = 4096
     temperature: float = 0.7
 
@@ -47,6 +47,10 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     # When True, 500 API responses may include error details; when False, return generic message only
     expose_error_details: bool = False
+    # When True, run env_check at startup and log warnings (does not block server start)
+    enable_startup_env_check: bool = True
+    # When True, GET /api/health?check_llm=1 will probe LLM endpoint reachability (uses API call)
+    health_check_llm: bool = False
     project_root: Path = Path(__file__).parent.parent
     data_dir: Path = Path(__file__).parent.parent / "data"
 
@@ -63,7 +67,7 @@ class Settings(BaseSettings):
     force_task_review_dep_depth: int = 2
     skip_flow_extraction: bool = False
     use_fast_model_for_task_review: bool = True
-    fast_model_for_review: str = "gpt-4o-mini"
+    fast_model_for_review: str = "gpt-5-mini"
     enable_parallel_task_generation: bool = False
     max_fix_attempts: int = 2
     random_seed: Optional[int] = None  # If set, seeds random/numpy for reproducibility
@@ -84,14 +88,16 @@ class Settings(BaseSettings):
 
     # Code Generation (Stage 3)
     use_fast_model_for_simple_code_tasks: bool = True
-    fast_model_for_code_gen: str = "gpt-4o-mini"
+    fast_model_for_code_gen: str = "gpt-5-mini"
     skip_mining_for_simple_tasks: bool = False
     max_system_prompt_chars: int = 16000
     use_fast_model_for_syntax_fix: bool = True
-    code_gen_syntax_fix_retries: int = 1
+    code_gen_syntax_fix_retries: int = 2
     # Stage 3 correctness checks (syntax/import sanity)
     enable_stage3_syntax_check: bool = True
-    enable_stage3_import_sanity_check: bool = False
+    enable_stage3_import_sanity_check: bool = True
+    # When True, run light plan completeness check after Stage 2 and log warnings (entry point, pyi coverage)
+    enable_plan_completeness_check: bool = True
     enable_cross_project_memory: bool = False  # When True, search_similar_snippet may fall back to other projects
     enable_llm_code_adaptation: bool = False  # When True, use LLM to adapt mined code to interface (extra API cost)
     enable_visual_verification: bool = True
@@ -118,7 +124,7 @@ class Settings(BaseSettings):
     # Image generation (optional: hero images, placeholders for frontend)
     enable_image_generation: bool = False
     image_generation_provider: str = "openai"  # openai | generic_http
-    image_generation_openai_model: str = "dall-e-3"
+    image_generation_openai_model: str = "gpt-image-1.5"
     image_generation_base_url: Optional[str] = None  # for generic_http or override for openai
     image_generation_api_key: Optional[str] = None  # for generic_http; openai reuses openai_api_key
     image_generation_extra_headers: Optional[str] = None  # JSON string for generic_http
@@ -184,20 +190,6 @@ class Settings(BaseSettings):
     # When True, use LLM to help infer external capabilities (video_generation, ppt_generation, etc.) in Stage 2
     enable_stage2_llm_capability_infer: bool = False
 
-    def __init__(self, **kwargs):
-        # 临时清除可能存在的环境变量，确保从.env读取；初始化后恢复，避免副作用
-        env_backup = {}
-        keys_to_temp_clear = ['OPENAI_API_KEY', 'OPENAI_BASE_URL', 'OPENAI_MODEL', 'OPENAI_VLM_MODEL', 'MAX_TOKENS', 'TEMPERATURE']
-        for key in keys_to_temp_clear:
-            if key in os.environ:
-                env_backup[key] = os.environ[key]
-                del os.environ[key]
-        try:
-            super().__init__(**kwargs)
-        finally:
-            for key, value in env_backup.items():
-                os.environ[key] = value
-
     # Derived paths
     @property
     def models_registry_path(self) -> Path:
@@ -248,7 +240,7 @@ def get_primary_llm_config(settings: Settings) -> tuple:
     if provider == "openai":
         key = (settings.openai_api_key or "").strip()
         base = getattr(settings, "openai_base_url", "https://api.openai.com/v1") or "https://api.openai.com/v1"
-        model = getattr(settings, "openai_model", "gpt-4o") or "gpt-4o"
+        model = getattr(settings, "openai_model", "gpt-5.4") or "gpt-5.4"
         vlm = getattr(settings, "openai_vlm_model", None) or model
         return (key, base, model, vlm)
     if provider == "anthropic":
@@ -264,7 +256,7 @@ def get_primary_llm_config(settings: Settings) -> tuple:
     # fallback to openai
     key = (settings.openai_api_key or "").strip()
     base = getattr(settings, "openai_base_url", "https://api.openai.com/v1") or "https://api.openai.com/v1"
-    model = getattr(settings, "openai_model", "gpt-4o") or "gpt-4o"
+    model = getattr(settings, "openai_model", "gpt-5.4") or "gpt-5.4"
     vlm = getattr(settings, "openai_vlm_model", None) or model
     return (key, base, model, vlm)
 

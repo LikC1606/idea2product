@@ -12,15 +12,22 @@ reconstruct state after a restart.
 """
 
 import json
+import hashlib
 import threading
 import traceback
 import time
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 
 from config.settings import Settings
-from src.core.exceptions import LLMServiceError
+from src.core.exceptions import (
+    TransientLLMError,
+    PermanentLLMError,
+    GenerationCancelledError,
+    GenerationTimeoutError,
+)
 from src.utils.file_utils import read_json, read_json_safe, write_json
 from src.utils.logger import get_logger
 
@@ -32,12 +39,19 @@ class BinaryFileError(Exception):
 
 def _is_transient_error(exc: BaseException) -> bool:
     """True if the exception is typically transient (network/LLM timeout, 5xx)."""
-    if isinstance(exc, (LLMServiceError, TimeoutError)):
+    if isinstance(exc, (TransientLLMError, TimeoutError)):
         return True
+    if isinstance(exc, PermanentLLMError):
+        return False
     try:
         from openai import APITimeoutError, APIConnectionError, APIError, RateLimitError
-        if isinstance(exc, (APITimeoutError, APIConnectionError, APIError, RateLimitError)):
+        if isinstance(exc, (APITimeoutError, APIConnectionError, RateLimitError)):
             return True
+        if isinstance(exc, APIError):
+            status = getattr(exc, "status_code", None) or getattr(exc, "status", None)
+            if isinstance(status, int):
+                return status in (408, 409, 429) or status >= 500
+            return False
     except ImportError:
         pass
     return False
@@ -54,6 +68,31 @@ class TaskService:
         self._lock = threading.Lock()
         self._project_locks: Dict[str, threading.Lock] = {}
         self._pending_regenerate: Dict[str, bool] = {}
+        self._active_fingerprints: Dict[str, str] = {}
+        self._last_completed_fingerprint: Dict[str, str] = {}
+        self._cancelled_projects: set[str] = set()
+        self._run_starts: Dict[str, float] = {}
+        self._run_trace_ids: Dict[str, str] = {}
+        self._max_workers = int(getattr(self.settings, "task_max_workers", 4) or 4)
+        self._max_queue_size = int(getattr(self.settings, "task_max_queue_size", 32) or 32)
+        self._active_workers = 0
+        self._metrics_path = self.settings.data_dir / "reliability_metrics.json"
+        self._metrics: Dict[str, Any] = {
+            "generation_runs": 0,
+            "generation_failures": 0,
+            "transient_retry_attempts": 0,
+            "transient_retry_successes": 0,
+            "resume_attempts": 0,
+            "resume_hits": 0,
+            "stage_failures": {"2": 0, "3": 0, "4": 0},
+            "total_recovery_seconds": 0.0,
+            "recovery_samples": 0,
+            "queue_rejects": 0,
+            "queue_wait_samples": [],
+            "generation_duration_samples": [],
+            "preview_ready_latency_samples": [],
+        }
+        self._restore_metrics()
         self._restore_persisted_tasks()
 
     def _get_project_lock(self, project_id: str) -> threading.Lock:
@@ -65,6 +104,21 @@ class TaskService:
     # ------------------------------------------------------------------
     # Task persistence
     # ------------------------------------------------------------------
+
+    def _restore_metrics(self):
+        try:
+            data = read_json_safe(self._metrics_path)
+            if isinstance(data, dict):
+                self._metrics.update(data)
+        except Exception as ex:
+            logger.debug("Could not restore reliability metrics: %s", ex)
+
+    def _persist_metrics_locked(self):
+        try:
+            self._metrics_path.parent.mkdir(parents=True, exist_ok=True)
+            write_json(self._metrics_path, self._metrics)
+        except Exception as ex:
+            logger.debug("Could not persist reliability metrics: %s", ex)
 
     def _status_path(self, project_id: str) -> Path:
         return self.settings.projects_dir / project_id / "artifacts" / _TASK_STATUS_FILE
@@ -214,7 +268,7 @@ class TaskService:
         project_id: str,
         product_type: str = None,
         model_id: str = None,
-    ):
+    ) -> str:
         """Enqueue a generation task for a project.
 
         Optionally pass product_type and model_id for this run (stored and passed to orchestrator).
@@ -228,19 +282,61 @@ class TaskService:
                 self.tasks[project_id]["product_type"] = product_type
             if model_id is not None:
                 self.tasks[project_id]["model_id"] = model_id
+            run_product_type = self.tasks[project_id].get("product_type")
+            run_model_id = self.tasks[project_id].get("model_id")
+
+        fingerprint = self._build_input_fingerprint(
+            project_id=project_id,
+            product_type=run_product_type,
+            model_id=run_model_id,
+        )
 
         proj_lock = self._get_project_lock(project_id)
         acquired = proj_lock.acquire(blocking=False)
         if not acquired:
             with self._lock:
+                active_fp = self._active_fingerprints.get(project_id)
+                if active_fp and fingerprint and active_fp == fingerprint:
+                    logger.info("Generation already running for %s with same fingerprint; skip duplicate", project_id)
+                    return "deduped_active"
                 self._pending_regenerate[project_id] = True
             logger.info(f"Generation already running for {project_id}; queued re-run")
-            return
+            return "queued_rerun"
 
+        with self._lock:
+            if fingerprint:
+                last_done = self._last_completed_fingerprint.get(project_id)
+                status = self.tasks.get(project_id, {}).get("status")
+                if last_done and status == "completed" and last_done == fingerprint:
+                    logger.info("Skipping generation for %s: same fingerprint already completed", project_id)
+                    proj_lock.release()
+                    return "deduped_completed"
+                self._active_fingerprints[project_id] = fingerprint
+            if self._active_workers >= self._max_workers:
+                self._metrics["queue_rejects"] += 1
+                self._persist_metrics_locked()
+                self._active_fingerprints.pop(project_id, None)
+                proj_lock.release()
+                return "rejected_backpressure"
+            self._active_workers += 1
+            self._metrics["generation_runs"] += 1
+            self._persist_metrics_locked()
         thread = threading.Thread(
             target=self._run_generation, args=(project_id, proj_lock), daemon=True
         )
         thread.start()
+        return "started"
+
+    def cancel_generation(self, project_id: str) -> bool:
+        with self._lock:
+            if project_id not in self.tasks:
+                return False
+            self._cancelled_projects.add(project_id)
+            task = self.tasks.setdefault(project_id, {})
+            task["status"] = "cancelling"
+            task["current_stage"] = "Cancelling"
+        self._persist_task(project_id)
+        return True
 
     def _run_generation(self, project_id: str, proj_lock: threading.Lock):
         """Run generation holding the project lock. Re-runs if pending."""
@@ -248,6 +344,10 @@ class TaskService:
             self._do_generate(project_id)
         finally:
             proj_lock.release()
+            with self._lock:
+                self._active_fingerprints.pop(project_id, None)
+                self._active_workers = max(0, self._active_workers - 1)
+                self._persist_metrics_locked()
 
         with self._lock:
             should_rerun = self._pending_regenerate.pop(project_id, False)
@@ -261,91 +361,141 @@ class TaskService:
         from src.web.services.chat_service import get_messages
 
         start_time = time.time()
+        with self._lock:
+            self._run_starts[project_id] = start_time
+            self._run_trace_ids[project_id] = f"run_{uuid.uuid4().hex[:10]}"
         retry_on_transient = getattr(self.settings, "task_generation_retry_on_transient", False)
+        retry_budget_seconds = float(getattr(self.settings, "task_generation_retry_budget_seconds", 120.0) or 120.0)
+        max_run_seconds = float(getattr(self.settings, "task_generation_timeout_seconds", 1800.0) or 1800.0)
+        deadline = start_time + max(10.0, max_run_seconds)
         last_exception = None
+        try:
+            for attempt in range(2):
+                if attempt > 0:
+                    logger.warning("Retrying generation for %s after transient error", project_id)
+                    with self._lock:
+                        self._metrics["transient_retry_attempts"] += 1
+                self._check_cancel_or_timeout(project_id, deadline)
+                try:
+                    messages = get_messages(self.settings, project_id)
+                    if not messages:
+                        return
 
-        for attempt in range(2):
-            if attempt > 0:
-                logger.warning("Retrying generation for %s after transient error", project_id)
-            try:
-                messages = get_messages(self.settings, project_id)
-                if not messages:
+                    self._update(project_id, status="processing", progress=5, stage="Preparing requirements")
+
+                    llm_service = LLMService.from_settings(self.settings)
+                    agent = InteractionAgent(llm_service)
+                    orchestrator = Orchestrator(self.settings)
+
+                    req_path = self.settings.projects_dir / project_id / "artifacts" / "01_requirements.json"
+                    existing_data = read_json_safe(req_path)
+                    is_incremental = existing_data is not None
+
+                    if is_incremental:
+                        with self._lock:
+                            self._metrics["resume_attempts"] += 1
+                        self._update(project_id, progress=10, stage="Merging requirements")
+                        try:
+                            from src.core.data_models import Requirements
+
+                            existing_req = Requirements(**existing_data)
+                        except Exception as e:
+                            logger.warning(
+                                "Invalid requirements.json for %s, falling back to first-time: %s",
+                                project_id,
+                                e,
+                            )
+                            is_incremental = False
+
+                    if is_incremental:
+                        last_user_msg = ""
+                        for m in reversed(messages):
+                            if m.get("role") == "user":
+                                last_user_msg = m.get("content", "")
+                                break
+                        requirements = agent.merge_requirements(existing_req, last_user_msg, messages[-5:])
+                    else:
+                        self._update(project_id, progress=10, stage="Analyzing conversation")
+                        requirements = agent.conversation_to_requirements(messages)
+
+                    with self._lock:
+                        self.tasks.setdefault(project_id, {})
+                        self.tasks[project_id]["requirement"] = (
+                            requirements.description or requirements.title or ""
+                        )
+                        run_product_type = self.tasks[project_id].get("product_type")
+                        run_model_id = self.tasks[project_id].get("model_id")
+
+                    if run_product_type and not getattr(requirements, "product_type", None):
+                        from src.core.data_models import ProductType
+
+                        try:
+                            requirements.product_type = ProductType(run_product_type)
+                        except (ValueError, TypeError):
+                            pass
+
+                    def _on_progress(progress: int, stage: str) -> None:
+                        self._check_cancel_or_timeout(project_id, deadline)
+                        self._update(project_id, progress=progress, stage=stage)
+
+                    self._update(project_id, progress=20, stage="Stage 2: Planning")
+                    result = orchestrator.run_from_stage_2(
+                        project_id,
+                        requirements,
+                        progress_callback=_on_progress,
+                        product_type=run_product_type,
+                        model_id=run_model_id,
+                    )
+
+                    elapsed = round(time.time() - start_time, 1)
+                    logger.info("Generation completed for %s in %ss", project_id, elapsed)
+                    if attempt > 0:
+                        with self._lock:
+                            self._metrics["transient_retry_successes"] += 1
+                    with self._lock:
+                        if is_incremental:
+                            self._metrics["resume_hits"] += 1
+                        self._metrics["total_recovery_seconds"] += elapsed
+                        self._metrics["recovery_samples"] += 1
+                        dur = self._metrics.setdefault("generation_duration_samples", [])
+                        dur.append(elapsed)
+                        if len(dur) > 500:
+                            del dur[:-500]
+                    self._complete(project_id, result)
+
+                    self._try_start_preview(project_id)
+                    return
+                except Exception as e:
+                    last_exception = e
+                    elapsed = time.time() - start_time
+                    if elapsed >= retry_budget_seconds:
+                        self._fail(
+                            project_id,
+                            PermanentLLMError(
+                                f"Retry budget exceeded ({retry_budget_seconds}s) before successful generation"
+                            ),
+                        )
+                        return
+                    if attempt == 0 and retry_on_transient and _is_transient_error(e):
+                        logger.warning("Transient error for %s (will retry once): %s", project_id, e)
+                        continue
+                    self._fail(project_id, e)
                     return
 
-                self._update(project_id, status="processing", progress=5, stage="Preparing requirements")
+            if last_exception is not None:
+                self._fail(project_id, last_exception)
+        finally:
+            with self._lock:
+                self._run_starts.pop(project_id, None)
+                self._run_trace_ids.pop(project_id, None)
 
-                llm_service = LLMService.from_settings(self.settings)
-                agent = InteractionAgent(llm_service)
-                orchestrator = Orchestrator(self.settings)
-
-                req_path = self.settings.projects_dir / project_id / "artifacts" / "01_requirements.json"
-                existing_data = read_json_safe(req_path)
-                is_incremental = existing_data is not None
-
-                if is_incremental:
-                    self._update(project_id, progress=10, stage="Merging requirements")
-                    try:
-                        from src.core.data_models import Requirements
-                        existing_req = Requirements(**existing_data)
-                    except Exception as e:
-                        logger.warning("Invalid requirements.json for %s, falling back to first-time: %s", project_id, e)
-                        is_incremental = False
-
-                if is_incremental:
-                    last_user_msg = ""
-                    for m in reversed(messages):
-                        if m.get("role") == "user":
-                            last_user_msg = m.get("content", "")
-                            break
-                    requirements = agent.merge_requirements(existing_req, last_user_msg, messages[-5:])
-                else:
-                    self._update(project_id, progress=10, stage="Analyzing conversation")
-                    requirements = agent.conversation_to_requirements(messages)
-
-                with self._lock:
-                    self.tasks.setdefault(project_id, {})
-                    self.tasks[project_id]["requirement"] = (
-                        requirements.description or requirements.title or ""
-                    )
-                    run_product_type = self.tasks[project_id].get("product_type")
-                    run_model_id = self.tasks[project_id].get("model_id")
-
-                if run_product_type and not getattr(requirements, "product_type", None):
-                    from src.core.data_models import ProductType
-                    try:
-                        requirements.product_type = ProductType(run_product_type)
-                    except (ValueError, TypeError):
-                        pass
-
-                def _on_progress(progress: int, stage: str) -> None:
-                    self._update(project_id, progress=progress, stage=stage)
-
-                self._update(project_id, progress=20, stage="Stage 2: Planning")
-                result = orchestrator.run_from_stage_2(
-                    project_id,
-                    requirements,
-                    progress_callback=_on_progress,
-                    product_type=run_product_type,
-                    model_id=run_model_id,
-                )
-
-                elapsed = round(time.time() - start_time, 1)
-                logger.info("Generation completed for %s in %ss", project_id, elapsed)
-                self._complete(project_id, result)
-
-                self._try_start_preview(project_id)
-                return
-
-            except Exception as e:
-                last_exception = e
-                if attempt == 0 and retry_on_transient and _is_transient_error(e):
-                    logger.warning("Transient error for %s (will retry once): %s", project_id, e)
-                    continue
-                self._fail(project_id, e)
-                return
-
-        if last_exception is not None:
-            self._fail(project_id, last_exception)
+    def _check_cancel_or_timeout(self, project_id: str, deadline: float) -> None:
+        with self._lock:
+            if project_id in self._cancelled_projects:
+                self._cancelled_projects.discard(project_id)
+                raise GenerationCancelledError("Generation cancelled by user")
+        if time.time() > deadline:
+            raise GenerationTimeoutError("Generation timeout exceeded")
 
     def _try_start_preview(self, project_id: str):
         """Try to start/restart preview after generation completes."""
@@ -390,6 +540,11 @@ class TaskService:
                 }
             else:
                 task["result"] = {"is_deployable": True, "files_count": 0, "test_passed": False}
+            active_fp = self._active_fingerprints.get(project_id)
+            if active_fp:
+                self._last_completed_fingerprint[project_id] = active_fp
+            task["failure_info"] = None
+            self._persist_metrics_locked()
         try:
             self._persist_task(project_id)
         except Exception as e:
@@ -401,9 +556,23 @@ class TaskService:
         logger.debug("%s", traceback.format_exc())
         with self._lock:
             task = self.tasks.setdefault(project_id, {})
-            task["status"] = "failed"
+            if isinstance(error, GenerationCancelledError):
+                task["status"] = "cancelled"
+            else:
+                task["status"] = "failed"
             task["error"] = msg
             task["current_stage"] = f"Error: {msg[:80]}"
+            task["failure_info"] = {
+                "exception_type": type(error).__name__,
+                "message": msg,
+                "stage": getattr(error, "stage", None),
+                "run_id": self._run_trace_ids.get(project_id, ""),
+            }
+            self._metrics["generation_failures"] += 1
+            stage = getattr(error, "stage", None)
+            if stage in (2, 3, 4):
+                self._metrics["stage_failures"][str(stage)] += 1
+            self._persist_metrics_locked()
         try:
             self._persist_task(project_id)
         except Exception:
@@ -435,6 +604,7 @@ class TaskService:
             "progress": task.get("progress", 0),
             "current_stage": task.get("current_stage", ""),
             "error": task.get("error"),
+            "failure_info": task.get("failure_info"),
         }
 
     def get_project(self, project_id: str) -> Optional[Dict[str, Any]]:
@@ -534,9 +704,7 @@ class TaskService:
         if Path(file_path).suffix.lower() in binary_suffixes:
             raise BinaryFileError("该文件为二进制或资源文件，无法在代码视图中预览。")
         try:
-            content = full.read_text(encoding="utf-8")
-        except UnicodeDecodeError:
-            raise BinaryFileError("该文件不是 UTF-8 文本（可能为二进制），无法预览。")
+            content = full.read_text(encoding="utf-8", errors="replace")
         except Exception:
             return None
         return {
@@ -545,16 +713,30 @@ class TaskService:
             "language": self._guess_language(Path(file_path).suffix),
         }
 
-    def delete_project(self, project_id: str) -> bool:
+    def delete_project(self, project_id: str) -> str:
+        """Remove in-memory state and delete project directory.
+        Returns "deleted" if removed, "not_found" if project dir and task missing, "busy" if generation in progress.
+        """
         with self._lock:
+            task = self.tasks.get(project_id)
+            status = (task or {}).get("status")
+            if status in ("processing", "cancelling"):
+                return "busy"
             self.tasks.pop(project_id, None)
+            self._project_locks.pop(project_id, None)
+            self._pending_regenerate.pop(project_id, None)
+            self._active_fingerprints.pop(project_id, None)
+            self._last_completed_fingerprint.pop(project_id, None)
+            self._cancelled_projects.discard(project_id)
+            self._run_starts.pop(project_id, None)
+            self._run_trace_ids.pop(project_id, None)
 
         project_path = self.settings.projects_dir / project_id
         if project_path.exists():
             import shutil
             shutil.rmtree(project_path, ignore_errors=True)
-            return True
-        return False
+            return "deleted"
+        return "not_found"
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -696,6 +878,40 @@ class TaskService:
             logger.debug("Could not build timeline for %s: %s", project_id, ex)
         return timeline
 
+    def get_reliability_metrics(self) -> Dict[str, Any]:
+        with self._lock:
+            m = dict(self._metrics)
+            m["stage_failures"] = dict(self._metrics.get("stage_failures", {}))
+            m["queue_depth"] = len(self._pending_regenerate)
+            m["active_workers"] = self._active_workers
+        samples = m.get("recovery_samples", 0) or 0
+        total = m.get("total_recovery_seconds", 0.0) or 0.0
+        m["avg_recovery_seconds"] = (total / samples) if samples else 0.0
+        runs = m.get("generation_runs", 0) or 0
+        fails = m.get("generation_failures", 0) or 0
+        m["stage_failure_rate"] = (fails / runs) if runs else 0.0
+        retry_attempts = m.get("transient_retry_attempts", 0) or 0
+        retry_success = m.get("transient_retry_successes", 0) or 0
+        m["transient_retry_success_rate"] = (retry_success / retry_attempts) if retry_attempts else 0.0
+        resume_attempts = m.get("resume_attempts", 0) or 0
+        resume_hits = m.get("resume_hits", 0) or 0
+        m["resume_success_rate"] = (resume_hits / resume_attempts) if resume_attempts else 0.0
+        q_samples = m.get("queue_wait_samples", []) or []
+        g_samples = m.get("generation_duration_samples", []) or []
+        p_samples = m.get("preview_ready_latency_samples", []) or []
+        m["queue_wait_p95"] = self._percentile(q_samples, 95)
+        m["generation_duration_p95"] = self._percentile(g_samples, 95)
+        m["preview_ready_latency_p95"] = self._percentile(p_samples, 95)
+        return m
+
+    @staticmethod
+    def _percentile(values: List[float], p: int) -> float:
+        if not values:
+            return 0.0
+        vs = sorted(float(v) for v in values)
+        idx = int((len(vs) - 1) * max(0, min(p, 100)) / 100)
+        return round(vs[idx], 3)
+
     @staticmethod
     def _guess_language(ext: str) -> str:
         return {
@@ -704,3 +920,36 @@ class TaskService:
             ".yaml": "yaml", ".toml": "toml", ".cfg": "ini", ".ini": "ini",
             ".sh": "bash", ".bat": "batch", ".sql": "sql",
         }.get(ext.lower(), "text")
+
+    def _build_input_fingerprint(
+        self,
+        project_id: str,
+        product_type: Optional[str],
+        model_id: Optional[str],
+    ) -> str:
+        """Build a deterministic fingerprint from current chat + runtime params."""
+        from src.web.services.chat_service import get_messages
+
+        messages = get_messages(self.settings, project_id) or []
+        compact_msgs = [
+            {
+                "role": m.get("role", ""),
+                "content": m.get("content", ""),
+            }
+            for m in messages[-50:]
+        ]
+        plan_path = self.settings.projects_dir / project_id / "artifacts" / "02_engineering_plan.json"
+        plan_version = ""
+        if plan_path.exists():
+            try:
+                plan_version = str(int(plan_path.stat().st_mtime))
+            except OSError:
+                plan_version = ""
+        payload = {
+            "messages": compact_msgs,
+            "product_type": product_type or "",
+            "model_id": model_id or "",
+            "plan_version": plan_version,
+        }
+        raw = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()

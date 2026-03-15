@@ -20,6 +20,16 @@ from src.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+def _minimal_file_structure() -> List[FileSpec]:
+    """Fallback file structure when Stage 2 outputs are incomplete."""
+    return [
+        FileSpec(path="app.py", purpose="Application entry point", dependencies=[]),
+        FileSpec(path="app/__init__.py", purpose="Flask app factory and route wiring", dependencies=[]),
+        FileSpec(path="templates/index.html", purpose="Main UI template", dependencies=["app/__init__.py"]),
+        FileSpec(path="requirements.txt", purpose="Runtime dependencies", dependencies=[]),
+    ]
+
+
 def engineering_plan_from_stage2(
     *,
     tasks: List[Any],
@@ -47,9 +57,16 @@ def engineering_plan_from_stage2(
         raise TypeError("algorithms must be a dict")
 
     effective_file_structure = list(file_structure or [])
-    if not effective_file_structure and default_file_structure_fn and tasks:
-        effective_file_structure = default_file_structure_fn(tasks)
-        logger.info("engineering_plan_from_stage2: used default file_structure")
+    if not effective_file_structure and default_file_structure_fn:
+        try:
+            effective_file_structure = default_file_structure_fn(tasks or [])
+        except Exception as ex:
+            logger.warning("engineering_plan_from_stage2: default_file_structure_fn failed: %s", ex)
+        if effective_file_structure:
+            logger.info("engineering_plan_from_stage2: used default file_structure")
+    if not effective_file_structure:
+        effective_file_structure = _minimal_file_structure()
+        logger.info("engineering_plan_from_stage2: used minimal fallback file_structure")
 
     effective_pyi_stubs = dict(pyi_stubs or {})
     if not effective_pyi_stubs and (interface_specs or effective_file_structure):

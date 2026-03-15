@@ -134,6 +134,7 @@ class CodeGenerationAgent:
 
         for task in plan.tasks:
             logger.info(f"Processing task {task.id}: {task.name}")
+            before_snapshot = self._snapshot_project_files(project_path)
             mining_context = mining_by_task.get(task.id, "")
             if (
                 self.settings
@@ -160,19 +161,38 @@ class CodeGenerationAgent:
                 code_memory=code_memory,
                 project_id=context.project_id,
             )
+            after_snapshot = self._snapshot_project_files(project_path)
+            changed_paths = self._diff_snapshot_paths(before_snapshot, after_snapshot)
+            if not changed_paths:
+                changed_paths = None
 
             # Incremental symbol table update after each task
             if code_memory:
-                self._update_symbol_table(code_memory, project_path, context.project_id)
+                self._update_symbol_table(
+                    code_memory, project_path, context.project_id, changed_paths=changed_paths
+                )
 
             # Incremental snippet save: enables search_similar_snippet for subsequent tasks
             if code_memory:
                 self._incremental_save_snippets(
-                    code_memory, project_path, context.project_id, files
+                    code_memory,
+                    project_path,
+                    context.project_id,
+                    files,
+                    changed_paths=changed_paths,
                 )
 
             # 更新上下文
             context_md = self._build_context_md(files)
+
+        # 在 Agent 任务完成后，基于工程计划兜底生成最小可运行骨架
+        files = self._ensure_minimum_files(
+            files=files,
+            plan=plan,
+            requirements=requirements,
+            pyi_stubs=pyi_stubs,
+            api_specs=api_specs,
+        )
 
         # 构建最终产物
         directories = list(
@@ -201,6 +221,273 @@ class CodeGenerationAgent:
             structure=structure,
             dependencies=dependencies,
             readme_content=self._generate_readme(requirements),
+        )
+
+    def _ensure_minimum_files(
+        self,
+        files: List[CodeFile],
+        plan: EngineeringPlan,
+        requirements: Requirements,
+        pyi_stubs: Dict,
+        api_specs: Dict,
+    ) -> List[CodeFile]:
+        """
+        Ensure a minimal but runnable Flask skeleton exists even when the agent
+        didn't fully implement all planned files.
+
+        Uses file_structure + pyi_stubs + api_specs to synthesize simple models,
+        routes and templates when they are completely missing.
+        """
+        if not plan:
+            return files
+
+        def _norm(path: str) -> str:
+            return (path or "").replace("\\", "/")
+
+        existing = {_norm(f.path) for f in files}
+
+        required_backend: set[str] = set()
+        required_templates: set[str] = set()
+
+        # From file_structure
+        for spec in getattr(plan, "file_structure", []) or []:
+            path = _norm(getattr(spec, "path", "") or "")
+            layer = (getattr(spec, "layer", "") or "").lower()
+            if not path:
+                continue
+            if layer in ("backend", "database") and path.endswith(".py"):
+                required_backend.add(path)
+            if layer == "frontend" and (path.startswith("templates/") or path.endswith(".html")):
+                required_templates.add(path)
+
+        # From api_specs.frontend_routes
+        frontend_routes = (api_specs or {}).get("frontend_routes") or {}
+        for info in frontend_routes.values():
+            template = None
+            if isinstance(info, dict):
+                template = info.get("template")
+            elif isinstance(info, str):
+                template = info
+            if not template:
+                continue
+            t_path = template
+            if not t_path.startswith("templates/"):
+                t_path = f"templates/{t_path}"
+            required_templates.add(_norm(t_path))
+
+        new_files: List[CodeFile] = list(files)
+
+        # Backend files (models, routes, database helpers)
+        for path in sorted(required_backend):
+            if path in existing:
+                continue
+            stub_text = pyi_stubs.get(path) or ""
+            content = self._build_minimal_backend_stub(path, stub_text, requirements)
+            if not content:
+                continue
+            new_files.append(
+                CodeFile(
+                    path=path,
+                    content=content,
+                    language="python",
+                    purpose=f"Minimum backend skeleton for {path}",
+                    dependencies=[],
+                )
+            )
+            existing.add(path)
+
+        # Templates
+        for path in sorted(required_templates):
+            if path in existing:
+                continue
+            content = self._build_minimal_template(path, requirements, api_specs)
+            if not content:
+                continue
+            new_files.append(
+                CodeFile(
+                    path=path,
+                    content=content,
+                    language="html",
+                    purpose=f"Minimum template for {path}",
+                    dependencies=[],
+                )
+            )
+            existing.add(path)
+
+        if len(new_files) > len(files):
+            logger.info(
+                "ensure_minimum_files: added %d fallback files (total now %d)",
+                len(new_files) - len(files),
+                len(new_files),
+            )
+        return new_files
+
+    def _build_minimal_backend_stub(
+        self,
+        path: str,
+        stub: str,
+        requirements: Requirements,
+    ) -> str:
+        """Build a very small but runnable backend file for models/routes."""
+        norm = path.replace("\\", "/")
+
+        # Simple model stub (User / Task)
+        if "models/" in norm:
+            # Derive class name from file name
+            name = Path(norm).stem.title()
+            fields: List[tuple[str, str]] = []
+            for line in (stub or "").splitlines():
+                line = line.strip()
+                if ":" in line and not line.startswith("class "):
+                    try:
+                        field, type_hint = line.split(":", 1)
+                        field = field.strip()
+                        type_hint = type_hint.strip()
+                        if field and field not in ("self",):
+                            fields.append((field, type_hint))
+                    except ValueError:
+                        continue
+            if not fields:
+                fields = [("id", "int")]
+
+            lines = [
+                "from app import db",
+                "",
+                f"class {name}(db.Model):",
+                f"    __tablename__ = '{name.lower()}s'",
+            ]
+            for field, type_hint in fields:
+                col_type = "db.Integer" if "int" in type_hint or "float" in type_hint else "db.String(255)"
+                extra = ", primary_key=True" if field == "id" else ""
+                lines.append(f"    {field} = db.Column({col_type}{extra})")
+            lines.append("")
+            lines.append("    def to_dict(self) -> dict:")
+            lines.append("        return {")
+            for field, _ in fields:
+                lines.append(f"            '{field}': self.{field},")
+            lines.append("        }")
+            lines.append("")
+            return "\n".join(lines)
+
+        # Simple routes stub
+        if "routes/" in norm:
+            bp_name = Path(norm).stem.replace("_routes", "") or "api"
+            title = requirements.title or "Application"
+            lines = [
+                "from flask import Blueprint, jsonify, request",
+                "",
+                f"{bp_name}_bp = Blueprint('{bp_name}', __name__)",
+                "",
+                "# NOTE: This is a minimal stub implementation so the app can run.",
+                "# Stage 3 agent or later edits should replace these with real logic.",
+                "",
+                f"@{bp_name}_bp.route('/health', methods=['GET'])",
+                "def health_check():",
+                f"    return jsonify({'status': 'ok', 'app': %r})" % title,
+                "",
+            ]
+            return "\n".join(lines)
+
+        # Database helper or other backend utils: minimal no-op stub
+        if norm.endswith("database.py"):
+            return (
+                "from app import db\n\n"
+                "def init_db() -> None:\n"
+                "    \"\"\"Initialize database tables (minimal stub).\"\"\"\n"
+                "    db.create_all()\n"
+            )
+
+        return ""
+
+    def _build_minimal_template(
+        self,
+        path: str,
+        requirements: Requirements,
+        api_specs: Dict,
+    ) -> str:
+        """Build a minimal HTML template so that routes can render without error."""
+        norm = path.replace("\\", "/")
+        title = requirements.title or "Application"
+
+        base_head = (
+            "<!DOCTYPE html>\n"
+            "<html lang=\"en\">\n"
+            "<head>\n"
+            "  <meta charset=\"UTF-8\" />\n"
+            "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n"
+            f"  <title>{title}</title>\n"
+            "  <link rel=\"stylesheet\" href=\"/static/css/base.css\" />\n"
+            "</head>\n"
+            "<body>\n"
+        )
+        end_html = "\n</body>\n</html>\n"
+
+        if norm.endswith("index.html"):
+            return (
+                base_head
+                + "  <main class=\"hero\">\n"
+                f"    <h1>{title}</h1>\n"
+                "    <p>A generated application is being prepared for you.</p>\n"
+                "    <nav>\n"
+                "      <a href=\"/tasks\">Go to tasks</a>\n"
+                "      <a href=\"/login\">Login</a>\n"
+                "    </nav>\n"
+                "  </main>\n"
+                + end_html
+            )
+
+        if norm.endswith("tasks.html"):
+            return (
+                base_head
+                + "  <main>\n"
+                "    <h1>Tasks</h1>\n"
+                "    <p>This is a placeholder task list page.</p>\n"
+                "    <table>\n"
+                "      <thead><tr><th>Title</th><th>Due date</th><th>Priority</th><th>Status</th></tr></thead>\n"
+                "      <tbody>\n"
+                "        <tr><td>Sample task</td><td>—</td><td>—</td><td>open</td></tr>\n"
+                "      </tbody>\n"
+                "    </table>\n"
+                "  </main>\n"
+                + end_html
+            )
+
+        if norm.endswith("login.html"):
+            return (
+                base_head
+                + "  <main>\n"
+                "    <h1>Login</h1>\n"
+                "    <form method=\"post\" action=\"/api/auth/login\">\n"
+                "      <label>Email <input type=\"email\" name=\"email\" required /></label><br />\n"
+                "      <label>Password <input type=\"password\" name=\"password\" required /></label><br />\n"
+                "      <button type=\"submit\">Login</button>\n"
+                "    </form>\n"
+                "    <p>Don't have an account? <a href=\"/register\">Register here.</a></p>\n"
+                "  </main>\n"
+                + end_html
+            )
+
+        if norm.endswith("register.html"):
+            return (
+                base_head
+                + "  <main>\n"
+                "    <h1>Register</h1>\n"
+                "    <form method=\"post\" action=\"/api/auth/register\">\n"
+                "      <label>Email <input type=\"email\" name=\"email\" required /></label><br />\n"
+                "      <label>Password <input type=\"password\" name=\"password\" required /></label><br />\n"
+                "      <label>Name <input type=\"text\" name=\"name\" /></label><br />\n"
+                "      <button type=\"submit\">Create account</button>\n"
+                "    </form>\n"
+                "    <p>Already have an account? <a href=\"/login\">Login here.</a></p>\n"
+                "  </main>\n"
+                + end_html
+            )
+
+        # Generic fallback template
+        return (
+            base_head
+            + f"  <main><h1>{title}</h1><p>Placeholder template: {norm}</p></main>\n"
+            + end_html
         )
 
     def _load_framework_template(self, target_path: Path) -> List[CodeFile]:
@@ -888,7 +1175,9 @@ Fix one file at a time, then call validate_syntax to verify."""
         files = self._scan_generated_files(project_path)
         return files
 
-    def _scan_generated_files(self, project_path: Path) -> List[CodeFile]:
+    def _scan_generated_files(
+        self, project_path: Path, changed_paths: Optional[set[str]] = None
+    ) -> List[CodeFile]:
         """扫描生成的文件，更新文件列表"""
         files = []
         text_extensions = [".py", ".html", ".txt", ".md", ".json", ".env"]
@@ -900,8 +1189,10 @@ Fix one file at a time, then call validate_syntax to verify."""
                 and "__pycache__" not in str(f)
             ):
                 try:
-                    content = f.read_text(encoding="utf-8")
                     rel_path = str(f.relative_to(project_path))
+                    if changed_paths is not None and rel_path not in changed_paths:
+                        continue
+                    content = f.read_text(encoding="utf-8")
                     files.append(
                         CodeFile(
                             path=rel_path,
@@ -923,11 +1214,14 @@ Fix one file at a time, then call validate_syntax to verify."""
         project_path: Path,
         project_id: str,
         files: List[CodeFile],
+        changed_paths: Optional[set[str]] = None,
     ) -> None:
         """Save snippets from generated .py files after each task for search_similar_snippet."""
         pid = project_id or "current"
         for cf in files:
             if cf.language != "python" or not (cf.path or "").endswith(".py"):
+                continue
+            if changed_paths is not None and cf.path not in changed_paths:
                 continue
             try:
                 code_memory.add_snippets_from_file(
@@ -940,7 +1234,11 @@ Fix one file at a time, then call validate_syntax to verify."""
                 logger.debug("Incremental snippet save failed for %s: %s", cf.path, ex)
 
     def _update_symbol_table(
-        self, code_memory, project_path: Path, project_id: str
+        self,
+        code_memory,
+        project_path: Path,
+        project_id: str,
+        changed_paths: Optional[set[str]] = None,
     ) -> None:
         """Parse generated .py files and update the symbol table incrementally."""
         import ast as _ast
@@ -948,6 +1246,9 @@ Fix one file at a time, then call validate_syntax to verify."""
 
         for py_file in project_path.rglob("*.py"):
             if "__pycache__" in str(py_file):
+                continue
+            rel_path = str(py_file.relative_to(project_path)).replace("\\", "/")
+            if changed_paths is not None and rel_path not in changed_paths:
                 continue
             try:
                 source = py_file.read_text(encoding="utf-8")
@@ -1009,6 +1310,31 @@ Fix one file at a time, then call validate_syntax to verify."""
                 logger.debug("Could not validate syntax for %s: %s", py_file, ex)
                 continue
         return errors
+
+    def _snapshot_project_files(self, project_path: Path) -> Dict[str, float]:
+        """Snapshot file mtimes for incremental diff after each task."""
+        snap: Dict[str, float] = {}
+        for f in project_path.rglob("*"):
+            if not f.is_file() or "__pycache__" in str(f):
+                continue
+            rel = str(f.relative_to(project_path)).replace("\\", "/")
+            try:
+                snap[rel] = f.stat().st_mtime
+            except OSError:
+                continue
+        return snap
+
+    def _diff_snapshot_paths(
+        self,
+        before: Dict[str, float],
+        after: Dict[str, float],
+    ) -> set[str]:
+        changed: set[str] = set()
+        all_keys = set(before.keys()) | set(after.keys())
+        for k in all_keys:
+            if before.get(k) != after.get(k):
+                changed.add(k)
+        return changed
 
     def _find_import_issues(self, project_path: Path) -> List[str]:
         """

@@ -6,6 +6,112 @@
 
 ---
 
+## 2026-03-15 | [other] 新增 bug 发现测试 tests/test_bug_hunting.py
+
+- 数据模型边界：Requirements 空 features、Feature priority 1–5、Task 依赖字符串、CodeRepository 空 files/必填 structure。
+- TaskService：enqueue 返回值 started/deduped_completed/rejected_backpressure、未知 project get_status 为 None。
+- Skeleton builder：空 interface_specs/file_structure 返回空 dict 或最小 skeleton。
+- Preview：无 generated/ 或无入口时 start_preview 返回 None 且 get_preview_status 为 error。
+- Orchestrator：Stage 3 失败时 context.json 含 partial_failure 与 failed_stage=3。
+
+## 2026-03-15 | [web][frontend] 深入 debug：删除时禁止进行中、cancelled 状态与 409 处理
+
+- **DELETE /api/projects/<id>**：当项目状态为 `processing` 或 `cancelling` 时返回 **409 Conflict**，提示先取消或等待完成，避免删除目录后后台任务写盘异常。`TaskService.delete_project` 改为返回 `"deleted"` | `"not_found"` | `"busy"` 供 API 区分 200/404/409。
+- **前端**：状态栏与轮询支持 `status === 'cancelled'`（文案与 stopPolling）；`deleteProject` 对 409 抛出明确错误信息。
+
+## 2026-03-15 | [web][frontend] 前后端接口检查：健康检查、delete/cancel 封装
+
+- **checkBackend**：改为请求 `GET /api/health`，返回 `{ ok, degraded?, checks? }`；503 或 `status=degraded` 时仍视为可达并设 `degraded: true`；健康不可用时 fallback 到 `GET /api/projects`。WorkspaceShell 使用 `result?.ok` 判断是否连接。
+- **前端 API**：新增 `deleteProject(projectId)`（DELETE）、`cancelGeneration(projectId)`（POST /cancel），与后端一致，便于后续 UI 接入。
+
+## 2026-03-15 | [web][frontend] 深入调试：SSE 事件类型、delete 清理、澄清缓存上限
+
+- **SSE**：后端发送 `event: status` / `event: timeout`，前端原用 `onmessage`（仅接收默认 `message` 类型）。改为 `addEventListener('status', ...)` 与 `addEventListener('timeout', ...)`，确保状态更新能实时推送到 UI。
+- **TaskService.delete_project**：删除项目时同时清理 `_project_locks`、`_pending_regenerate`、`_active_fingerprints`、`_last_completed_fingerprint`、`_cancelled_projects`、`_run_starts`、`_run_trace_ids`，避免长期运行后内存与锁字典无限增长。
+
+## 2026-03-15 | [web][frontend] 更细致修复：流式 fallback 不重复 assistant、澄清缓存上限
+
+- **前端 useChat**：流式请求失败后 fallback 到非流式时，若已有 assistant 消息（部分流式内容），改为更新该条内容为完整回复，避免出现两条 assistant 消息。
+- **澄清缓存**：`_CLARIFY_CACHE` 增加上限 `_CLARIFY_CACHE_MAX_SIZE=500`，写入前若已满则移除最旧一项，避免长时间运行内存持续增长。
+
+## 2026-03-15 | [agents][web] 修复 chat 回复强加问号与 get_file 编码错误处理
+
+- **InteractionAgent**：`_normalize_chat_reply` 增加参数 `ensure_question=False`；`reply_in_chat`/`reply_in_chat_stream` 不再强制将回复结尾改为 `?`，保留 LLM 原始句尾（句号等）；需强制单问句的澄清流程可传 `ensure_question=True`。
+- **TaskService.get_file**：对非 UTF-8 文本文件改用 `read_text(encoding="utf-8", errors="replace")`，避免抛出 BinaryFileError，与测试及“编码问题返回内容或 None”的约定一致。
+
+## 2026-03-15 | [config] 默认模型切换至 OpenAI GPT-5 系列
+
+- **主模型**：`OPENAI_MODEL` / `openai_model` 默认由 `gpt-4o` 改为 `gpt-5.4`；`OPENAI_VLM_MODEL` / `openai_vlm_model` 改为 `gpt-5.4`。
+- **快速/轻量模型**：`fast_model_for_review`、`fast_model_for_code_gen` 默认由 `gpt-4o-mini` 改为 `gpt-5-mini`。
+- **图像模型**：`image_generation_openai_model` 默认由 `dall-e-3` 改为 `gpt-image-1.5`（DALL-E 3 已标记为 Deprecated）。
+- **模型注册表**：`config/models_registry.json` 更新为 GPT-5 系列（gpt-5.4、gpt-5.4-pro、gpt-5-mini、gpt-5-nano、gpt-5、gpt-4.1），供前端选择与 stage 路由。`.env.example` 中 `OPENAI_MODEL`/`OPENAI_VLM_MODEL` 已同步更新。
+
+## 2026-03-15 | [config][web][agents] Phase 2：环境自检、规划校验、导入检查默认开启、语法修复轮数
+
+- **环境自检**：新增 `src/utils/env_check.py`，校验 LLM API Key、projects_dir 可写、Python 版本；`GET /api/health` 使用该模块，支持 `?check_llm=1`（需 `HEALTH_CHECK_LLM=true`）探测 LLM 可达性；启动时可选执行 `run_startup_env_check`（`ENABLE_STARTUP_ENV_CHECK`，默认 True）。CLAUDE.md 增加 ENABLE_STARTUP_ENV_CHECK、HEALTH_CHECK_LLM；TROUBLESHOOTING 增加环境自检与 /api/health 说明。
+- **规划完整性**：新增 `src/utils/plan_validator.py`，在 Stage 2 结束后做轻量校验（入口文件、pyi/interface 覆盖）；Orchestrator 在 `enable_plan_completeness_check=True` 时调用并打 warning。AGENTS_REF 注明该步骤。
+- **Stage 3**：`ENABLE_STAGE3_IMPORT_SANITY_CHECK` 默认改为 True；`code_gen_syntax_fix_retries` 默认改为 2。
+- **PROMPTS_REF**：增加「Stage 4 FineTuning 与 TestError 引用」约定，要求修复时传入 file_path/line_number 以定位修复位置。
+
+## 2026-03-15 | [other] 新增项目介绍与当前问题总结文档；Phase 1 可靠性改进
+
+- 新增 **docs/PROJECT_AND_ISSUES.md**：项目介绍 + 三类问题（运行失败、代码有 bug、达不到预期）+ 原因与排查要点 + 推荐排查顺序；CONTEXT_INDEX 已加入该文档与按任务索引。
+- **Preview**：`_install_requirements` 失败时写回 `preview_error` 并将 state 置为 `error`，前端可通过 preview-url 获取错误信息。
+- **前端**：对 `/generate` 返回的 `started`/`deduped_active`/`deduped_completed`/`rejected_backpressure` 做明确文案与操作引导；429 时返回 body 供前端展示「队列已满，请稍后再试」。
+- **500 响应**：当异常为 `StageExecutionError` 时，响应中增加 `error_code`、`failed_stage`，便于前端展示「第 N 阶段失败」而不暴露详情。
+
+## 2026-03-12 | [services] LLM 异常分型与重试预算
+
+- `LLMService` 新增 `TransientLLMError` / `PermanentLLMError` 分型，避免永久错误被误判为瞬时错误重试。
+- `generate/stream/stream_messages` 增加 `retry_budget_seconds`，预算耗尽后快速失败，抑制重试放大。
+
+## 2026-03-12 | [web] 真实 enqueue 语义、取消入口与 SSE/预览状态收敛
+
+- `POST /api/projects/<id>/generate` 返回真实状态：`started` / `queued_rerun` / `deduped_active` / `deduped_completed` / `rejected_backpressure`。
+- 新增 `POST /api/projects/<id>/cancel`，支持协作式取消生成。
+- `GET /api/projects/<id>/events` 增加 `retry`、heartbeat、最大连接时长超时事件，减少静默挂死。
+- `preview` 状态新增 `warming`，健康探活通过后才进入 `running`。
+
+## 2026-03-12 | [agents] Stage4 回退契约与 RunAndFix 隔离执行
+
+- FineTuning 回退生成的 `app.py` 补齐 `create_app()`，与 Stage4 导入校验契约一致。
+- `RunAndFixAgent._try_run_app` 改为子进程检查，避免 in-process 导入污染导致跨轮次不稳定。
+
+## 2026-03-12 | [other] 鲁棒性回归补充
+
+- 新增 `tests/test_llm_service_retries.py`，覆盖瞬时重试、预算耗尽、永久错误分型。
+- 扩展 `test_task_service_reliability.py`、`test_orchestrator_recovery.py`、`test_projects_api.py`，覆盖永久错误不重试、签名失效重跑、取消接口与新 generate 语义。
+
+## 2026-03-12 | [services] LLM 重试分类与模型能力匹配收敛
+
+- `LLMService` 重试策略改为“仅瞬时错误可重试”：timeout/connection/429/5xx 走指数退避+jitter（支持 Retry-After），4xx 类非瞬时错误快速失败并统一抛 `LLMServiceError`。
+- 修复 `LLMService` usage 日志空字段导致二次异常的问题，降低“调用成功但日志失败”误报。
+- `ModelSelector` fallback 改为必须满足全部 `required_capabilities`，避免选到能力不完整模型导致后续阶段失败。
+
+## 2026-03-12 | [web] 任务幂等去重、检查点恢复与可靠性指标
+
+- `TaskService` 新增输入指纹（消息摘要 + model_id + product_type + plan_version），同输入重复触发不再重复排队或二次全量重跑。
+- 增加可靠性指标聚合与 API：`GET /api/projects/metrics` 输出 `stage_failure_rate`、`transient_retry_success_rate`、`resume_success_rate`、`avg_recovery_seconds` 等。
+- `Orchestrator.run_from_stage_2` 新增 `artifacts/stage_state.json` 阶段检查点，Stage 2/3 成功产物可在同输入重试中复用，实现从最近成功阶段恢复。
+
+## 2026-03-12 | [agents] Stage 3 增量扫描与 Stage 4 隔离校验
+
+- Stage 3 `CodeGenerationAgent` 引入按任务快照 diff 的增量扫描，仅对变更文件执行 symbol/snippet 增量更新，减少重复全量处理开销。
+- Stage 4 `FullCycleTestingAgent` 依赖安装增加 run 内缓存（requirements hash + Python 版本），去除重复 `pip install`。
+- Stage 4 导入与前端路由校验迁移至子进程隔离执行，避免污染解释器状态导致跨轮次不稳定。
+
+## 2026-03-12 | [other] 稳定性回归测试与 CI 门禁补齐
+
+- 新增 `tests/test_task_service_reliability.py`（指纹去重、瞬时错误重试成功率）与 `tests/test_orchestrator_recovery.py`（阶段检查点恢复）。
+- `tests/test_projects_api.py` 新增 `/api/projects/metrics` 回归用例。
+- CI 新增 `Reliability regression tests` 步骤，显式执行稳定性关键回归测试。
+
+## 2026-03-10 | agents, code-gen, troubleshooting Stage 3 最小 Flask 骨架兜底与 Stage 4 运行环境隔离
+
+- **Stage 4 FullCycleTesting**：在 `_try_run_with_subprocess` 中为子进程构造隔离的运行环境，将 `data/projects/<id>/generated` 目录置于 `PYTHONPATH` 首位，避免 `import config` 等导入命中仓库根部的 `config/` 包；错误仍通过 `TestError`/日志完整上报。
+- **Stage 3 CodeGenerationAgent**：新增 `_ensure_minimum_files()`，在 Agent 任务完成后根据 `engineering_plan.file_structure` + `pyi_stubs` + `api_specs.frontend_routes` 兜底生成最小可运行 Flask 骨架（缺失的 `app/models/*.py`、`app/routes/*.py` 与关键 `templates/*.html` 会被补齐为简单但可运行的实现）。
+- **文档**：更新 `AGENTS_REF` 中 CodeGenerationAgent/FullCycleTestingAgent 行为说明，`CODE_GEN_SPEC` 增加最小骨架兜底入口；`TROUBLESHOOTING` 中补充「Empty or minimal generated code」与 `config` 导入冲突的排查指引。
+
 ## 2026-03-06 | agents, web, prompts 澄清选项 JSON 结构统一（question + need_options + options）
 
 - **Agent**：`InteractionAgent.ClarificationQuestion` 增加 `need_options` 字段，用于标记某个澄清问句是否需要结构化选项；`generate_options_for_question()` 改为期望 LLM 返回 `{question, need_options, options[]}` 形态的 JSON，并在 question 为空时回退到原始 assistant 问句。
@@ -369,3 +475,23 @@
 - **Stage 3 CodeGenerationAgent**：修复 `_process_task_with_tools` 中对 `skeleton_warnings` 的 NameError，将 skeleton 校验产生的 warning 以参数形式传入并注入 modular prompts/system prompt，避免 Stage 3 在首个任务上直接抛出 `StageExecutionError`。
 - **CodeGenerationAgent 兼容 generated_image_paths**：在 `_process_task_with_tools` 中对 `context.generated_image_paths` 的访问增加容错封装，保证在未启用图片生成（或缺少该字段）时不会因 NameError 中断整段任务流程，而是降级为无图片提示继续生成代码。
 - **前端构建占位资源**：在 Vue 前端的 `directionVisuals` 中将缺失的 hero/directions 占位图片统一指向现有的 `vue.svg`，保证 `npm run build` 在没有专门插画资源的情况下也能成功通过 Rollup 资源解析。
+
+## 2026-03-12 | [agents] Stage 3/4 路径安全与 Stage 2 回退鲁棒性修复
+
+- 为 Stage 3 工具读写与 Stage 4 落盘增加路径越界防护，阻断绝对路径/`..` 穿越写入。
+- Stage 2 fallback 在低置信度时改为最小可执行任务集，避免空任务级联导致 Stage 3 失败。
+
+## 2026-03-12 | [web] 聊天幂等、预览异步状态与 SSE/API 一致性修复
+
+- chat/chat-stream 新增 `client_message_id` 幂等去重，避免流式降级重试导致重复用户消息。
+- preview-url 增加 `state/starting/installing/preview_error`，并改为异步触发预览启动，降低接口阻塞风险。
+- 移除重复 `/generate` 路由；统一 chat-stream 非法 JSON 错误语义；`/events` 对不存在项目返回 404。
+
+## 2026-03-12 | [config] Settings 初始化并发安全修复
+
+- 移除 `Settings.__init__` 对全局环境变量的临时删改，避免并发场景的进程级副作用。
+
+## 2026-03-12 | [other] CI 门禁与 API 测试覆盖增强
+
+- CI 开启覆盖率阈值并收紧 mypy 失败门禁，新增 docs 一致性检查步骤。
+- 扩展 `tests/test_projects_api.py`，覆盖 chat-stream JSON 错误、幂等消息、generate 回包、events 404、plan/validation-runs/overview/clarification 端点等场景。

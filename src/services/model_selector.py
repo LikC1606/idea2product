@@ -63,11 +63,16 @@ class ModelSelector:
             return candidate
 
         # Fallback: find any model with required capabilities
-        for cap in route.required_capabilities:
-            matches = self.registry.get_by_capability(cap)
-            if matches:
-                logger.debug(f"Stage {stage}: selected {matches[0].id} via capability '{cap}'")
-                return matches[0]
+        if route.required_capabilities:
+            for m in self.registry.models:
+                if self._has_required_capabilities(m, route.required_capabilities):
+                    logger.debug(
+                        "Stage %s: selected %s via all-capabilities fallback %s",
+                        stage,
+                        m.id,
+                        route.required_capabilities,
+                    )
+                    return m
 
         # Ultimate fallback
         logger.debug(f"Stage {stage}: no matching model, using default")

@@ -1,7 +1,7 @@
 {
   "models": [
     {
-      "id": "gpt-4o",
+      "id": "gpt-5.4",
       "provider": "openai",
       "capabilities": ["text", "json", "vision", "long_context", "code"],
       "roles": ["primary", "vision"],
@@ -9,12 +9,44 @@
       "max_tokens": 8000
     },
     {
-      "id": "gpt-4o-mini",
+      "id": "gpt-5.4-pro",
+      "provider": "openai",
+      "capabilities": ["text", "json", "vision", "long_context", "code"],
+      "roles": ["primary", "vision"],
+      "cost_tier": "high",
+      "max_tokens": 8000
+    },
+    {
+      "id": "gpt-5-mini",
       "provider": "openai",
       "capabilities": ["text", "json", "code"],
       "roles": ["fallback"],
       "cost_tier": "low",
       "max_tokens": 4096
+    },
+    {
+      "id": "gpt-5-nano",
+      "provider": "openai",
+      "capabilities": ["text", "json", "code"],
+      "roles": ["fallback"],
+      "cost_tier": "low",
+      "max_tokens": 4096
+    },
+    {
+      "id": "gpt-5",
+      "provider": "openai",
+      "capabilities": ["text", "json", "vision", "long_context", "code"],
+      "roles": ["primary"],
+      "cost_tier": "high",
+      "max_tokens": 8000
+    },
+    {
+      "id": "gpt-4.1",
+      "provider": "openai",
+      "capabilities": ["text", "json", "vision", "long_context", "code"],
+      "roles": ["primary"],
+      "cost_tier": "high",
+      "max_tokens": 8000
     }
   ],
   "stage_routing": {

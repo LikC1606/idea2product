@@ -93,7 +93,7 @@ function startPollingFallback() {
 function handleStatusUpdate(payload) {
   updateFromPayload(payload)
   loadFiles()
-  if (payload?.status === 'completed' || payload?.status === 'failed') {
+  if (payload?.status === 'completed' || payload?.status === 'failed' || payload?.status === 'cancelled') {
     stopPolling()
   }
 }
@@ -137,14 +137,41 @@ async function handleSend(text) {
   await sendMessage(text)
 }
 
+const GENERATE_STATUS_MESSAGES = {
+  started: { msg: '生成已启动，请切换到 Plan/Code/Preview 查看进度。', poll: true },
+  queued_rerun: { msg: '当前有任务在跑，已排队；完成后将用最新对话自动重跑。', poll: true },
+  deduped_active: { msg: '相同请求正在生成中，无需重复提交。请在下方查看进度。', poll: true },
+  deduped_completed: { msg: '该输入已生成完成，未启动新任务。可直接查看 Plan/Code/Preview。', poll: true },
+  rejected_backpressure: {
+    msg: (d) =>
+      `队列已满，请稍后再试。${d?.retry_after_seconds ? `建议 ${d.retry_after_seconds} 秒后重试。` : ''}`.trim(),
+    poll: false,
+  },
+}
+
 async function handleGenerate() {
   if (!projectId.value) return
   try {
     setStatus('processing', 'Queued…', 'Queued', 0)
-    appendSystemMessage('已开始排队生成（Queued）。你可以切换到 Plan/Code/Preview 查看进度。')
+    appendSystemMessage('正在提交生成…')
     const res = await api.triggerGeneration(projectId.value)
-    if (res?.status && res.status !== 'queued') {
-      appendSystemMessage(`生成任务已提交：${res.status}`)
+    const status = res?.status || 'started'
+    const spec = GENERATE_STATUS_MESSAGES[status]
+    if (spec) {
+      const msg = typeof spec.msg === 'function' ? spec.msg(res) : spec.msg
+      appendSystemMessage(msg)
+      if (status === 'rejected_backpressure') {
+        updateFromPayload({
+          status: 'failed',
+          error: msg,
+          current_stage: 'Queue full',
+          progress: 0,
+        })
+        return
+      }
+      if (!spec.poll) return
+    } else {
+      appendSystemMessage(status ? `状态：${status}` : '已提交生成，请查看 Plan/Code/Preview 进度。')
     }
     startPolling()
   } catch (err) {
@@ -171,8 +198,8 @@ function handleKeydown(e) {
 }
 
 async function checkBackendConnection() {
-  const ok = await api.checkBackend()
-  backendConnected.value = ok
+  const result = await api.checkBackend()
+  backendConnected.value = !!result?.ok
 }
 
 function handleScroll() {

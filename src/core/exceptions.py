@@ -13,6 +13,30 @@ class LLMServiceError(Idea2ProductError):
     pass
 
 
+class TransientLLMError(LLMServiceError):
+    """Retryable/transient LLM failure (timeout, 429, 5xx, network)."""
+
+    pass
+
+
+class PermanentLLMError(LLMServiceError):
+    """Non-retryable LLM failure (invalid request/auth/model not found)."""
+
+    pass
+
+
+class GenerationCancelledError(Idea2ProductError):
+    """Generation task cancelled by user."""
+
+    pass
+
+
+class GenerationTimeoutError(Idea2ProductError):
+    """Generation exceeded allowed wall-clock budget."""
+
+    pass
+
+
 class StageExecutionError(Idea2ProductError):
     """A pipeline stage failed.
 

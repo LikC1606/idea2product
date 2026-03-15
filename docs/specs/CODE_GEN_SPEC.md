@@ -14,6 +14,7 @@
 - `config/prompts/frontend_design_guidelines.txt` — 前端任务设计规范（包含 Bento Grid、Masonry Grid 等主页/图片布局建议）
 - `templates/flask_base/` — 生成应用的模板基础
 - `src/agents/stage3_generation/code_gen_templates.py` — Agent 失败兜底 stub 生成
+- `src/agents/stage3_generation/code_generation_agents.py` — CodeGenerationAgent 主体逻辑（包括 `_ensure_minimum_files` 兜底，基于 engineering_plan.file_structure + pyi_stubs 生成最小可运行 Flask 骨架）
 
 ## 禁止事项
 
@@ -181,3 +182,12 @@ design_mode（modern/minimal/dashboard）可映射到 theme-factory 的 10 主�
 
 - AGENTS_REF — SchemePlanningAgent、CodeGenerationAgent
 - DATA_MODELS_REF — CodeSkeleton、CodeRepository、EngineeringPlan
+
+## 2026-03-12 更新（文件写入安全）
+
+- Stage 3 代码工具层（`src/agents/stage3_generation/tools.py`）新增统一安全路径解析：
+  - 禁止绝对路径与盘符路径；
+  - 禁止 `..` 路径穿越；
+  - `resolve + relative_to` 校验目标路径必须位于当前项目根目录下。
+- Stage 4 落盘（`FullCycleTestingAgent._save_files`）同步采用 generated 目录越界校验，确保验证阶段不会把模型输出写到项目目录外。
+- 约束建议：后续新增“写文件工具”时，必须复用同类路径安全策略，作为代码生成链路的默认安全基线。

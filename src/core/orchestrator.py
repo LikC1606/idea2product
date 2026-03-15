@@ -4,14 +4,15 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Callable, Optional
 from datetime import datetime
+import threading
 
-from config.settings import Settings
+from config.settings import Settings, get_primary_llm_config
 from src.services.llm_service import LLMService
 from src.services.model_registry import ModelRegistry
 from src.services.model_selector import ModelSelector
 from src.utils.logger import setup_logger, get_logger, set_correlation, clear_correlation
 from src.utils.prompt_loader import PromptLoader
-from src.utils.file_utils import ensure_dir, write_json
+from src.utils.file_utils import ensure_dir, write_json, read_json_safe
 
 from .context import ExecutionContext
 from .data_models import (
@@ -77,10 +78,11 @@ class Orchestrator:
 
         # Model discovery & selection
         self.model_registry = ModelRegistry.load(settings.models_registry_path)
+        _, _, primary_model, primary_vlm_model = get_primary_llm_config(settings)
         self.model_selector = ModelSelector(
             registry=self.model_registry,
-            default_model=getattr(settings, "openai_model", "gpt-4o"),
-            default_vlm_model=getattr(settings, "openai_vlm_model", "gpt-4o"),
+            default_model=primary_model,
+            default_vlm_model=primary_vlm_model,
         )
 
         # Set up logging
@@ -88,6 +90,7 @@ class Orchestrator:
             "orchestrator",
             log_level=settings.log_level,
         )
+        self._stage_state_locks: dict[str, threading.Lock] = {}
 
     def _apply_random_seed(self) -> None:
         """Apply random seed for reproducibility if configured."""
@@ -279,6 +282,7 @@ class Orchestrator:
             model_id=entry.id,
             base_url=entry.base_url,
             max_tokens=entry.max_tokens or None,
+            provider=getattr(entry, "provider", None),
         )
 
     def execute_stage_1(self, context: ExecutionContext, interactive: bool = False) -> Requirements:
@@ -512,13 +516,26 @@ class Orchestrator:
 
         _llm = llm or self.llm_service
         try:
-            raw = _llm.generate(prompt, max_tokens=4000)
-            raw = raw.strip()
-            if raw.startswith("```"):
-                raw = raw.split("\n", 1)[-1].rsplit("```", 1)[0]
-            cases_data = _json.loads(raw)
-            if not isinstance(cases_data, list):
-                cases_data = []
+            schema = {
+                "name": "bdd_cases",
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "test_id": {"type": "string"},
+                        "feature": {"type": "string"},
+                        "scenario": {"type": "string"},
+                        "given": {"type": "string"},
+                        "when": {"type": "string"},
+                        "then": {"type": "string"},
+                        "test_code": {"type": "string"},
+                    },
+                    "required": ["feature", "scenario", "given", "when", "then"],
+                    "additionalProperties": True,
+                },
+            }
+            resp = _llm.generate_json(prompt, max_tokens=4000, json_schema=schema)
+            cases_data = resp if isinstance(resp, list) else []
         except Exception as e:
             self.logger.warning(f"BDD synthesis LLM call failed, using rule-based fallback: {e}")
             cases_data = []
@@ -597,8 +614,16 @@ class Orchestrator:
             with ThreadPoolExecutor(max_workers=2) as pool:
                 f_mem = pool.submit(memory_agent.pre_execute, context)
                 f_min = pool.submit(mining_agent.execute, context)
-                memory_context = f_mem.result()
-                mining_by_task = f_min.result()
+                memory_context = {}
+                mining_by_task = {}
+                try:
+                    memory_context = f_mem.result()
+                except Exception as ex:
+                    self.logger.warning("[Stage3][CodeMemoryAgent] Prefetch failed, degrade to empty context: %s", ex)
+                try:
+                    mining_by_task = f_min.result()
+                except Exception as ex:
+                    self.logger.warning("[Stage3][CodeMiningAgent] Prefetch failed, degrade to empty context: %s", ex)
             self.logger.info(
                 "[Stage3][CodeMemoryAgent+CodeMiningAgent] Prefetch done (parallel)"
             )
@@ -834,6 +859,87 @@ class Orchestrator:
         write_json(filepath, data)
         self.logger.debug(f"Saved artifact: {filename}")
 
+    def _checkpoint_path(self, artifacts_dir: Path) -> Path:
+        return artifacts_dir / "stage_state.json"
+
+    def _requirements_signature(self, requirements: Requirements) -> str:
+        payload = {
+            "title": requirements.title,
+            "description": requirements.description,
+            "features": [f"{f.id}:{f.name}:{f.description}" for f in requirements.features],
+            "constraints": requirements.constraints,
+            "product_type": str(getattr(requirements, "product_type", "") or ""),
+        }
+        import json as _json
+        import hashlib as _hashlib
+        raw = _json.dumps(payload, ensure_ascii=False, sort_keys=True)
+        return _hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+    def _execution_signature(
+        self,
+        requirements: Requirements,
+        product_type: Optional[str],
+        model_id: Optional[str],
+    ) -> str:
+        payload = {
+            "requirements_signature": self._requirements_signature(requirements),
+            "product_type": str(product_type or ""),
+            "model_id": str(model_id or ""),
+            "flags": {
+                "enable_parallel_stage3_prefetch": bool(getattr(self.settings, "enable_parallel_stage3_prefetch", True)),
+                "enable_stage3_syntax_check": bool(getattr(self.settings, "enable_stage3_syntax_check", True)),
+                "enable_visual_verification": bool(getattr(self.settings, "enable_visual_verification", False)),
+            },
+        }
+        import json as _json
+        import hashlib as _hashlib
+        raw = _json.dumps(payload, ensure_ascii=False, sort_keys=True)
+        return _hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+    def _stage_state_lock(self, artifacts_dir: Path) -> threading.Lock:
+        key = str(artifacts_dir.resolve())
+        if key not in self._stage_state_locks:
+            self._stage_state_locks[key] = threading.Lock()
+        return self._stage_state_locks[key]
+
+    def _load_stage_state(self, artifacts_dir: Path) -> dict:
+        return read_json_safe(self._checkpoint_path(artifacts_dir), default={}) or {}
+
+    def _save_stage_state(self, artifacts_dir: Path, state: dict) -> None:
+        path = self._checkpoint_path(artifacts_dir)
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        write_json(tmp, state)
+        tmp.replace(path)
+
+    def _mark_stage_state(
+        self,
+        artifacts_dir: Path,
+        stage: int,
+        status: str,
+        run_id: str,
+        execution_signature: str,
+        artifact: str = "",
+        error: str = "",
+    ) -> dict:
+        with self._stage_state_lock(artifacts_dir):
+            state = self._load_stage_state(artifacts_dir)
+            stages = state.setdefault("stages", {})
+            prev = stages.get(str(stage), {})
+            attempts = int(prev.get("attempts", 0)) + (1 if status == "started" else 0)
+            row = {
+                "status": status,
+                "run_id": run_id,
+                "execution_signature": execution_signature,
+                "attempts": attempts if status == "started" else int(prev.get("attempts", attempts)),
+                "updated_at": datetime.now().isoformat(),
+                "artifact": artifact or prev.get("artifact", ""),
+                "error": error or "",
+            }
+            stages[str(stage)] = row
+            state["updated_at"] = datetime.now().isoformat()
+            self._save_stage_state(artifacts_dir, state)
+            return state
+
     def _record_validation_run(self, context: ExecutionContext, test_result) -> None:
         """Append a ValidationRun entry under artifacts/validation_runs.json for this project."""
         if context.project_path is None:
@@ -921,50 +1027,146 @@ class Orchestrator:
         context.project_path = project_path
         context.requirements = requirements
         context.update_stage(1)
+        exec_sig = self._execution_signature(requirements, product_type=product_type, model_id=model_id)
+        context.execution_signature = exec_sig
 
         try:
             self._save_artifact(artifacts_dir, "01_requirements.json", requirements.model_dump(mode="json"))
 
-            _report(25, "Stage 2: Planning (FlowSimulation + TaskDivision + AlgorithmAnalysis + SchemePlanning)")
-            context.update_stage(2)
-            try:
-                engineering_plan = self.execute_stage_2(context)
-            except Exception as e:
-                context.add_error(f"Stage 2 failed: {e}")
-                self._save_artifact(
-                    artifacts_dir,
-                    "context.json",
-                    {**context.to_dict(), "partial_failure": True, "failed_stage": 2},
+            stage_state = self._load_stage_state(artifacts_dir)
+            stage2_state = (stage_state.get("stages", {}) or {}).get("2", {})
+            can_resume_stage2 = (
+                stage2_state.get("status") == "succeeded"
+                and stage2_state.get("execution_signature") == exec_sig
+                and (artifacts_dir / "02_engineering_plan.json").exists()
+            )
+            if can_resume_stage2:
+                try:
+                    self.logger.info("run_from_stage_2: resuming from cached Stage 2 result for %s", project_id)
+                    engineering_plan = EngineeringPlan.model_validate(
+                        read_json_safe(artifacts_dir / "02_engineering_plan.json", default={}) or {}
+                    )
+                    context.resume_from_stage = 3
+                except Exception as ex:
+                    self.logger.warning("Stage 2 checkpoint invalid for %s, recomputing: %s", project_id, ex)
+                    can_resume_stage2 = False
+            if not can_resume_stage2:
+                _report(25, "Stage 2: Planning (FlowSimulation + TaskDivision + AlgorithmAnalysis + SchemePlanning)")
+                context.update_stage(2)
+                self._mark_stage_state(
+                    artifacts_dir, stage=2, status="started", run_id=context.run_id, execution_signature=exec_sig
                 )
-                self.logger.error("run_from_stage_2 Stage 2 failed for %s: %s", project_id, e, exc_info=True)
-                raise StageExecutionError(f"Stage 2 failed: {e}", stage=2, partial_context=context) from e
+                try:
+                    engineering_plan = self.execute_stage_2(context)
+                except Exception as e:
+                    context.add_error(f"Stage 2 failed: {e}")
+                    self._mark_stage_state(
+                        artifacts_dir,
+                        stage=2,
+                        status="failed",
+                        run_id=context.run_id,
+                        execution_signature=exec_sig,
+                        error=str(e),
+                    )
+                    self._save_artifact(
+                        artifacts_dir,
+                        "context.json",
+                        {**context.to_dict(), "partial_failure": True, "failed_stage": 2},
+                    )
+                    self.logger.error("run_from_stage_2 Stage 2 failed for %s: %s", project_id, e, exc_info=True)
+                    raise StageExecutionError(f"Stage 2 failed: {e}", stage=2, partial_context=context) from e
+                self._save_artifact(artifacts_dir, "02_engineering_plan.json", engineering_plan.model_dump(mode="json"))
+                self._mark_stage_state(
+                    artifacts_dir,
+                    stage=2,
+                    status="succeeded",
+                    run_id=context.run_id,
+                    execution_signature=exec_sig,
+                    artifact="02_engineering_plan.json",
+                )
             context.engineering_plan = engineering_plan
             context.tasks = engineering_plan.tasks
             context.algorithms = engineering_plan.algorithms
-            self._save_artifact(artifacts_dir, "02_engineering_plan.json", engineering_plan.model_dump(mode="json"))
 
-            _report(50, "Stage 3: Code Generation (CodeMemoryAgent + CodeMiningAgent + CodeGenerationAgent)")
-            context.update_stage(3)
-            try:
-                code_repository = self.execute_stage_3(context)
-            except Exception as e:
-                context.add_error(f"Stage 3 failed: {e}")
-                self._save_artifact(
-                    artifacts_dir,
-                    "context.json",
-                    {**context.to_dict(), "partial_failure": True, "failed_stage": 3},
+            if getattr(self.settings, "enable_plan_completeness_check", True):
+                try:
+                    from src.utils.plan_validator import validate_plan_completeness
+                    _ok, _warnings = validate_plan_completeness(engineering_plan)
+                    for _w in _warnings:
+                        self.logger.warning("[plan_validator] %s", _w)
+                except Exception as _ex:
+                    self.logger.debug("Plan completeness check failed: %s", _ex)
+
+            stage_state = self._load_stage_state(artifacts_dir)
+            stage3_state = (stage_state.get("stages", {}) or {}).get("3", {})
+            can_resume_stage3 = (
+                stage3_state.get("status") == "succeeded"
+                and stage3_state.get("execution_signature") == exec_sig
+                and (artifacts_dir / "03_code_repository.json").exists()
+            )
+            if can_resume_stage3:
+                try:
+                    self.logger.info("run_from_stage_2: resuming from cached Stage 3 result for %s", project_id)
+                    code_repository = CodeRepository.model_validate(
+                        read_json_safe(artifacts_dir / "03_code_repository.json", default={}) or {}
+                    )
+                    context.resume_from_stage = 4
+                except Exception as ex:
+                    self.logger.warning("Stage 3 checkpoint invalid for %s, regenerating: %s", project_id, ex)
+                    can_resume_stage3 = False
+            if not can_resume_stage3:
+                _report(50, "Stage 3: Code Generation (CodeMemoryAgent + CodeMiningAgent + CodeGenerationAgent)")
+                context.update_stage(3)
+                self._mark_stage_state(
+                    artifacts_dir, stage=3, status="started", run_id=context.run_id, execution_signature=exec_sig
                 )
-                self.logger.error("run_from_stage_2 Stage 3 failed for %s: %s", project_id, e, exc_info=True)
-                raise StageExecutionError(f"Stage 3 failed: {e}", stage=3, partial_context=context) from e
+                try:
+                    code_repository = self.execute_stage_3(context)
+                except Exception as e:
+                    context.add_error(f"Stage 3 failed: {e}")
+                    self._mark_stage_state(
+                        artifacts_dir,
+                        stage=3,
+                        status="failed",
+                        run_id=context.run_id,
+                        execution_signature=exec_sig,
+                        error=str(e),
+                    )
+                    self._save_artifact(
+                        artifacts_dir,
+                        "context.json",
+                        {**context.to_dict(), "partial_failure": True, "failed_stage": 3},
+                    )
+                    self.logger.error("run_from_stage_2 Stage 3 failed for %s: %s", project_id, e, exc_info=True)
+                    raise StageExecutionError(f"Stage 3 failed: {e}", stage=3, partial_context=context) from e
+                self._save_artifact(artifacts_dir, "03_code_repository.json", code_repository.model_dump(mode="json"))
+                self._mark_stage_state(
+                    artifacts_dir,
+                    stage=3,
+                    status="succeeded",
+                    run_id=context.run_id,
+                    execution_signature=exec_sig,
+                    artifact="03_code_repository.json",
+                )
             context.code_repository = code_repository
-            self._save_artifact(artifacts_dir, "03_code_repository.json", code_repository.model_dump(mode="json"))
 
             _report(75, "Stage 4: Validation & Testing (FullCycleTestingAgent ↔ FineTuningAgent loop)")
             context.update_stage(4)
+            self._mark_stage_state(
+                artifacts_dir, stage=4, status="started", run_id=context.run_id, execution_signature=exec_sig
+            )
             try:
                 validated_project = self.execute_stage_4(context)
             except Exception as e:
                 context.add_error(f"Stage 4 failed: {e}")
+                self._mark_stage_state(
+                    artifacts_dir,
+                    stage=4,
+                    status="failed",
+                    run_id=context.run_id,
+                    execution_signature=exec_sig,
+                    error=str(e),
+                )
                 self._save_artifact(
                     artifacts_dir,
                     "context.json",
@@ -972,6 +1174,14 @@ class Orchestrator:
                 )
                 self.logger.error("run_from_stage_2 Stage 4 failed for %s: %s", project_id, e, exc_info=True)
                 raise StageExecutionError(f"Stage 4 failed: {e}", stage=4, partial_context=context) from e
+            self._mark_stage_state(
+                artifacts_dir,
+                stage=4,
+                status="succeeded",
+                run_id=context.run_id,
+                execution_signature=exec_sig,
+                artifact="context.json",
+            )
             self._save_artifact(artifacts_dir, "context.json", context.to_dict())
 
             self.logger.info("run_from_stage_2 complete for %s", project_id)

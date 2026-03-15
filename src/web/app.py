@@ -25,8 +25,10 @@ app.register_blueprint(projects.bp)
 # Lightweight startup config checks (warnings only; do not block server start)
 try:
     from config.settings import load_settings_lenient, validate_startup_config_log_warnings
+    from src.utils.env_check import run_startup_env_check
     _startup_settings = load_settings_lenient()
     validate_startup_config_log_warnings(_startup_settings)
+    run_startup_env_check(_startup_settings)
 except Exception:
     pass
 
@@ -93,56 +95,36 @@ def get_options_models():
         return jsonify({"error": str(e), "models": []}), 500
 
 
-@app.route("/api/projects/<project_id>/generate", methods=["POST"])
-def trigger_generate_app(project_id):
-    """Generate endpoint - at app level to ensure routing works. Body may include product_type, model_id."""
-    from src.web.api.projects import _get_task_service, _validate_project_id
-    from src.web.services import chat_service
-    from config.settings import get_settings
-
-    if not _validate_project_id(project_id):
-        return jsonify({"error": "Invalid project id"}), 400
-    ts = _get_task_service()
-    project = ts.get_project(project_id)
-    if not project:
-        return jsonify({"error": "Project not found"}), 404
-
-    messages = chat_service.get_messages(get_settings(), project_id)
-    user_messages = [m for m in messages if m.get("role") == "user"]
-    if not user_messages:
-        return jsonify({"error": "No messages yet. Send a message first, then click Generate."}), 400
-
-    data = request.get_json(silent=True) or {}
-    product_type = data.get("product_type") or None
-    model_id = data.get("model_id") or None
-    ts.enqueue_generation(project_id, product_type=product_type, model_id=model_id)
-    return jsonify({"status": "queued", "project_id": project_id})
-
-
 @app.route("/api/health")
 def health_check():
-    """Health check: verifies service is up and critical resources are available."""
-    checks = {"config": True, "projects_dir_writable": True}
+    """Health check: verifies service is up and critical resources are available.
+    Query: check_llm=1 to run LLM reachability check (only if HEALTH_CHECK_LLM=true)."""
     try:
         from config.settings import get_settings
+        from src.utils.env_check import run_env_checks
         settings = get_settings()
-        try:
-            settings.projects_dir.mkdir(parents=True, exist_ok=True)
-            test_file = settings.projects_dir / ".health_write_test"
-            test_file.touch()
-            test_file.unlink()
-        except OSError:
-            checks["projects_dir_writable"] = False
-    except Exception:
-        checks["config"] = False
-
-    healthy = checks["config"] and checks["projects_dir_writable"]
-    status_code = 200 if healthy else 503
-    return jsonify({
-        "status": "healthy" if healthy else "degraded",
-        "service": "idea2product-api",
-        "checks": checks,
-    }), status_code
+        check_llm = request.args.get("check_llm") in ("1", "true", "yes")
+        result = run_env_checks(settings, check_llm=check_llm)
+        checks = result.get("checks", {})
+        healthy = result.get("ok", False)
+        status_code = 200 if healthy else 503
+        payload = {
+            "status": "healthy" if healthy else "degraded",
+            "service": "idea2product-api",
+            "checks": checks,
+        }
+        if result.get("warnings"):
+            payload["warnings"] = result["warnings"]
+        return jsonify(payload), status_code
+    except Exception as e:
+        from src.utils.logger import get_logger
+        get_logger(__name__).exception("Health check failed")
+        return jsonify({
+            "status": "degraded",
+            "service": "idea2product-api",
+            "checks": {"config": False},
+            "error": str(e),
+        }), 503
 
 
 @app.route("/")
@@ -174,19 +156,32 @@ def handle_404(e):
 
 @app.errorhandler(500)
 def handle_500(e):
-    """Return JSON for 500 errors. Log full exception; expose details only when configured."""
+    """Return JSON for 500 errors. Log full exception; expose details only when configured.
+    When the exception is StageExecutionError, always include error_code and failed_stage
+    so the frontend can show 'Stage N failed' without exposing full details."""
     from src.utils.logger import get_logger
     get_logger(__name__).exception("Unhandled exception")
     msg = "Internal server error"
+    payload = {"error": msg}
     if request.path.startswith("/api/"):
         try:
             from config.settings import get_settings
-            if get_settings().expose_error_details:
-                msg = str(e) if e else "Internal server error"
+            from src.core.exceptions import StageExecutionError as SEE
+            exc = e
+            while exc:
+                if isinstance(exc, SEE):
+                    payload["error_code"] = f"STAGE_{getattr(exc, 'stage', 0)}_FAILED"
+                    payload["failed_stage"] = getattr(exc, "stage", None)
+                    if get_settings().expose_error_details:
+                        payload["error"] = str(exc) if exc else msg
+                    break
+                exc = getattr(exc, "__cause__", None)
+            if not payload.get("error_code") and get_settings().expose_error_details:
+                payload["error"] = str(e) if e else msg
         except Exception:
             pass
-        return jsonify({"error": msg}), 500
-    return jsonify({"error": msg}), 500
+        return jsonify(payload), 500
+    return jsonify(payload), 500
 
 
 @app.errorhandler(405)

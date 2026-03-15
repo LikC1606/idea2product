@@ -1,5 +1,6 @@
 """LLM service for interacting with OpenAI API."""
 
+import random
 import time
 from typing import Optional, Iterator, Dict, Any, List
 from openai import (
@@ -14,6 +15,64 @@ from src.utils.logger import get_logger
 logger = get_logger(__name__)
 
 _DEFAULT_TIMEOUT = 120
+
+
+def _extract_status_code(exc: BaseException) -> Optional[int]:
+    """Best-effort HTTP status extraction from OpenAI exceptions."""
+    for attr in ("status_code", "status"):
+        code = getattr(exc, attr, None)
+        if isinstance(code, int):
+            return code
+    resp = getattr(exc, "response", None)
+    code = getattr(resp, "status_code", None)
+    return code if isinstance(code, int) else None
+
+
+def _is_transient_error(exc: BaseException) -> bool:
+    """True for timeout/connection/429/5xx style retryable failures."""
+    if isinstance(exc, (RateLimitError, APITimeoutError, APIConnectionError, TimeoutError)):
+        return True
+    if isinstance(exc, APIError):
+        status = _extract_status_code(exc)
+        return status in (408, 409, 429) or (status is not None and status >= 500)
+    return False
+
+
+def _retry_after_seconds(exc: BaseException) -> Optional[float]:
+    """Best-effort Retry-After parsing from response headers."""
+    headers = None
+    resp = getattr(exc, "response", None)
+    headers = getattr(resp, "headers", None) if resp is not None else None
+    if not headers:
+        return None
+    val = headers.get("retry-after") or headers.get("Retry-After")
+    if not val:
+        return None
+    try:
+        return max(float(val), 0.0)
+    except (TypeError, ValueError):
+        return None
+
+
+def _compute_backoff_seconds(attempt: int, exc: BaseException) -> float:
+    """Exponential backoff with jitter and optional Retry-After."""
+    hdr = _retry_after_seconds(exc)
+    if hdr is not None:
+        return min(hdr, 30.0)
+    base = min(2**attempt, 30)
+    jitter = random.uniform(0.0, 0.35 * base)
+    return float(base + jitter)
+
+
+def _make_llm_service_error(message: str, transient: bool) -> Exception:
+    """Import lazily to avoid circular import via src.core.__init__."""
+    if transient:
+        from src.core.exceptions import TransientLLMError
+
+        return TransientLLMError(message)
+    from src.core.exceptions import PermanentLLMError
+
+    return PermanentLLMError(message)
 
 
 class LLMService:
@@ -104,6 +163,7 @@ class LLMService:
         system: Optional[str] = None,
         max_tokens: Optional[int] = None,
         temperature: Optional[float] = None,
+        retry_budget_seconds: Optional[float] = None,
     ) -> str:
         """
         Generate a response from OpenAI.
@@ -128,6 +188,7 @@ class LLMService:
             messages.append({"role": "system", "content": system})
         messages.append({"role": "user", "content": prompt})
 
+        started = time.monotonic()
         for attempt in range(self.max_retries):
             try:
                 logger.debug(
@@ -152,35 +213,51 @@ class LLMService:
                 if result is None:
                     raise APIError("Null content in OpenAI response (e.g. refusal)")
 
+                usage = getattr(response, "usage", None)
+                usage_log = {}
+                if usage is not None:
+                    usage_log = {
+                        "prompt_tokens": getattr(usage, "prompt_tokens", None),
+                        "completion_tokens": getattr(usage, "completion_tokens", None),
+                        "total_tokens": getattr(usage, "total_tokens", None),
+                    }
                 logger.debug(
                     "LLM API call successful",
                     extra={
                         "response_length": len(result),
-                        "usage": {
-                            "prompt_tokens": response.usage.prompt_tokens,
-                            "completion_tokens": response.usage.completion_tokens,
-                            "total_tokens": response.usage.total_tokens,
-                        },
+                        "usage": usage_log,
                     },
                 )
 
                 return self._strip_code_fences(result or "")
 
-            except RateLimitError as e:
-                logger.warning(f"Rate limit hit, retrying in {2 ** attempt} seconds")
-                if attempt < self.max_retries - 1:
-                    time.sleep(2**attempt)  # Exponential backoff
-                else:
-                    raise
+            except (RateLimitError, APIError, APITimeoutError, APIConnectionError, TimeoutError) as e:
+                transient = _is_transient_error(e)
+                last = attempt >= self.max_retries - 1
+                if transient and not last:
+                    delay = _compute_backoff_seconds(attempt, e)
+                    if retry_budget_seconds is not None:
+                        elapsed = time.monotonic() - started
+                        if elapsed + delay > max(retry_budget_seconds, 0.0):
+                            raise _make_llm_service_error(
+                                f"LLM retry budget exceeded (budget={retry_budget_seconds}s): {e}",
+                                transient=False,
+                            ) from e
+                    logger.warning("Transient LLM error, retrying in %.2fs: %s", delay, e)
+                    time.sleep(delay)
+                    continue
+                if not transient:
+                    logger.error("Non-transient LLM error: %s", e)
+                status = _extract_status_code(e)
+                raise _make_llm_service_error(
+                    f"LLM generate failed (transient={transient}, status={status}): {e}",
+                    transient=transient,
+                ) from e
 
-            except (APIError, APITimeoutError, APIConnectionError, TimeoutError) as e:
-                logger.warning(f"API/connection/timeout error: {e}")
-                if attempt < self.max_retries - 1:
-                    time.sleep(2**attempt)
-                else:
-                    raise
-
-        raise APIError("Failed to get response from OpenAI after multiple retries")
+        raise _make_llm_service_error(
+            "Failed to get response from LLM after multiple retries",
+            transient=True,
+        )
 
     def stream(
         self,
@@ -188,6 +265,7 @@ class LLMService:
         system: Optional[str] = None,
         max_tokens: Optional[int] = None,
         temperature: Optional[float] = None,
+        retry_budget_seconds: Optional[float] = None,
     ) -> Iterator[str]:
         """
         Stream a response from OpenAI with retry on transient failures.
@@ -203,6 +281,8 @@ class LLMService:
             messages.append({"role": "system", "content": system})
         messages.append({"role": "user", "content": prompt})
 
+        emitted_any = False
+        started = time.monotonic()
         for attempt in range(self.max_retries):
             try:
                 logger.debug(
@@ -224,30 +304,41 @@ class LLMService:
 
                 for chunk in stream:
                     if chunk.choices and chunk.choices[0].delta.content is not None:
+                        emitted_any = True
                         yield chunk.choices[0].delta.content
 
                 logger.debug("LLM streaming completed")
                 return
 
-            except RateLimitError:
-                logger.warning(f"Stream rate limit hit, retrying in {2 ** attempt}s")
-                if attempt < self.max_retries - 1:
-                    time.sleep(2 ** attempt)
-                else:
-                    raise
-
-            except (APIError, APITimeoutError, APIConnectionError, TimeoutError) as e:
-                logger.warning(f"Streaming API/connection/timeout error: {e}")
-                if attempt < self.max_retries - 1:
-                    time.sleep(2**attempt)
-                else:
-                    raise
+            except (RateLimitError, APIError, APITimeoutError, APIConnectionError, TimeoutError) as e:
+                transient = _is_transient_error(e)
+                if emitted_any:
+                    raise _make_llm_service_error(
+                        f"Stream interrupted after partial output: {e}", transient=False
+                    ) from e
+                if transient and attempt < self.max_retries - 1:
+                    delay = _compute_backoff_seconds(attempt, e)
+                    if retry_budget_seconds is not None:
+                        elapsed = time.monotonic() - started
+                        if elapsed + delay > max(retry_budget_seconds, 0.0):
+                            raise _make_llm_service_error(
+                                f"Stream retry budget exceeded (budget={retry_budget_seconds}s): {e}",
+                                transient=False,
+                            ) from e
+                    logger.warning("Transient stream error, retrying in %.2fs: %s", delay, e)
+                    time.sleep(delay)
+                    continue
+                raise _make_llm_service_error(
+                    f"Stream failed (transient={transient}): {e}",
+                    transient=transient,
+                ) from e
 
     def stream_messages(
         self,
         messages: List[Dict[str, str]],
         max_tokens: Optional[int] = None,
         temperature: Optional[float] = None,
+        retry_budget_seconds: Optional[float] = None,
     ) -> Iterator[str]:
         """
         Stream a chat completion from a list of messages (OpenAI format).
@@ -263,6 +354,8 @@ class LLMService:
         max_tokens = max_tokens or self.max_tokens
         temperature = temperature if temperature is not None else self.temperature
 
+        emitted_any = False
+        started = time.monotonic()
         for attempt in range(self.max_retries):
             try:
                 stream = self.client.chat.completions.create(
@@ -274,14 +367,31 @@ class LLMService:
                 )
                 for chunk in stream:
                     if chunk.choices and chunk.choices[0].delta.content is not None:
+                        emitted_any = True
                         yield chunk.choices[0].delta.content
                 return
             except (RateLimitError, APIError, APITimeoutError, APIConnectionError, TimeoutError) as e:
-                logger.warning(f"Stream error (attempt {attempt + 1}): {e}")
-                if attempt < self.max_retries - 1:
-                    time.sleep(2**attempt)
-                else:
-                    raise
+                transient = _is_transient_error(e)
+                if emitted_any:
+                    raise _make_llm_service_error(
+                        f"Message stream interrupted after partial output: {e}", transient=False
+                    ) from e
+                if transient and attempt < self.max_retries - 1:
+                    delay = _compute_backoff_seconds(attempt, e)
+                    if retry_budget_seconds is not None:
+                        elapsed = time.monotonic() - started
+                        if elapsed + delay > max(retry_budget_seconds, 0.0):
+                            raise _make_llm_service_error(
+                                f"Message stream retry budget exceeded (budget={retry_budget_seconds}s): {e}",
+                                transient=False,
+                            ) from e
+                    logger.warning("Transient message stream error, retrying in %.2fs: %s", delay, e)
+                    time.sleep(delay)
+                    continue
+                raise _make_llm_service_error(
+                    f"Message stream failed (transient={transient}): {e}",
+                    transient=transient,
+                ) from e
 
     def generate_json(
         self,
@@ -384,12 +494,19 @@ class LLMService:
                     raise APIError("Null content in OpenAI structured output")
                 return json.loads(result)
             except Exception as e:
-                if attempt < self.max_retries - 1:
-                    logger.warning(f"Structured JSON attempt {attempt + 1} failed: {e}, retrying...")
-                    import time
-                    time.sleep(2 ** attempt)
+                transient = _is_transient_error(e) if isinstance(
+                    e, (RateLimitError, APIError, APITimeoutError, APIConnectionError, TimeoutError)
+                ) else False
+                if transient and attempt < self.max_retries - 1:
+                    delay = _compute_backoff_seconds(attempt, e)
+                    logger.warning("Structured JSON transient failure, retrying in %.2fs: %s", delay, e)
+                    time.sleep(delay)
                 else:
-                    logger.warning(f"Structured JSON failed after {self.max_retries} attempts: {e}, falling back to unstructured")
+                    logger.warning(
+                        "Structured JSON failed after %s attempts: %s, falling back to unstructured",
+                        self.max_retries,
+                        e,
+                    )
                     return self.generate_json(prompt=prompt, system=system, max_tokens=max_tokens, json_schema=None)
 
     def analyze_image(

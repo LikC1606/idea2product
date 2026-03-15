@@ -1,7 +1,7 @@
 """Chat session storage per project. Persists messages to artifacts/chat.json."""
 
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from datetime import datetime
 
 from filelock import FileLock, Timeout
@@ -42,6 +42,7 @@ def append_message(
     project_id: str,
     role: str,
     content: str,
+    client_message_id: Optional[str] = None,
 ) -> None:
     """
     Append a message and persist. Creates project dir and artifacts dir if needed.
@@ -59,8 +60,31 @@ def append_message(
             data = read_json_safe(path, default={})
             if isinstance(data, dict):
                 messages = list(data.get("messages", []))
-            messages.append({"role": role, "content": content})
+            msg = {"role": role, "content": content}
+            if client_message_id:
+                msg["client_message_id"] = client_message_id
+            messages.append(msg)
             write_json(path, {"messages": messages, "updated_at": datetime.now().isoformat()})
     except Timeout:
         logger.warning(f"Chat file lock timeout for project {project_id}, cannot append message")
         raise RuntimeError("Chat storage is temporarily busy, please retry") from None
+
+
+def has_message_id(
+    settings: Settings,
+    project_id: str,
+    client_message_id: str,
+    *,
+    role: Optional[str] = None,
+) -> bool:
+    """Check whether a message with client_message_id already exists."""
+    if not client_message_id:
+        return False
+    messages = get_messages(settings, project_id)
+    for m in messages:
+        if m.get("client_message_id") != client_message_id:
+            continue
+        if role and m.get("role") != role:
+            continue
+        return True
+    return False
