@@ -1,199 +1,92 @@
+<!-- README_SYNC: source=8e9c0125f75c21c72dcd7be5d76646e42a6f44ce; updated=2026-11-18 -->
+<p align="center">English · <a href="./README_CN.md" lang="zh-CN">简体中文</a></p>
+
 # Idea2Product
 
-**Turn natural language into a runnable web app.** A 4-stage pipeline with 10+ AI agents turns your plain-text idea into a working Flask application—requirements, planning, code generation, and validation in one flow.
+Idea2Product turns a plain-language brief into a Flask app you can inspect and run locally. It saves the requirements, engineering plan, generated source, and validation logs along the way so you can see where a result came from and what still needs work.
 
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[Star the repository](https://github.com/LikC1606/idea2product) to find the pipeline and evaluation references again.
 
----
+<a href="https://github.com/LikC1606/idea2product"><img alt="GitHub stars" src="https://img.shields.io/github/stars/LikC1606/idea2product"></a>
+<a href="./pyproject.toml"><img alt="Project version 0.1.0" src="https://img.shields.io/badge/version-0.1.0-blue"></a>
+<a href="./.github/workflows/ci.yml"><img alt="CI configuration" src="https://img.shields.io/badge/checks-CI_workflow-2f855a"></a>
+<a href="./frontend/package.json"><img alt="Frontend: Vue 3" src="https://img.shields.io/badge/frontend-Vue_3-42b883"></a>
 
-## Quick Start (3 steps)
+Use the Python CLI for a single brief, or open Build Studio for a chat workflow with source and preview panels. Generated code is prototype output: review the code, dependencies, and validation results before deploying it.
 
-**Prerequisites:** Python 3.9+, one LLM API key (OpenAI / Anthropic / Google), and optionally Git (for Code Mining).
+## Quick start
 
-1. **Install** (≈2 min)
-
-   ```bash
-   git clone https://github.com/yourusername/idea2product.git
-   cd idea2product
-   python -m venv venv
-   # Linux/Mac: source venv/bin/activate
-   # Windows: venv\Scripts\activate
-   pip install -r requirements.txt
-   pip install -e .
-   ```
-
-   For pinned dependencies, use `requirements-pinned.txt`. See [docs/REPRODUCIBILITY.md](docs/REPRODUCIBILITY.md).
-
-2. **Configure** (≈1 min)
-
-   ```bash
-   cp .env.example .env
-   ```
-
-   Edit `.env`: set `PRIMARY_LLM_PROVIDER` to `openai`, `anthropic`, or `google`, and set the matching API key (e.g. `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `GOOGLE_API_KEY`). Other options are in [.env.example](.env.example) and [CLAUDE.md](CLAUDE.md#environment-variables).
-
-3. **Run** (≈1–5 min, depends on LLM)
-
-   ```bash
-   python -m src.cli create "Build a todo list app"
-   ```
-
-   **Output:** Project under `data/projects/<project_id>/generated/`. Run it with `python app.py` in that directory.
-
----
-
-## What It Does
-
-Idea2Product runs a 4-stage pipeline: **Requirements → Planning → Code Generation → Validation.**
-
-| Stage | Purpose | Agents |
-|-------|---------|--------|
-| **1** | Requirements | Interaction Agent |
-| **2** | Technical planning | Flow Simulation, Task Division, Algorithm Analysis, Scheme Planning |
-| **3** | Code generation | Code Generation, Code Memory, Code Mining |
-| **4** | Validation | Full-cycle testing, Fine-tuning, optional Visual Verification |
-
-1. **Requirements** — Interaction Agent clarifies your idea (or skip with non-interactive mode).
-2. **Planning** — Flow simulation, task breakdown, algorithm analysis, and scheme planning (file structure, API specs, `.pyi` stubs).
-3. **Code generation** — Interface-first: stubs → dependency graph → implementations (LangChain-based).
-4. **Validation** — Run generated app, run-fix loop, optional BDD tests and vision-based UI checks.
-
-Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-
----
-
-## Usage
-
-### CLI
+Use Python 3.12 and Git. The commands below are for a Unix shell; [requirements.txt](./requirements.txt) lists the dependencies. Start with this file: the older [pinned list](./requirements-pinned.txt) predates the current `langchain.agents.create_agent` import.
 
 ```bash
-# Create (non-interactive)
-python -m src.cli create "Build a todo app with add, delete, complete"
+git clone https://github.com/LikC1606/idea2product.git
+cd idea2product
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python -m src.cli --help
+cp .env.example .env
+```
 
-# Create (interactive — asks clarifying questions)
-python -m src.cli create -i "Build a todo app"
+Use [.env.example](./.env.example) as a reference when editing `.env`. Set `PRIMARY_LLM_PROVIDER` to `openai`, `anthropic`, or `google`, and fill in the matching API key. Non-OpenAI settings use a compatible endpoint configured with the provider's base URL. Keep secrets out of Git. Generation calls your configured model service and may incur usage charges.
 
-# List projects / check status
+```bash
+python -m src.cli create "Build a todo app that can add, complete, and delete tasks"
+```
+
+When generation succeeds, the CLI reports the project location and entry point. Review `generated/` and its local run instructions, plus the validation output. The CLI's `-i` option lets it ask clarifying questions first. Replace `PROJECT_ID` below with the ID printed by the CLI.
+
+```bash
+python -m src.cli create --help
 python -m src.cli list
-python -m src.cli status <project_id>
+python -m src.cli status PROJECT_ID
+python -m src.cli from-paper --help
 ```
 
-### Web UI (Build Studio)
+## Build Studio in the browser
 
-**Production:** build frontend, then start the server:
+Use Node.js 20.19+ on the 20.x line or 22.12+ for the Vite frontend. From the project root with the Python environment active:
 
 ```bash
-cd frontend && npm run build && cd ..
-python -m src.web.app
+npm ci --prefix frontend
+npm run build --prefix frontend
+HOST=127.0.0.1 PORT=8080 python -m src.web.app
 ```
 
-Open `http://localhost:5000` for the chat-based Build Studio (left: chat, right: code + live preview).
+Open `http://127.0.0.1:8080`. Flask serves the built Vue interface and API. Build Studio keeps the conversation, generated files, and preview together. For the development proxy, REST endpoints, and preview subprocesses, see the [Web flow reference](./docs/refs/WEB_FLOW_REF.md).
 
-**Development:** run frontend dev server (proxies to Flask on 8080):
+## What the pipeline saves
 
-```bash
-cd frontend && npm run dev
-```
+| Stage | Result |
+| --- | --- |
+| Requirements | A structured brief with features and constraints |
+| Planning | User flows, tasks, APIs, file layout and interface stubs |
+| Generation | Source files, generated in dependency order from the planned interfaces |
+| Validation | Test and startup results, with repair attempts or optional BDD and visual checks |
 
-Main API: `POST /api/projects` (create), `POST /api/projects/<id>/chat` (send message, triggers generation), `GET /api/projects/<id>/status`, `GET /api/projects/<id>/preview-url`. Full list: [docs/refs/WEB_FLOW_REF.md](docs/refs/WEB_FLOW_REF.md).
-
-### Python API
-
-```python
-from config.settings import get_settings
-from src.core.orchestrator import Orchestrator
-
-settings = get_settings()
-orchestrator = Orchestrator(settings)
-result = orchestrator.run("Build a blog with posts and comments", interactive=False)
-print(f"Deployable: {result.is_deployable}, Files: {len(result.repository.files)}")
-```
-
----
-
-## Output and Running Generated Apps
-
-Each project is saved under `data/projects/<project_id>/`:
-
-```
+```text
 data/projects/<project_id>/
-├── artifacts/          # requirements, plan, context JSON
-├── generated/          # Runnable Flask app (app.py, app/, templates/, etc.)
-└── logs/
+  artifacts/
+    01_requirements.json
+    02_engineering_plan.json
+    03_code_repository.json
+    context.json
+  generated/
+  logs/
 ```
 
-To run the generated app:
+The [architecture guide](./docs/ARCHITECTURE.md) explains the agents and handoffs. The [artifact and data model reference](./docs/refs/DATA_MODELS_REF.md) describes what those records contain.
+
+## Development and evaluation
+
+- The [documentation index](./docs/CONTEXT_INDEX.md) links to agent, provider, and configuration references. See [troubleshooting](./docs/TROUBLESHOOTING.md) for dependency, provider, or preview failures.
+- The [benchmark guide](./docs/BENCHMARK.md) and [research evaluation protocol](./docs/paper/EVALUATION.md) cover task definitions and metrics. Live benchmark modes call the model provider. Record the model, dependency versions, and feature flags for reproducible comparisons.
+- The [CI workflow](./.github/workflows/ci.yml) lists test and lint commands. Check that the agent reference still matches the source with:
 
 ```bash
-cd data/projects/<project_id>/generated
-pip install -r requirements.txt
-python app.py
+python scripts/check_docs.py
 ```
 
-App usually listens on `http://localhost:5000`.
+The repository does not currently include a license file. No MIT or other reuse license is asserted here.
 
----
-
-## Configuration (minimal)
-
-| Variable | Description |
-|----------|-------------|
-| `PRIMARY_LLM_PROVIDER` | `openai` \| `anthropic` \| `google` |
-| `OPENAI_API_KEY` | Required when provider is `openai` |
-| `ANTHROPIC_API_KEY` | Required when provider is `anthropic` |
-| `GOOGLE_API_KEY` | Required when provider is `google` |
-| `OPENAI_BASE_URL` | Optional; custom endpoint (OpenRouter, Azure, local). |
-
-Full list of env vars and feature flags: [CLAUDE.md](CLAUDE.md#environment-variables) and [.env.example](.env.example).
-
----
-
-## Development
-
-```bash
-pytest tests/ -v                                    # Unit tests (no API key)
-python -m src.benchmarks.run_small_suite            # Benchmarks (needs API key)
-black src/ tests/ && ruff check src/ && mypy src/   # Format, lint, type-check
-```
-
----
-
-## Deploy (Build Studio as a public site)
-
-- **Render:** New Web Service → connect repo → set `OPENAI_API_KEY` (or chosen provider key). See `render.yaml`. Free tier may sleep after idle.
-- **Railway:** Deploy from GitHub → add env vars → use `Procfile`. Use `gunicorn --timeout 300` for long runs.
-
-Never commit API keys. Generated projects on free tiers may be ephemeral (lost on restart).
-
----
-
-## Troubleshooting
-
-| Issue | Action |
-|-------|--------|
-| **401 Unauthorized** | Check `.env`: correct `PRIMARY_LLM_PROVIDER` and matching `*_API_KEY`. |
-| **`ModuleNotFoundError: No module named 'src'`** | Run `pip install -e .` from project root. |
-| **Empty or minimal generated code** | Use a clearer requirement (e.g. "todo app with add, delete, complete"). |
-| **Web UI not loading** | Run `cd frontend && npm run build` before `python -m src.web.app`. |
-| **Import errors in generated app** | In `data/projects/<id>/generated/`, run `pip install -r requirements.txt`. |
-
-More: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
-
----
-
-## More documentation
-
-| Doc | Purpose |
-|-----|---------|
-| [docs/CONTEXT_INDEX.md](docs/CONTEXT_INDEX.md) | Doc index and task → doc mapping |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 4-stage pipeline, data flow, components |
-| [docs/refs/AGENTS_REF.md](docs/refs/AGENTS_REF.md) | Agent list, I/O, key methods |
-| [docs/refs/WEB_FLOW_REF.md](docs/refs/WEB_FLOW_REF.md) | REST API, chat/preview/task services |
-| [CLAUDE.md](CLAUDE.md) | Commands, env vars, key patterns |
-
----
-
-## License
-
-MIT License
+[Report reproducible issues](https://github.com/LikC1606/idea2product/issues) with the failing stage and relevant logs. [Star Idea2Product](https://github.com/LikC1606/idea2product) to keep the reference handy.
