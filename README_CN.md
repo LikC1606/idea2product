@@ -1,16 +1,17 @@
-<!-- README_SYNC: source=8e9c0125f75c21c72dcd7be5d76646e42a6f44ce; updated=2026-11-18 -->
+<!-- README_SYNC: source=8e9c0125f75c21c72dcd7be5d76646e42a6f44ce; updated=2026-11-23 -->
 <p align="center">简体中文 · <a href="./README.md" lang="en">English</a></p>
 
 # Idea2Product
 
-Idea2Product 把一段自然语言需求转成可以在本地检查和运行的 Flask 应用。它同时保留需求、工程方案、生成代码和验证日志，方便追查代码是怎么来的、哪一步还需要补。
-
-可以[给仓库点 Star](https://github.com/LikC1606/idea2product)，方便回来看流程和评测资料。
+Idea2Product 把一段自然语言需求转化为可在本地检查和运行的 Flask Web 应用，并逐阶段留存需求文档、工程规划、生成代码与验证日志，方便追溯每处代码的来源和待修复项。
 
 <a href="https://github.com/LikC1606/idea2product"><img alt="GitHub stars" src="https://img.shields.io/github/stars/LikC1606/idea2product"></a>
+<a href="https://github.com/LikC1606/idea2product/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/LikC1606/idea2product/actions/workflows/ci.yml/badge.svg"></a>
 <a href="./pyproject.toml"><img alt="Project version 0.1.0" src="https://img.shields.io/badge/version-0.1.0-blue"></a>
-<a href="./.github/workflows/ci.yml"><img alt="CI configuration" src="https://img.shields.io/badge/checks-CI_workflow-2f855a"></a>
+<img alt="Python 3.12" src="https://img.shields.io/badge/python-3.12-3776ab">
 <a href="./frontend/package.json"><img alt="Frontend: Vue 3" src="https://img.shields.io/badge/frontend-Vue_3-42b883"></a>
+
+欢迎[给仓库点 Star](https://github.com/LikC1606/idea2product)，方便回看流程和评测资料。
 
 单次生成可以用 Python CLI；想边聊需求边看代码和预览，可以打开 Build Studio。生成的是应用原型，部署前请先检查代码、依赖和验证结果。
 

@@ -1,16 +1,17 @@
-<!-- README_SYNC: source=8e9c0125f75c21c72dcd7be5d76646e42a6f44ce; updated=2026-11-18 -->
+<!-- README_SYNC: source=8e9c0125f75c21c72dcd7be5d76646e42a6f44ce; updated=2026-11-23 -->
 <p align="center">English · <a href="./README_CN.md" lang="zh-CN">简体中文</a></p>
 
 # Idea2Product
 
-Idea2Product turns a plain-language brief into a Flask app you can inspect and run locally. It saves the requirements, engineering plan, generated source, and validation logs along the way so you can see where a result came from and what still needs work.
-
-[Star the repository](https://github.com/LikC1606/idea2product) to find the pipeline and evaluation references again.
+Idea2Product turns a plain-language brief into a Flask web app you can inspect and run locally, saving requirements, engineering plans, generated source files, and validation logs at every stage so each result remains auditable.
 
 <a href="https://github.com/LikC1606/idea2product"><img alt="GitHub stars" src="https://img.shields.io/github/stars/LikC1606/idea2product"></a>
+<a href="https://github.com/LikC1606/idea2product/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/LikC1606/idea2product/actions/workflows/ci.yml/badge.svg"></a>
 <a href="./pyproject.toml"><img alt="Project version 0.1.0" src="https://img.shields.io/badge/version-0.1.0-blue"></a>
-<a href="./.github/workflows/ci.yml"><img alt="CI configuration" src="https://img.shields.io/badge/checks-CI_workflow-2f855a"></a>
+<img alt="Python 3.12" src="https://img.shields.io/badge/python-3.12-3776ab">
 <a href="./frontend/package.json"><img alt="Frontend: Vue 3" src="https://img.shields.io/badge/frontend-Vue_3-42b883"></a>
+
+[Star the repository](https://github.com/LikC1606/idea2product) to keep the pipeline and evaluation references handy.
 
 Use the Python CLI for a single brief, or open Build Studio for a chat workflow with source and preview panels. Generated code is prototype output: review the code, dependencies, and validation results before deploying it.
 
