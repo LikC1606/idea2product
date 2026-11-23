@@ -6,7 +6,7 @@
 Idea2Product turns a plain-language brief into a Flask web app you can inspect and run locally, saving requirements, engineering plans, generated source files, and validation logs at every stage so each result remains auditable.
 
 <a href="https://github.com/LikC1606/idea2product"><img alt="GitHub stars" src="https://img.shields.io/github/stars/LikC1606/idea2product"></a>
-<a href="https://github.com/LikC1606/idea2product/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/LikC1606/idea2product/actions/workflows/ci.yml/badge.svg"></a>
+<a href="./.github/workflows/ci.yml"><img alt="CI workflow" src="https://img.shields.io/badge/checks-CI_workflow-2f855a"></a>
 <a href="./pyproject.toml"><img alt="Project version 0.1.0" src="https://img.shields.io/badge/version-0.1.0-blue"></a>
 <img alt="Python 3.12" src="https://img.shields.io/badge/python-3.12-3776ab">
 <a href="./frontend/package.json"><img alt="Frontend: Vue 3" src="https://img.shields.io/badge/frontend-Vue_3-42b883"></a>

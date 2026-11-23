@@ -6,7 +6,7 @@
 Idea2Product 把一段自然语言需求转化为可在本地检查和运行的 Flask Web 应用，并逐阶段留存需求文档、工程规划、生成代码与验证日志，方便追溯每处代码的来源和待修复项。
 
 <a href="https://github.com/LikC1606/idea2product"><img alt="GitHub stars" src="https://img.shields.io/github/stars/LikC1606/idea2product"></a>
-<a href="https://github.com/LikC1606/idea2product/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/LikC1606/idea2product/actions/workflows/ci.yml/badge.svg"></a>
+<a href="./.github/workflows/ci.yml"><img alt="CI workflow" src="https://img.shields.io/badge/checks-CI_workflow-2f855a"></a>
 <a href="./pyproject.toml"><img alt="Project version 0.1.0" src="https://img.shields.io/badge/version-0.1.0-blue"></a>
 <img alt="Python 3.12" src="https://img.shields.io/badge/python-3.12-3776ab">
 <a href="./frontend/package.json"><img alt="Frontend: Vue 3" src="https://img.shields.io/badge/frontend-Vue_3-42b883"></a>
